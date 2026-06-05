@@ -13,3 +13,6 @@ venv/
 
 # env
 .env
+
+# credentials vault (Jarvis owns ~/.jarvis/credentials.json; ignore defensively)
+credentials.json

@@ -43,6 +43,13 @@ async def _run(initial_task: str | None = None) -> None:
 
     home = Path(os.environ.get("JARVIS_HOME", str(Path.home() / ".jarvis")))
     bootstrap(home)
+
+    from jarvis.credentials import load_credentials_into_env, CredentialsError
+    try:
+        load_credentials_into_env(home)
+    except CredentialsError as e:
+        console.print(f"[yellow]⚠ Could not load credentials vault: {e}[/yellow]")
+
     cfg = load_config(home=home, project_dir=Path.cwd())
 
     db = DB(cfg.data_dir / "jarvis.db")
@@ -131,7 +138,7 @@ async def _run(initial_task: str | None = None) -> None:
                 else:
                     console.print("[dim]/config editing not yet implemented in this build[/dim]")
             elif cmd.name == "setkey":
-                handle_setkey(cmd.args, console)
+                handle_setkey(cmd.args, console, home)
             elif cmd.name == "compact":
                 console.print("[dim]Manual compaction not yet wired — use /compact after more turns[/dim]")
             elif cmd.name == "resume":

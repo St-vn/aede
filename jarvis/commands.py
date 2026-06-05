@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 
@@ -39,7 +40,7 @@ def handle_help(console: Any) -> None:
             "  /config [scope] [key] [value] — view or set config",
             "  /compact                      — manually compact context",
             "  /tokens                       — show token usage and cost",
-            "  /setkey <NAME> <value>        — set a Windows user env var (persists across shells)",
+            "  /setkey <NAME> <value>        — save a credential to Jarvis's vault (loaded on every launch)",
             "  /clear                        — start a new session",
             "  /exit                         — end session cleanly",
         ])
@@ -108,25 +109,25 @@ def handle_config_show(cfg: Any, console: Any) -> None:
     console.print("\n".join(lines))
 
 
-def handle_setkey(args: list[str], console: Any) -> None:
+def handle_setkey(args: list[str], console: Any, home: Path) -> None:
     if len(args) < 2:
         console.print("Usage: /setkey <NAME> <value>")
         console.print("Example: /setkey OPENROUTER_API_KEY sk-or-v1-...")
         return
     name = args[0].upper()
     value = args[1]
-    import subprocess, sys
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command",
-         f'[System.Environment]::SetEnvironmentVariable("{name}", "{value}", "User")'],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        console.print(f"[red]Failed to set {name}: {result.stderr.strip()}[/red]")
-        return
+
     import os
+    from jarvis.credentials import set_credential
+    set_credential(home, name, value)
     os.environ[name] = value
-    console.print(f"[green]✓[/green] {name} set (Windows user env + current process). New shells will pick it up automatically.")
+
+    console.print(
+        f"[green]✓[/green] {name} saved to ~/.jarvis/credentials.json and active "
+        f"in this session. Jarvis will load it automatically on every future launch. "
+        f"(Other already-open terminals are unaffected — this is Jarvis's own "
+        f"credential store, not an OS environment variable.)"
+    )
 
 
 def _humanize_age(ms: float) -> str:
