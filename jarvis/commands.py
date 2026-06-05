@@ -5,7 +5,7 @@ from typing import Any
 
 COMMANDS = {
     "help", "resume", "sessions", "tools", "config",
-    "compact", "tokens", "clear", "exit",
+    "compact", "tokens", "clear", "exit", "setkey",
 }
 
 
@@ -39,6 +39,7 @@ def handle_help(console: Any) -> None:
             "  /config [scope] [key] [value] — view or set config",
             "  /compact                      — manually compact context",
             "  /tokens                       — show token usage and cost",
+            "  /setkey <NAME> <value>        — set a Windows user env var (persists across shells)",
             "  /clear                        — start a new session",
             "  /exit                         — end session cleanly",
         ])
@@ -105,6 +106,27 @@ def handle_config_show(cfg: Any, console: Any) -> None:
     for k, v in fields:
         lines.append(f"  {k:<30} {v}")
     console.print("\n".join(lines))
+
+
+def handle_setkey(args: list[str], console: Any) -> None:
+    if len(args) < 2:
+        console.print("Usage: /setkey <NAME> <value>")
+        console.print("Example: /setkey OPENROUTER_API_KEY sk-or-v1-...")
+        return
+    name = args[0].upper()
+    value = args[1]
+    import subprocess, sys
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command",
+         f'[System.Environment]::SetEnvironmentVariable("{name}", "{value}", "User")'],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        console.print(f"[red]Failed to set {name}: {result.stderr.strip()}[/red]")
+        return
+    import os
+    os.environ[name] = value
+    console.print(f"[green]✓[/green] {name} set (Windows user env + current process). New shells will pick it up automatically.")
 
 
 def _humanize_age(ms: float) -> str:

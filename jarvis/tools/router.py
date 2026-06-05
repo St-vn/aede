@@ -23,12 +23,11 @@ class ToolRouter:
         shell: str,
         wsl_distro: str,
         tool_output_max_tokens: int,
-        brave_api_key: str | None,
+        brave_api_key: str | None = None,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
         self._max_tokens = tool_output_max_tokens
-        self._brave_key = brave_api_key
         self._session_auto_approve: set[str] = set()
         self._registry = self._build_registry()
 
@@ -49,9 +48,8 @@ class ToolRouter:
         from jarvis.tools.powershell import run_powershell
         reg["powershell"] = run_powershell
 
-        if self._brave_key:
-            from jarvis.tools.web import web_search
-            reg["web_search"] = web_search
+        from jarvis.tools.web import web_search
+        reg["web_search"] = web_search
 
         return reg
 
@@ -79,7 +77,7 @@ class ToolRouter:
             if name == "powershell":
                 result = fn(args, shell=self._shell, wsl_distro=self._wsl_distro)
             elif name == "web_search":
-                result = fn(args, api_key=self._brave_key)
+                result = fn(args)
             else:
                 result = fn(args)
             duration_ms = int((time.monotonic() - start) * 1000)
@@ -176,7 +174,7 @@ _TOOL_SCHEMAS: dict[str, dict] = {
     },
     "fetch_url": {
         "name": "fetch_url",
-        "description": "HTTP GET a URL and return the page content as text. Does not execute JavaScript.",
+        "description": "HTTP GET a specific known URL and return the page content as text. Does not execute JavaScript. For HTML pages returns extracted visible text — summarize it, do not quote it back. Use web_search first to find URLs; only use this to fetch a URL you already have.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -187,7 +185,7 @@ _TOOL_SCHEMAS: dict[str, dict] = {
     },
     "web_search": {
         "name": "web_search",
-        "description": "Search the web using Brave Search. Returns titles, URLs, and snippets.",
+        "description": "Search the web using DuckDuckGo. No API key required. Returns titles, URLs, and snippets.",
         "input_schema": {
             "type": "object",
             "properties": {

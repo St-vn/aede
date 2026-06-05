@@ -3,12 +3,11 @@ from unittest.mock import patch, MagicMock
 from jarvis.tools.router import ToolRouter, ToolResult, UnknownToolError
 
 
-def make_router(brave_key: str | None = "test-key") -> ToolRouter:
+def make_router() -> ToolRouter:
     return ToolRouter(
         shell="powershell",
         wsl_distro="",
         tool_output_max_tokens=8000,
-        brave_api_key=brave_key,
     )
 
 
@@ -24,9 +23,9 @@ def test_router_known_tools(tmp_path):
     assert "web_search" in r.tool_names()
 
 
-def test_router_web_search_disabled_without_key():
-    r = make_router(brave_key=None)
-    assert "web_search" not in r.tool_names()
+def test_router_web_search_always_available():
+    r = make_router()
+    assert "web_search" in r.tool_names()
 
 
 def test_router_unknown_tool_raises():

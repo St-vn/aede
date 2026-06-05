@@ -37,7 +37,7 @@ async def _run(initial_task: str | None = None) -> None:
     from jarvis.gate import PermissionStore
     from jarvis.tokens import TokenTracker, PriceCache
     from jarvis.agent import AgentLoop
-    from jarvis.commands import parse_command, handle_help, handle_sessions, handle_tools, handle_tokens, handle_config_show
+    from jarvis.commands import parse_command, handle_help, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_setkey
 
     console = Console()
 
@@ -50,12 +50,10 @@ async def _run(initial_task: str | None = None) -> None:
     rollout = Rollout(cfg.data_dir / "sessions", session.id)
     rollout.write({"type": "session_start", "session_id": session.id, "parent_id": None, "model": cfg.model})
 
-    brave_key = os.environ.get("BRAVE_API_KEY")
     router = ToolRouter(
         shell=cfg.shell,
         wsl_distro=cfg.wsl_distro,
         tool_output_max_tokens=cfg.tool_output_max_tokens,
-        brave_api_key=brave_key,
     )
     router.set_auto_approved(cfg.auto_approve)
 
@@ -132,15 +130,12 @@ async def _run(initial_task: str | None = None) -> None:
                     handle_config_show(cfg, console)
                 else:
                     console.print("[dim]/config editing not yet implemented in this build[/dim]")
+            elif cmd.name == "setkey":
+                handle_setkey(cmd.args, console)
             elif cmd.name == "compact":
                 console.print("[dim]Manual compaction not yet wired — use /compact after more turns[/dim]")
             elif cmd.name == "resume":
                 console.print("[dim]/resume not yet implemented in this build[/dim]")
-            continue
-
-        has_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
-        if not has_key:
-            console.print("[red]Error: set ANTHROPIC_API_KEY or OPENROUTER_API_KEY.[/red]")
             continue
 
         await _run_turn_safe(agent, user_input, console)
