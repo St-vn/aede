@@ -116,10 +116,15 @@ class AgentLoop:
         import os
         base_url = self._cfg.api_base_url
         if base_url:
-            api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
+            api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise RuntimeError("OPENROUTER_API_KEY (or ANTHROPIC_API_KEY) not set in environment.")
             self._client = anthropic.AsyncAnthropic(base_url=base_url, api_key=api_key)
         else:
-            self._client = anthropic.AsyncAnthropic()
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise RuntimeError("ANTHROPIC_API_KEY not set in environment.")
+            self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._system_prompt = build_system_prompt(
             cfg=self._cfg,
             session_id=self._session.id,
