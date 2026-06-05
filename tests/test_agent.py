@@ -70,6 +70,52 @@ def test_build_system_prompt_resume_includes_notes():
     assert "fix the bug" in prompt
 
 
+@pytest.mark.asyncio
+async def test_compaction_fallback_uses_anthropic_model_not_gemini():
+    """On a non-Anthropic provider, compaction must NOT pass the active
+    (e.g. Gemini) model id to the Anthropic compaction client — that id
+    would 404 against api.anthropic.com. It must substitute an Anthropic id."""
+    from jarvis.agent import AgentLoop
+    from jarvis.config import JarvisConfig, DEFAULT_CONFIG
+    from jarvis.provider import OpenAIProvider
+    from pathlib import Path
+
+    cfg = JarvisConfig({
+        "model": "google/gemini-2.5-flash",
+        "shell": "powershell",
+        "tool_output_max_tokens": 8000,
+        "context_window": 100,           # tiny window so compaction triggers
+        "compaction_threshold": 0.01,
+        "api_base_url": "https://openrouter.ai/api/v1",
+    }, home=Path("/tmp"))
+
+    loop = AgentLoop.__new__(AgentLoop)
+    loop._cfg = cfg
+    loop._console = MagicMock()
+    loop._session = MagicMock(id="SID")
+    loop._rollout = MagicMock()
+    loop._messages = [{"role": "user", "content": "x" * 4000}]
+
+    # Active provider is OpenAI (Gemini) — but a bare Anthropic client exists for compaction.
+    loop._get_provider = MagicMock(return_value=OpenAIProvider(api_key="k", base_url="u"))
+
+    captured = {}
+
+    async def fake_run_compaction(**kwargs):
+        captured.update(kwargs)
+        return {"method": "none"}
+
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "ak"}), \
+         patch("anthropic.AsyncAnthropic", MagicMock()), \
+         patch("jarvis.compaction.run_compaction", side_effect=fake_run_compaction):
+        await loop._maybe_compact()
+
+    assert captured, "run_compaction was not called"
+    assert captured["model"].startswith("claude-"), \
+        f"compaction sent non-Anthropic model id: {captured['model']!r}"
+    assert captured["model"] == DEFAULT_CONFIG["model"]
+
+
 def test_count_context_tokens_empty():
     assert count_context_tokens([]) == 0
 

@@ -22,17 +22,21 @@ You have the following tools available:
 - list_dir: List directory contents. Runs automatically.
 - search_files: Search for a pattern across files (ripgrep). Runs automatically.
 - fetch_url: HTTP GET a URL and return its content as text. Does not execute JavaScript. Runs automatically.
-- web_search: Search the web via Brave Search. Runs automatically.
+- web_search: Search the web via DuckDuckGo. No API key required. Runs automatically.
 
 When a tool requires approval, a gate will be shown to the user before execution. Do not assume approval — wait for the result before continuing.
 
 ## Research rule
 
-For any research task — finding current documentation, investigating a tool, library, API, framework, or any fact about the state of the world — you MUST use web_search and fetch_url. Do not answer research questions from training knowledge. Training data has a cutoff and produces stale or hallucinated results for fast-moving technical topics.
+For any research task — finding current documentation, investigating a tool, library, API, framework, or any fact about the state of the world — use web_search first, then fetch_url on specific result URLs. Do NOT use fetch_url as a substitute for web_search by guessing URLs.
 
 ## Tool errors
 
 Tool errors are returned to you as results. Read the error, reason about the cause, and decide whether to retry with a corrected call, ask the user, or report failure. Do not hide errors.
+
+## Tool output policy
+
+Never quote or reproduce raw tool output verbatim in your response. Synthesize and summarize. For fetch_url results tagged "[HTML page — visible text extracted]": extract the relevant facts and answer the user's question directly — do not paste the extracted text back at them.
 
 ## Session notes
 
@@ -78,6 +82,17 @@ def count_context_tokens(messages: list[dict]) -> int:
     return sum(count_tokens_approx(m.get("content", "")) for m in messages)
 
 
+def _is_html_body(text: str) -> bool:
+    """Detect whether an error string contains an HTML page body."""
+    lower = text[:500].lower()
+    return (
+        "<!doctype" in lower
+        or "<html" in lower
+        or "self.__next_f" in text[:500]
+        or text.strip().startswith("<!")
+    )
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -102,7 +117,7 @@ class AgentLoop:
         self._project_dir = project_dir
         self._messages: list[dict] = []
         self._turn = 0
-        self._client: Any = None
+        self._provider: Any = None
         self._system_prompt: str = ""
 
     def initialize(
@@ -112,19 +127,6 @@ class AgentLoop:
         compaction_summary: str | None = None,
         prior_messages: list[dict] | None = None,
     ) -> None:
-        import anthropic
-        import os
-        base_url = self._cfg.api_base_url
-        if base_url:
-            api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-            if not api_key:
-                raise RuntimeError("OPENROUTER_API_KEY (or ANTHROPIC_API_KEY) not set in environment.")
-            self._client = anthropic.AsyncAnthropic(base_url=base_url, api_key=api_key)
-        else:
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
-            if not api_key:
-                raise RuntimeError("ANTHROPIC_API_KEY not set in environment.")
-            self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._system_prompt = build_system_prompt(
             cfg=self._cfg,
             session_id=self._session.id,
@@ -135,9 +137,13 @@ class AgentLoop:
         if prior_messages:
             self._messages = list(prior_messages)
 
-    async def run_turn(self, user_input: str) -> None:
-        import anthropic
+    def _get_provider(self) -> Any:
+        if self._provider is None:
+            from jarvis.provider import get_provider
+            self._provider = get_provider(self._cfg)
+        return self._provider
 
+    async def run_turn(self, user_input: str) -> None:
         self._turn += 1
         self._messages.append({"role": "user", "content": user_input})
 
@@ -157,23 +163,19 @@ class AgentLoop:
         retry_count: dict[str, int] = {}
 
         while True:
-            response = await self._stream_response()
-            if response is None:
+            resp = await self._stream_response()
+            if resp is None:
                 break
 
-            usage = response.usage
             self._tracker.record(
                 turn=self._turn,
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
-                cached_tokens=getattr(usage, "cache_read_input_tokens", 0),
+                input_tokens=resp.input_tokens,
+                output_tokens=resp.output_tokens,
+                cached_tokens=resp.cached_tokens,
             )
 
-            content = response.content
-            text_parts = [b.text for b in content if hasattr(b, "text")]
-            text_response = "".join(text_parts)
-
-            tool_use_blocks = [b for b in content if b.type == "tool_use"]
+            text_response = resp.text
+            tool_calls = resp.tool_calls  # list of {"id", "name", "input"}
 
             if text_response:
                 assist_id = str(ULID())
@@ -182,27 +184,30 @@ class AgentLoop:
                     session_id=self._session.id,
                     role="assistant",
                     content=text_response,
-                    token_count=usage.output_tokens,
+                    token_count=resp.output_tokens,
                 )
                 self._rollout.write({
                     "type": "assistant_message",
                     "content": text_response,
-                    "input_tokens": usage.input_tokens,
-                    "output_tokens": usage.output_tokens,
-                    "cached_tokens": getattr(usage, "cache_read_input_tokens", 0),
+                    "input_tokens": resp.input_tokens,
+                    "output_tokens": resp.output_tokens,
+                    "cached_tokens": resp.cached_tokens,
                 })
 
-            if not tool_use_blocks:
-                self._messages.append({"role": "assistant", "content": content})
+            # Append assistant message in Anthropic format (for round-tripping)
+            self._messages.append({
+                "role": "assistant",
+                "content": resp.assistant_content_blocks,
+            })
+
+            if not tool_calls:
                 break
 
-            self._messages.append({"role": "assistant", "content": content})
-
             tool_results = []
-            for block in tool_use_blocks:
-                tool_name = block.name
-                tool_input = block.input
-                tool_use_id = block.id
+            for tc in tool_calls:
+                tool_name = tc["name"]
+                tool_input = tc["input"]
+                tool_use_id = tc["id"]
 
                 from jarvis.tools.router import UnknownToolError
                 try:
@@ -289,22 +294,50 @@ class AgentLoop:
                 self._messages.append({"role": "user", "content": tool_results})
 
     async def _stream_response(self) -> Any:
+        """Call the active provider and return a NormalizedResponse, or None on error."""
         self._console.print("[dim]thinking...[/dim]", end="\r")
         try:
-            async with self._client.messages.stream(
+            provider = self._get_provider()
+            return await provider.stream_turn(
                 model=self._cfg.model,
-                max_tokens=8096,
                 system=self._system_prompt,
                 tools=self._router.anthropic_tool_schemas(),
                 messages=self._messages,
-            ) as stream:
-                async for text in stream.text_stream:
-                    self._console.print(text, end="", highlight=False)
-                self._console.print()
-                return await stream.get_final_message()
+                max_tokens=8096,
+                console=self._console,
+            )
         except Exception as e:
-            self._console.print(f"[red]API error: {e}[/red]")
+            self._handle_api_error(e)
             return None
+
+    def _handle_api_error(self, e: Exception) -> None:
+        """Print a short, sanitised error message — never dump raw HTML."""
+        error_str = str(e)
+
+        # Try to extract status code from SDK error types
+        status_code: int | None = None
+        try:
+            # Both anthropic.APIStatusError and openai.APIStatusError have .status_code
+            status_code = getattr(e, "status_code", None)
+        except Exception:
+            pass
+
+        if _is_html_body(error_str):
+            code_part = f" {status_code}" if status_code else ""
+            self._console.print(
+                f"[red]API error{code_part}: endpoint returned an HTML page "
+                f"(likely wrong base_url or model not available at this endpoint). "
+                f"Check api_base_url and model id in your config.[/red]"
+            )
+            return
+
+        if status_code is not None:
+            # Extract a brief reason — first line of the error message
+            first_line = error_str.split("\n")[0][:200]
+            self._console.print(f"[red]API error {status_code}: {first_line}[/red]")
+        else:
+            first_line = error_str.split("\n")[0][:200]
+            self._console.print(f"[red]API error: {first_line}[/red]")
 
     async def _maybe_compact(self) -> None:
         from jarvis.compaction import needs_compaction, count_tokens_approx
@@ -317,14 +350,43 @@ class AgentLoop:
 
         self._console.print("[dim]↩ Compacting context...[/dim]")
 
+        # Compaction always uses the active provider's raw client.
+        # For Anthropic this is the AsyncAnthropic client.
+        # For OpenAI-compatible providers we pass the raw client too;
+        # run_compaction uses client.messages.create which only works with
+        # the Anthropic client — so for non-Anthropic providers we fall back
+        # to creating an Anthropic client directly.
+        # TODO: make compaction provider-aware so it works with OpenAI providers.
+        provider = self._get_provider()
+        from jarvis.provider import AnthropicProvider
+        if isinstance(provider, AnthropicProvider):
+            compaction_client = provider.raw_client
+            # Active model is already an Anthropic id — safe to reuse.
+            compaction_model = self._cfg.model
+        else:
+            # Fall back: create a bare Anthropic client for compaction.
+            # The active model (e.g. google/gemini-2.5-flash) is NOT an Anthropic
+            # id, so it cannot be sent to api.anthropic.com — use a default
+            # Anthropic model for the compaction call instead.
+            import os
+            import anthropic
+            from jarvis.config import DEFAULT_CONFIG
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            compaction_client = anthropic.AsyncAnthropic(api_key=api_key) if api_key else None
+            compaction_model = DEFAULT_CONFIG["model"]
+
+        if compaction_client is None:
+            self._console.print("[yellow]⚠ Skipping compaction — ANTHROPIC_API_KEY not set for non-Anthropic provider.[/yellow]")
+            return
+
         from jarvis.compaction import run_compaction
         result = await run_compaction(
             messages=self._messages,
             context_window=self._cfg.context_window,
             threshold=self._cfg.compaction_threshold,
             session_notes_path=self._cfg.data_dir / "sessions" / f"{self._session.id}-notes.md",
-            anthropic_client=self._client,
-            model=self._cfg.model,
+            anthropic_client=compaction_client,
+            model=compaction_model,
         )
 
         if result["method"] != "none":

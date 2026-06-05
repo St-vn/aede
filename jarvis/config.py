@@ -15,7 +15,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "batch_approval_max": 20,
     "auto_approve": [],
     "model_prices": {},
-    "api_base_url": None,  # None = Anthropic direct; set to https://openrouter.ai/api/v1 for OpenRouter
+    "api_base_url": None,  # None = Anthropic direct; set to OpenAI-compatible base URL (e.g. https://openrouter.ai/api/v1) for non-Anthropic models via OpenAI SDK
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -28,7 +28,9 @@ wsl_distro:                # only used when shell: wsl
 batch_approval_max: 20
 
 # API provider — leave blank for Anthropic direct (ANTHROPIC_API_KEY)
-# For OpenRouter: set api_base_url and use OPENROUTER_API_KEY env var
+# For OpenRouter / non-Anthropic models: set api_base_url to the OpenAI-compatible
+# base URL and use OPENROUTER_API_KEY env var. The OpenAI SDK appends
+# /chat/completions (not /v1/messages), so this URL must NOT include a trailing /v1.
 # api_base_url: https://openrouter.ai/api/v1
 
 # Optional: override model pricing (per million tokens)
