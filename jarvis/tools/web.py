@@ -10,9 +10,17 @@ def fetch_url(args: dict) -> str:
         })
         response.raise_for_status()
         content_type = response.headers.get("content-type", "")
-        if "javascript" in content_type or response.text.strip().startswith("<script"):
-            return f"[JS-rendered page — raw content returned, may be incomplete]\n\n{response.text}"
-        return response.text
+        text = response.text
+        # JS-rendered SPA: returns 200 with HTML even for missing routes
+        if "text/html" in content_type or text.strip().startswith("<!"):
+            # Try to extract visible text — return first 2000 chars as hint
+            import re
+            stripped = re.sub(r"<[^>]+>", " ", text)
+            stripped = re.sub(r"\s+", " ", stripped).strip()
+            if len(stripped) < 200:
+                raise RuntimeError(f"Page returned HTML with no useful content (likely JS-rendered or error page): {url}")
+            return f"[HTML page — JS-rendered or static HTML, extracting visible text]\n\n{stripped[:3000]}"
+        return text
     except httpx.HTTPStatusError as e:
         raise RuntimeError(f"HTTP {e.response.status_code}: {url}")
     except httpx.RequestError as e:
