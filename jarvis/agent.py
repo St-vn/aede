@@ -113,7 +113,14 @@ class AgentLoop:
         prior_messages: list[dict] | None = None,
     ) -> None:
         import anthropic
-        self._client = anthropic.Anthropic()
+        import os
+        base_url = self._cfg.api_base_url
+        if base_url:
+            # OpenRouter (or any OpenAI-compatible endpoint) — key in OPENROUTER_API_KEY
+            api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
+            self._client = anthropic.Anthropic(base_url=base_url, api_key=api_key)
+        else:
+            self._client = anthropic.Anthropic()
         self._system_prompt = build_system_prompt(
             cfg=self._cfg,
             session_id=self._session.id,

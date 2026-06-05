@@ -138,8 +138,9 @@ async def _run(initial_task: str | None = None) -> None:
                 console.print("[dim]/resume not yet implemented in this build[/dim]")
             continue
 
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            console.print("[red]Error: ANTHROPIC_API_KEY environment variable not set.[/red]")
+        has_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
+        if not has_key:
+            console.print("[red]Error: set ANTHROPIC_API_KEY or OPENROUTER_API_KEY.[/red]")
             continue
 
         await _run_turn_safe(agent, user_input, console)

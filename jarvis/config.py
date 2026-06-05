@@ -15,6 +15,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "batch_approval_max": 20,
     "auto_approve": [],
     "model_prices": {},
+    "api_base_url": None,  # None = Anthropic direct; set to https://openrouter.ai/api/v1 for OpenRouter
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -25,6 +26,10 @@ tool_output_max_tokens: 8000
 shell: powershell          # powershell | cmd | wsl
 wsl_distro:                # only used when shell: wsl
 batch_approval_max: 20
+
+# API provider — leave blank for Anthropic direct (ANTHROPIC_API_KEY)
+# For OpenRouter: set api_base_url and use OPENROUTER_API_KEY env var
+# api_base_url: https://openrouter.ai/api/v1
 
 # Optional: override model pricing (per million tokens)
 # model_prices:
@@ -64,6 +69,7 @@ class JarvisConfig:
         self.batch_approval_max: int = data.get("batch_approval_max", DEFAULT_CONFIG["batch_approval_max"])
         self.auto_approve: list[str] = data.get("auto_approve") or []
         self.model_prices: dict[str, Any] = data.get("model_prices") or {}
+        self.api_base_url: str | None = data.get("api_base_url") or None
         raw_data_dir = data.get("data_dir")
         if raw_data_dir:
             self.data_dir = Path(raw_data_dir).expanduser()
