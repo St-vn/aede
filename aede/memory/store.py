@@ -20,7 +20,10 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from aede.db import DB
 
 VALID_TYPES = frozenset({"anti-pattern", "failed-approach", "root-cause", "config-correction"})
 VALID_SOURCES = frozenset({"user", "auto_learned", "test_failure", "tool_error"})
@@ -37,8 +40,9 @@ class LearningsStore:
                   The learnings file is at ``data_dir / "learnings.jsonl"``.
     """
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, db: "DB | None" = None) -> None:
         self._path: Path = data_dir / "learnings.jsonl"
+        self._db: "DB | None" = db
 
     # ------------------------------------------------------------------
     # Write
@@ -53,6 +57,7 @@ class LearningsStore:
         trusted: bool = False,
         lower_trust: bool = False,
         verifier_outcome: str | None = None,
+        embedding: bytes | None = None,
     ) -> dict[str, Any]:
         """Validate and append one learning to the JSONL file.
 
@@ -64,6 +69,7 @@ class LearningsStore:
             trusted: Defaults to False.  Set True only by the verifier (Phase D).
             lower_trust: Defaults to False.  Set True for non-code learnings.
             verifier_outcome: Defaults to None.  Populated by Phase D verifier.
+            embedding: Optional packed BLOB (struct.pack floats) for DB retrieval cache.
 
         Returns:
             The full record dict that was written.
@@ -97,6 +103,19 @@ class LearningsStore:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        # Mirror to DB retrieval cache if a DB instance was provided
+        if self._db is not None:
+            self._db.insert_learning(
+                id=record["id"],
+                type=record["type"],
+                content=record["content"],
+                source=record["source"],
+                trusted=record["trusted"],
+                lower_trust=record["lower_trust"],
+                verifier_outcome=record["verifier_outcome"],
+                embedding=embedding,
+            )
 
         return record
 

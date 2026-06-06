@@ -66,6 +66,32 @@ CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
   INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
   INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
 END;
+CREATE TABLE IF NOT EXISTS learnings (
+    id               TEXT PRIMARY KEY,
+    type             TEXT NOT NULL,
+    content          TEXT NOT NULL,
+    source           TEXT NOT NULL,
+    created_at       INTEGER NOT NULL,
+    trusted          INTEGER NOT NULL DEFAULT 0,
+    lower_trust      INTEGER NOT NULL DEFAULT 0,
+    verifier_outcome TEXT,
+    embedding        BLOB
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS learnings_fts USING fts5(
+    content,
+    content='learnings',
+    content_rowid='rowid'
+);
+CREATE TRIGGER IF NOT EXISTS learnings_ai AFTER INSERT ON learnings BEGIN
+  INSERT INTO learnings_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS learnings_ad AFTER DELETE ON learnings BEGIN
+  INSERT INTO learnings_fts(learnings_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS learnings_au AFTER UPDATE ON learnings BEGIN
+  INSERT INTO learnings_fts(learnings_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+  INSERT INTO learnings_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
 """
 
 
@@ -100,6 +126,8 @@ class DB:
         # Rebuild FTS index idempotently to backfill any pre-existing rows
         # (cheap at personal scale; external-content FTS5 requires explicit sync)
         self.con.execute("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
+        # Rebuild learnings FTS index idempotently (same pattern as messages_fts)
+        self.con.execute("INSERT INTO learnings_fts(learnings_fts) VALUES('rebuild')")
         self.con.commit()
         # Set row_factory after schema is created
         self.con.row_factory = _row_factory
@@ -333,6 +361,48 @@ class DB:
             )
 
         return results
+
+    def insert_learning(
+        self,
+        id: str,
+        type: str,
+        content: str,
+        source: str,
+        trusted: bool = False,
+        lower_trust: bool = False,
+        verifier_outcome: str | None = None,
+        embedding: bytes | None = None,
+    ) -> None:
+        """Insert one learning row into the learnings table.
+
+        Args:
+            id: ULID string for the learning.
+            type: Learning category (anti-pattern, failed-approach, etc.).
+            content: Free-text body.
+            source: Origin (user, auto_learned, test_failure, tool_error).
+            trusted: Whether the verifier has confirmed this learning.
+            lower_trust: Whether this is a non-code learning pending full verification.
+            verifier_outcome: Verifier result string, or None.
+            embedding: Packed BLOB from struct.pack, or None if not embedded yet.
+        """
+        self.con.execute(
+            """
+            INSERT INTO learnings
+                (id, type, content, source, created_at, trusted, lower_trust, verifier_outcome, embedding)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                id, type, content, source, _now_ms(),
+                int(trusted), int(lower_trust), verifier_outcome, embedding,
+            ),
+        )
+        self.con.commit()
+
+    def get_all_learnings(self) -> list[dict[str, Any]]:
+        """Return all rows from the learnings table, ordered by created_at ascending."""
+        return self.con.execute(
+            "SELECT * FROM learnings ORDER BY created_at ASC"
+        ).fetchall()
 
     def close(self) -> None:
         """Close the underlying SQLite connection."""
