@@ -330,14 +330,16 @@ class AgentLoop:
 
                 # Validate params before execution.  On failure inject an
                 # is_error tool_result (re-prompts the model) and allow ONE
-                # corrected attempt per unique call key.  The existing 3×
-                # stuck-breaker remains as backstop for execution errors.
+                # corrected attempt per unique call key.
                 from aede.tools.router import ToolParamError
                 try:
                     self._router.validate_args(tool_name, tool_input)
                 except ToolParamError as ve:
                     val_key = f"val:{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
                     validation_retry[val_key] = validation_retry.get(val_key, 0) + 1
+                    if validation_retry[val_key] > 1:
+                        self._console.print("[yellow]⚠ Agent is stuck on an invalid tool call. Intervene or /clear to start over.[/yellow]")
+                        return
                     self._console.print(f"[yellow]⚠ Param validation failed for {tool_name!r}: {ve}[/yellow]")
                     tool_results.append({
                         "type": "tool_result",

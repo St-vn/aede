@@ -610,6 +610,54 @@ async def test_agent_validation_retry_allows_corrected_call(tmp_path):
     router.execute_sync.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_agent_validation_retry_blocks_repeated_identical_bad_call(tmp_path):
+    """When the model repeatedly emits the exact same bad tool call,
+    the agent must stop re-injecting and stop the loop, returning from run_turn."""
+    from aede.agent import AgentLoop
+    from aede.tools.router import ToolParamError
+
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+
+    bad_tc = {"id": "tc-bad", "name": "write_file", "input": {"path": "x"}}
+    resp_bad = _make_response([bad_tc])
+
+    call_count = {"n": 0}
+
+    async def fake_stream(*a, **kw):
+        call_count["n"] += 1
+        if call_count["n"] > 5:
+            raise AssertionError("Infinite loop detected! Breaker failed to stop validation retries.")
+        return resp_bad
+
+    loop._stream_response = fake_stream
+
+    router = MagicMock()
+    router.validate_name = MagicMock()
+    router.requires_approval = MagicMock(return_value=False)
+    router.execute_sync = MagicMock()
+
+    def fake_validate_args(name, args):
+        if name == "write_file" and "content" not in args:
+            raise ToolParamError("Missing required field: content")
+
+    router.validate_args = MagicMock(side_effect=fake_validate_args)
+    loop._router = router
+
+    gate_store = MagicMock()
+    gate_store.is_allowed = MagicMock(return_value=True)
+    loop._gate_store = gate_store
+
+    async def no_compact():
+        pass
+    loop._maybe_compact = no_compact
+
+    await loop.run_turn("write something")
+
+    router.execute_sync.assert_not_called()
+    assert call_count["n"] == 2
+
+
 # ---------------------------------------------------------------------------
 # Task 7 — API 429/500 retry with exponential backoff
 # ---------------------------------------------------------------------------
