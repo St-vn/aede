@@ -1,7 +1,30 @@
+"""
+Web tools for Jarvis: HTTP fetch and DuckDuckGo search.
+
+``fetch_url`` retrieves raw non-HTML content from a known URL (raises for
+HTML/SPA responses so the model cannot accidentally dump a rendered page).
+``web_search`` queries DuckDuckGo via the ``ddgs`` package without requiring
+an API key.  Both functions raise ``RuntimeError`` on failure so errors are
+returned to the model rather than silently suppressed.
+"""
 from __future__ import annotations
 
 
 def fetch_url(args: dict) -> str:
+    """HTTP GET a URL and return its body as plain text.
+
+    Explicitly raises for HTML pages and Next.js RSC payloads so the model
+    cannot read a rendered web page and quote it back at the user.
+
+    Args:
+        args: Must contain ``"url"``.
+
+    Returns:
+        Raw response body text.
+
+    Raises:
+        RuntimeError: for HTTP errors, network failures, or HTML/SPA responses.
+    """
     import httpx
     url = args["url"]
     try:
@@ -24,6 +47,18 @@ def fetch_url(args: dict) -> str:
 
 
 def web_search(args: dict) -> str:
+    """Search the web via DuckDuckGo and return titled results with snippets.
+
+    Args:
+        args: Must contain ``"query"``; optionally ``"count"`` (default 5).
+
+    Returns:
+        Formatted Markdown-style list of ``[title](url)`` + snippet, or a
+        no-results message if the query returns nothing.
+
+    Raises:
+        RuntimeError: if the DuckDuckGo backend call fails.
+    """
     from ddgs import DDGS
     query = args["query"]
     count = int(args.get("count", 5))

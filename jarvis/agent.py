@@ -1,3 +1,10 @@
+"""
+Core agent loop for Jarvis.
+
+Manages the multi-turn conversation with the LLM: building the system prompt,
+dispatching tool calls through the router, handling the approval gate, and
+triggering context compaction when the conversation approaches the context limit.
+"""
 from __future__ import annotations
 import asyncio
 import json
@@ -51,6 +58,22 @@ def build_system_prompt(
     session_notes: str | None,
     compaction_summary: str | None,
 ) -> str:
+    """Assemble the full system prompt from the stable base and per-session context.
+
+    Appends configuration values and, for resumed sessions, injects any
+    persisted session notes and compaction summaries so the model can
+    reconstruct prior context.
+
+    Args:
+        cfg: JarvisConfig instance with model, shell, and window settings.
+        session_id: ULID string for the current session.
+        is_resume: Whether this session was loaded from a prior run.
+        session_notes: Free-text notes persisted across compaction boundaries.
+        compaction_summary: LLM-generated summary from the most recent compaction.
+
+    Returns:
+        The complete system prompt string to pass to the provider.
+    """
     suffix_parts = [
         STABLE_SYSTEM_PROMPT,
         "",
@@ -78,6 +101,7 @@ def build_system_prompt(
 
 
 def count_context_tokens(messages: list[dict]) -> int:
+    """Return a rough token count for a list of message dicts."""
     from jarvis.compaction import count_tokens_approx
     return sum(count_tokens_approx(m.get("content", "")) for m in messages)
 
@@ -94,6 +118,15 @@ def _is_html_body(text: str) -> bool:
 
 
 class AgentLoop:
+    """Stateful multi-turn agent that coordinates provider, tools, gate, and DB.
+
+    Each call to ``run_turn`` appends the user message, streams an LLM
+    response, dispatches any tool calls (subject to the approval gate and
+    hard-deny hooks), collects tool results, and loops until the model
+    stops requesting tools.  Context compaction is triggered automatically
+    before each provider call when the conversation approaches the limit.
+    """
+
     def __init__(
         self,
         cfg: Any,
@@ -127,6 +160,10 @@ class AgentLoop:
         compaction_summary: str | None = None,
         prior_messages: list[dict] | None = None,
     ) -> None:
+        """Build the system prompt and optionally restore prior message history.
+
+        Must be called once before the first ``run_turn``.
+        """
         self._system_prompt = build_system_prompt(
             cfg=self._cfg,
             session_id=self._session.id,
@@ -138,12 +175,23 @@ class AgentLoop:
             self._messages = list(prior_messages)
 
     def _get_provider(self) -> Any:
+        """Lazily instantiate and cache the provider selected by config."""
         if self._provider is None:
             from jarvis.provider import get_provider
             self._provider = get_provider(self._cfg)
         return self._provider
 
     async def run_turn(self, user_input: str) -> None:
+        """Process one user turn end-to-end.
+
+        Appends the user message to history, persists it in the DB and rollout
+        log, calls the provider (streaming), dispatches any tool calls through
+        the approval gate and hard-deny hooks, and loops until the model emits
+        a response with no pending tool calls.
+
+        Returns early if the agent gets stuck (same tool call fails 3 times in
+        a row), printing a warning.
+        """
         self._turn += 1
         self._messages.append({"role": "user", "content": user_input})
 
@@ -340,6 +388,12 @@ class AgentLoop:
             self._console.print(f"[red]API error: {first_line}[/red]")
 
     async def _maybe_compact(self) -> None:
+        """Run compaction if the current message history exceeds the threshold.
+
+        For non-Anthropic providers, falls back to a bare Anthropic client
+        using the default model, because the compaction call goes directly to
+        api.anthropic.com and cannot use an OpenRouter model id.
+        """
         from jarvis.compaction import needs_compaction, count_tokens_approx
         current_tokens = sum(
             count_tokens_approx(m.get("content", "") if isinstance(m.get("content"), str) else "")

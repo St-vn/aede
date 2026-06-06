@@ -1,8 +1,27 @@
+"""
+File search tool for Jarvis, backed by ripgrep.
+
+Searches for a regex pattern across a directory tree and returns matching
+lines with file paths and line numbers.  Requires ``rg`` to be on the PATH.
+"""
 from __future__ import annotations
 import subprocess
 
 
 def search_files(args: dict) -> str:
+    """Search for a regex pattern in files under a directory using ripgrep.
+
+    Args:
+        args: Must contain ``"pattern"`` (regex) and ``"path"`` (directory or file).
+
+    Returns:
+        Matching lines in ``file:line:content`` format, or ``"(no matches)"``
+        if nothing was found.
+
+    Raises:
+        RuntimeError: if ripgrep exits with an error code, or if ``rg`` is not
+            installed.
+    """
     pattern = args["pattern"]
     path = args["path"]
 

@@ -16,3 +16,13 @@ venv/
 
 # credentials vault (Jarvis owns ~/.jarvis/credentials.json; ignore defensively)
 credentials.json
+
+# ---------------------------------------------------------------
+# PRIVATE / INTERNAL — never commit to the public repo
+# ---------------------------------------------------------------
+# Claude Code workspace config (settings, hooks, memory, skills)
+.claude/
+# Root-level CLAUDE.md (project instructions with internal notes)
+/CLAUDE.md
+# .claudeignore (Claude Code ignore list — internal tooling config)
+/.claudeignore

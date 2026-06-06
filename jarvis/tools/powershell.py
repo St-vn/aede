@@ -1,8 +1,32 @@
+"""
+Shell execution tool for Jarvis.
+
+Supports three shell backends (``powershell``, ``cmd``, ``wsl``) selected at
+router initialisation time.  All three return combined stdout+stderr; a
+non-zero exit code is surfaced as a ``RuntimeError`` so the router can return
+it to the model as a tool error.
+"""
 from __future__ import annotations
 import subprocess
 
 
 def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "") -> str:
+    """Execute a shell command and return its combined stdout+stderr output.
+
+    Args:
+        args: Must contain ``"cmd"`` — the command string to execute.
+        shell: Backend to use: ``"powershell"`` (default), ``"cmd"``, or
+            ``"wsl"``.
+        wsl_distro: WSL distribution name; only used when ``shell="wsl"``.
+            Passes ``-d <wsl_distro>`` to ``wsl.exe`` when set.
+
+    Returns:
+        Combined stdout and stderr as a single string.
+
+    Raises:
+        RuntimeError: if the command exits with a non-zero code or times out
+            after 120 seconds.
+    """
     cmd = args["cmd"]
     if shell == "wsl":
         if wsl_distro:

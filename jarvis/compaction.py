@@ -1,3 +1,11 @@
+"""
+Context compaction for long-running Jarvis sessions.
+
+When conversation history grows close to the model's context window, this
+module shrinks it in two passes: a cheap string pass that stubs out old tool
+outputs, followed (if still over threshold) by an LLM summarisation pass that
+collapses the middle of the conversation into a structured handoff summary.
+"""
 from __future__ import annotations
 from typing import Any
 
@@ -23,10 +31,12 @@ Context compaction is about to fire. Before that happens, write any decisions, d
 
 
 def count_tokens_approx(text: str) -> int:
+    """Estimate token count as ``len(text) // 4``, with a minimum of 1."""
     return max(1, len(text) // 4)
 
 
 def needs_compaction(current_tokens: int, context_window: int, threshold: float) -> bool:
+    """Return True when ``current_tokens`` meets or exceeds ``context_window * threshold``."""
     return current_tokens >= int(context_window * threshold)
 
 
@@ -34,6 +44,15 @@ def collapse_old_tool_outputs(
     messages: list[dict[str, Any]],
     keep_last_n_turns: int = 10,
 ) -> tuple[list[dict[str, Any]], int]:
+    """Replace old tool-result payloads with a compact placeholder.
+
+    Tool results from turns older than ``(max_turn - keep_last_n_turns)`` are
+    replaced by a one-line stub that preserves the original token count.  This
+    is an O(n) pass with no LLM call.
+
+    Returns:
+        A ``(new_messages, tokens_saved)`` tuple.
+    """
     if not messages:
         return messages, 0
 

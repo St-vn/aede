@@ -1,3 +1,10 @@
+"""
+Entry point and REPL loop for the Jarvis CLI.
+
+Bootstraps configuration and infrastructure (DB, session, rollout, router),
+then runs an interactive prompt loop that dispatches slash-commands and
+forwards plain text to the AgentLoop.
+"""
 from __future__ import annotations
 import argparse
 import asyncio
@@ -11,11 +18,13 @@ VERSION = "0.1.0"
 
 
 def build_header(model: str, session_id: str) -> str:
+    """Return the one-line startup banner shown at the top of each session."""
     short_id = session_id[:4] if len(session_id) >= 4 else session_id
     return f"jarvis v{VERSION} · {model} · session {short_id}"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments. Accepts an optional first task as a positional arg."""
     parser = argparse.ArgumentParser(prog="jarvis", description="Personal AI agent CLI")
     parser.add_argument("task", nargs="?", default=None, help="Optional first message")
     parser.add_argument("--version", action="version", version=f"jarvis {VERSION}")
@@ -23,11 +32,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main() -> None:
+    """Setuptools entry-point: parse args and hand off to the async run loop."""
     args = parse_args()
     asyncio.run(_run(initial_task=args.task))
 
 
 async def _run(initial_task: str | None = None) -> None:
+    """Bootstrap all subsystems and run the interactive REPL until exit.
+
+    If ``initial_task`` is provided it is submitted as the first user turn
+    before the prompt loop starts.
+    """
     from rich.console import Console
     from jarvis.config import load_config, bootstrap
     from jarvis.db import DB
@@ -151,6 +166,7 @@ async def _run(initial_task: str | None = None) -> None:
 
 
 async def _run_turn_safe(agent: Any, user_input: str, console: Any) -> None:
+    """Run one agent turn, printing any unexpected exception instead of crashing."""
     try:
         await agent.run_turn(user_input)
     except Exception as e:
@@ -158,6 +174,11 @@ async def _run_turn_safe(agent: Any, user_input: str, console: Any) -> None:
 
 
 def _shutdown(session: Any, db: Any, rollout: Any, reason: str) -> None:
+    """Persist session status, write the session-end rollout record, and close the DB.
+
+    Sessions that exit via /exit or EOF are archived; Ctrl-C leaves them active
+    so they can be resumed.
+    """
     status = "active" if reason == "ctrl_c" else "archived"
     try:
         if status == "archived":

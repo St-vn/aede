@@ -1,3 +1,11 @@
+"""
+Slash-command parsing and handler functions for the Jarvis REPL.
+
+Recognises ``/command [args...]`` lines typed at the prompt, parses them into
+``CommandResult`` values, and implements each handler (help, sessions, tools,
+tokens, config, setkey).  The CLI loop in ``cli.py`` calls these handlers
+directly.
+"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,11 +20,18 @@ COMMANDS = {
 
 @dataclass
 class CommandResult:
+    """Parsed representation of a slash-command entered by the user."""
+
     name: str
     args: list[str] = field(default_factory=list)
 
 
 def parse_command(text: str) -> CommandResult | None:
+    """Parse a REPL input line as a slash-command.
+
+    Returns ``None`` if the line does not start with ``/`` or names an
+    unrecognised command, so the caller can fall through to the agent.
+    """
     text = text.strip()
     if not text.startswith("/"):
         return None
@@ -30,6 +45,7 @@ def parse_command(text: str) -> CommandResult | None:
 
 
 def handle_help(console: Any) -> None:
+    """Print the list of available slash-commands."""
     console.print(
         "\n".join([
             "Available commands:",
@@ -48,6 +64,7 @@ def handle_help(console: Any) -> None:
 
 
 def handle_sessions(db: Any, console: Any) -> None:
+    """Print the 20 most recent sessions with humanised age and truncated title."""
     from jarvis.session import Session
     sessions = Session.list_recent(db=db, limit=20)
     if not sessions:
@@ -65,6 +82,7 @@ def handle_sessions(db: Any, console: Any) -> None:
 
 
 def handle_tools(router: Any, console: Any) -> None:
+    """Print all registered tools with their approval mode (gate vs auto)."""
     from jarvis.tools.router import GATE_TOOLS
     lines = ["Available tools:"]
     for name in router.tool_names():
@@ -75,6 +93,7 @@ def handle_tools(router: Any, console: Any) -> None:
 
 
 def handle_tokens(tracker: Any, model: str, prices: Any, console: Any) -> None:
+    """Print cumulative token usage and estimated cost for the current session."""
     totals = tracker.totals()
     hit_rate = tracker.cache_hit_rate()
     from jarvis.tokens import estimate_cost
@@ -95,6 +114,7 @@ def handle_tokens(tracker: Any, model: str, prices: Any, console: Any) -> None:
 
 
 def handle_config_show(cfg: Any, console: Any) -> None:
+    """Print the effective merged configuration (global + project overrides)."""
     lines = ["Effective config  (global + project)"]
     fields = [
         ("model", cfg.model),
@@ -110,6 +130,13 @@ def handle_config_show(cfg: Any, console: Any) -> None:
 
 
 def handle_setkey(args: list[str], console: Any, home: Path) -> None:
+    """Persist a credential to the vault and inject it into the current process environment.
+
+    Args:
+        args: Expects ``[NAME, value]``; prints usage help if fewer than 2 items.
+        console: Rich Console for output.
+        home: Jarvis home directory (Path) where ``credentials.json`` lives.
+    """
     if len(args) < 2:
         console.print("Usage: /setkey <NAME> <value>")
         console.print("Example: /setkey OPENROUTER_API_KEY sk-or-v1-...")
@@ -131,6 +158,7 @@ def handle_setkey(args: list[str], console: Any, home: Path) -> None:
 
 
 def _humanize_age(ms: float) -> str:
+    """Convert a millisecond age into a human-readable string (e.g. '3h ago')."""
     s = ms / 1000
     if s < 60:
         return "just now"

@@ -1,3 +1,12 @@
+"""
+Interactive approval gate for Jarvis tool calls.
+
+Before executing tools that require user consent (powershell, write_file,
+create_file), the agent pauses and shows a permission prompt.  The user can
+allow once, allow for the session/project/globally, deny, redirect the agent
+with a text message, or approve/deny an entire batch.  Persistent approvals
+are written back to ``jarvis.yml`` or ``~/.jarvis/config.yml``.
+"""
 from __future__ import annotations
 from enum import Enum
 from pathlib import Path
@@ -5,6 +14,8 @@ from typing import Any
 
 
 class GateDecision(Enum):
+    """Outcome returned by ``prompt_gate`` after the user responds."""
+
     ALLOW_ONCE = "allow_once"
     ALLOW_SESSION = "allow_session"
     ALLOW_PROJECT = "allow_project"
@@ -16,15 +27,23 @@ class GateDecision(Enum):
 
 
 class PermissionStore:
+    """In-memory store for tool-approval grants across session, project, and global scopes.
+
+    Session grants disappear when the process exits.  Project and global grants
+    are persisted to YAML config files by ``allow_project`` and ``allow_global``.
+    """
+
     def __init__(self) -> None:
         self._session: set[str] = set()
         self._project: set[str] = set()
         self._global: set[str] = set()
 
     def load_from_config(self, auto_approve: list[str]) -> None:
+        """Seed the project grant set from the ``auto_approve`` list in config."""
         self._project.update(auto_approve)
 
     def is_allowed(self, tool_name: str) -> bool:
+        """Return True if the tool is granted in any scope (session, project, or global)."""
         return (
             tool_name in self._session
             or tool_name in self._project
@@ -32,13 +51,16 @@ class PermissionStore:
         )
 
     def allow_session(self, tool_name: str) -> None:
+        """Grant the tool for the current process lifetime only."""
         self._session.add(tool_name)
 
     def allow_project(self, tool_name: str, project_dir: Path) -> None:
+        """Grant the tool and persist it to ``<project_dir>/jarvis.yml``."""
         self._project.add(tool_name)
         self._persist_project(project_dir)
 
     def allow_global(self, tool_name: str, global_config_path: Path) -> None:
+        """Grant the tool and persist it to the global config file."""
         self._global.add(tool_name)
         self._persist_global(tool_name, global_config_path)
 
@@ -66,6 +88,7 @@ class PermissionStore:
 
 
 def render_gate(tool_name: str, args: dict[str, Any]) -> str:
+    """Render a human-readable gate prompt string for the given tool and arguments."""
     lines = [f"⚡ {tool_name}"]
     for k, v in args.items():
         lines.append(f"  {k}: {v}")
@@ -121,6 +144,10 @@ def prompt_gate(
 
 
 def _read_key() -> str:
+    """Read a single keypress without echoing or requiring Enter.
+
+    Uses ``msvcrt.getch`` on Windows and raw-mode ``tty`` on POSIX.
+    """
     import sys
     if sys.platform == "win32":
         import msvcrt

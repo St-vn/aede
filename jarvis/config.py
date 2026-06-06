@@ -1,3 +1,10 @@
+"""
+Configuration loading for Jarvis.
+
+Merges defaults, a global ``~/.jarvis/config.yml``, and an optional
+per-project ``jarvis.yml`` into a single ``JarvisConfig`` object.
+Also provides ``bootstrap`` to create the home directory tree on first run.
+"""
 from __future__ import annotations
 from pathlib import Path
 from typing import Any
@@ -43,6 +50,7 @@ batch_approval_max: 20
 
 
 def _jarvis_home() -> Path:
+    """Return the Jarvis home directory from ``JARVIS_HOME`` or ``~/.jarvis``."""
     env = os.environ.get("JARVIS_HOME")
     if env:
         return Path(env)
@@ -50,6 +58,10 @@ def _jarvis_home() -> Path:
 
 
 def bootstrap(home: Path | None = None) -> None:
+    """Create the Jarvis home directory tree and write a default config if absent.
+
+    Idempotent — safe to call on every launch.
+    """
     if home is None:
         home = _jarvis_home()
     home.mkdir(parents=True, exist_ok=True)
@@ -61,6 +73,12 @@ def bootstrap(home: Path | None = None) -> None:
 
 
 class JarvisConfig:
+    """Resolved, type-annotated view of the merged Jarvis configuration.
+
+    Constructed by ``load_config``; do not instantiate directly in application
+    code.
+    """
+
     def __init__(self, data: dict[str, Any], home: Path) -> None:
         self.model: str = data.get("model", DEFAULT_CONFIG["model"])
         self.context_window: int = data.get("context_window", DEFAULT_CONFIG["context_window"])
@@ -84,6 +102,15 @@ def load_config(
     home: Path | None = None,
     project_dir: Path | None = None,
 ) -> JarvisConfig:
+    """Load and merge config from defaults → global config → project config.
+
+    Args:
+        home: Jarvis home directory; defaults to ``_jarvis_home()``.
+        project_dir: Directory to search for ``jarvis.yml``; defaults to cwd.
+
+    Returns:
+        A fully resolved ``JarvisConfig`` instance.
+    """
     import yaml
 
     if home is None:

@@ -1,3 +1,10 @@
+"""
+Credentials vault for Jarvis.
+
+Stores API keys and other secrets in ``~/.jarvis/credentials.json`` so they
+are loaded automatically on every launch without requiring OS-level environment
+variables.  Real environment variables always take precedence over vault values.
+"""
 from __future__ import annotations
 from pathlib import Path
 from typing import Any
@@ -10,6 +17,7 @@ class CredentialsError(ValueError):
 
 
 def credentials_path(home: Path) -> Path:
+    """Return the canonical path to the credentials vault file."""
     return home / "credentials.json"
 
 

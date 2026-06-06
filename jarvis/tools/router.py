@@ -1,3 +1,11 @@
+"""
+Tool registry and dispatcher for the Jarvis agent.
+
+``ToolRouter`` maps tool names to implementation functions, enforces the
+approval requirement for gated tools, executes tools synchronously (wrapping
+all errors into ``ToolResult`` values so they flow back to the model), and
+exposes Anthropic-format JSON schemas for each registered tool.
+"""
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -7,17 +15,26 @@ GATE_TOOLS = {"powershell", "write_file", "create_file"}
 
 
 class UnknownToolError(Exception):
-    pass
+    """Raised by ``ToolRouter.validate_name`` when the model requests a non-existent tool."""
 
 
 @dataclass
 class ToolResult:
+    """Result of a single tool execution returned to the agent loop."""
+
     status: str  # success | error
     output: str
     duration_ms: int = 0
 
 
 class ToolRouter:
+    """Registry and dispatcher for all agent tools.
+
+    Builds the tool registry at construction time, routes ``execute_sync``
+    calls to the correct implementation, truncates oversized outputs, and
+    serves Anthropic-format JSON schemas to the provider.
+    """
+
     def __init__(
         self,
         shell: str,
@@ -54,21 +71,34 @@ class ToolRouter:
         return reg
 
     def tool_names(self) -> list[str]:
+        """Return the list of registered tool names."""
         return list(self._registry.keys())
 
     def validate_name(self, name: str) -> None:
+        """Raise ``UnknownToolError`` if ``name`` is not in the registry."""
         if name not in self._registry:
             raise UnknownToolError(f"Unknown tool: {name!r}. Valid tools: {self.tool_names()}")
 
     def requires_approval(self, name: str) -> bool:
+        """Return True if the tool must pass through the user approval gate.
+
+        Session-level auto-approvals bypass the gate.
+        """
         if name in self._session_auto_approve:
             return False
         return name in GATE_TOOLS
 
     def set_auto_approved(self, tools: list[str]) -> None:
+        """Mark a set of tools as pre-approved for the session (no gate prompt)."""
         self._session_auto_approve.update(tools)
 
     def execute_sync(self, name: str, args: dict[str, Any]) -> ToolResult:
+        """Dispatch a tool call synchronously and return a ``ToolResult``.
+
+        Any exception raised by the tool implementation is caught and returned
+        as a ``ToolResult`` with ``status="error"``; errors are never hidden
+        from the model.
+        """
         import time
         self.validate_name(name)
         fn = self._registry[name]
@@ -88,6 +118,7 @@ class ToolRouter:
             return ToolResult(status="error", output=str(exc), duration_ms=duration_ms)
 
     def _truncate(self, text: str) -> str:
+        """Truncate tool output that exceeds the configured token cap."""
         max_chars = self._max_tokens * 4
         if len(text) <= max_chars:
             return text
@@ -95,6 +126,7 @@ class ToolRouter:
         return text[:max_chars] + f"\n[...output truncated at {self._max_tokens} tokens — ~{token_estimate} total tokens in result]"
 
     def anthropic_tool_schemas(self) -> list[dict]:
+        """Return the Anthropic-format tool schema list for all registered tools."""
         schemas = []
         for name in self._registry:
             schemas.append(_TOOL_SCHEMAS[name])
