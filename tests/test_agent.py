@@ -13,20 +13,21 @@ def test_build_system_prompt_stable_prefix():
         "context_window": 200000,
         "compaction_threshold": 0.85,
     }, home=Path("/tmp"))
-    prompt = build_system_prompt(
+    sp = build_system_prompt(
         cfg=cfg,
         session_id="SID001",
         is_resume=False,
         session_notes=None,
         compaction_summary=None,
     )
-    assert "aede" in prompt
-    assert "powershell" in prompt
-    assert "read_file" in prompt
-    assert "research" in prompt.lower()
-    assert "web_search" in prompt
-    assert "SID001" in prompt
-    assert "claude-sonnet-4-20250514" in prompt
+    full = sp.stable + sp.dynamic
+    assert "aede" in full
+    assert "powershell" in full
+    assert "read_file" in full
+    assert "research" in full.lower()
+    assert "web_search" in full
+    assert "SID001" in full
+    assert "claude-sonnet-4-20250514" in full
 
 
 def test_build_system_prompt_no_timestamps_in_stable():
@@ -41,12 +42,11 @@ def test_build_system_prompt_no_timestamps_in_stable():
         "context_window": 200000,
         "compaction_threshold": 0.85,
     }, home=Path("/tmp"))
-    p1 = build_system_prompt(cfg=cfg, session_id="A", is_resume=False, session_notes=None, compaction_summary=None)
+    sp1 = build_system_prompt(cfg=cfg, session_id="A", is_resume=False, session_notes=None, compaction_summary=None)
     time.sleep(0.01)
-    p2 = build_system_prompt(cfg=cfg, session_id="A", is_resume=False, session_notes=None, compaction_summary=None)
-    stable1 = p1.split("## Configuration")[0]
-    stable2 = p2.split("## Configuration")[0]
-    assert stable1 == stable2
+    sp2 = build_system_prompt(cfg=cfg, session_id="A", is_resume=False, session_notes=None, compaction_summary=None)
+    # Stable part must be byte-for-byte identical across invocations
+    assert sp1.stable == sp2.stable
 
 
 def test_build_system_prompt_resume_includes_notes():
@@ -59,15 +59,15 @@ def test_build_system_prompt_resume_includes_notes():
         "context_window": 200000,
         "compaction_threshold": 0.85,
     }, home=Path("/tmp"))
-    prompt = build_system_prompt(
+    sp = build_system_prompt(
         cfg=cfg,
         session_id="SID002",
         is_resume=True,
         session_notes="remember: use pathlib",
         compaction_summary="## Session Handoff Summary\nGoal: fix the bug",
     )
-    assert "remember: use pathlib" in prompt
-    assert "fix the bug" in prompt
+    assert "remember: use pathlib" in sp.dynamic
+    assert "fix the bug" in sp.dynamic
 
 
 @pytest.mark.asyncio

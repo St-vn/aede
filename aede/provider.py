@@ -6,9 +6,13 @@ Heavy imports (anthropic, openai) are lazy — loaded inside methods, not at mod
 """
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, Union, runtime_checkable
+
+if TYPE_CHECKING:
+    from aede.agent import SystemPrompt as _SystemPrompt
 
 
 @dataclass
@@ -33,7 +37,7 @@ class Provider(Protocol):
         self,
         *,
         model: str,
-        system: str,
+        system: Any,  # SystemPrompt dataclass or str for backwards compat
         tools: list[dict],
         messages: list[dict],
         max_tokens: int,
@@ -67,19 +71,60 @@ class AnthropicProvider:
         self,
         *,
         model: str,
-        system: str,
+        system: Any,  # SystemPrompt dataclass or str
         tools: list[dict],
         messages: list[dict],
         max_tokens: int,
         console: Any,
     ) -> NormalizedResponse:
         client = self._get_client()
+
+        # Build two-block system param with cache_control on the stable prefix.
+        # This lets Anthropic KV-cache the stable part across all turns.
+        if hasattr(system, "stable") and hasattr(system, "dynamic"):
+            system_param: Any = [
+                {
+                    "type": "text",
+                    "text": system.stable,
+                    "cache_control": {"type": "ephemeral"},
+                },
+                {
+                    "type": "text",
+                    "text": system.dynamic,
+                },
+            ]
+        else:
+            # Fallback: plain string (backwards compat / tests that set a str)
+            system_param = system
+
+        # Inject cache_control on a shallow copy of the last message so stored
+        # history is not mutated (compaction must see clean messages).
+        if messages:
+            last_msg = messages[-1]
+            last_content = last_msg["content"]
+            # Convert string content to a block list so we can attach cache_control
+            if isinstance(last_content, str):
+                last_content_blocks = [
+                    {"type": "text", "text": last_content, "cache_control": {"type": "ephemeral"}}
+                ]
+            else:
+                # Content is already a list; shallow-copy and inject on last block
+                last_content_blocks = list(last_content)
+                if last_content_blocks:
+                    last_block = dict(last_content_blocks[-1])
+                    last_block["cache_control"] = {"type": "ephemeral"}
+                    last_content_blocks = last_content_blocks[:-1] + [last_block]
+            # Build a modified copy of the messages list — only the last message differs
+            api_messages = messages[:-1] + [dict(last_msg, content=last_content_blocks)]
+        else:
+            api_messages = messages
+
         async with client.messages.stream(
             model=model,
             max_tokens=max_tokens,
-            system=system,
+            system=system_param,
             tools=tools,
-            messages=messages,
+            messages=api_messages,
         ) as stream:
             async for text in stream.text_stream:
                 console.print(text, end="", highlight=False)
@@ -273,14 +318,19 @@ class OpenAIProvider:
         self,
         *,
         model: str,
-        system: str,
+        system: Any,  # SystemPrompt dataclass or str
         tools: list[dict],
         messages: list[dict],
         max_tokens: int,
         console: Any,
     ) -> NormalizedResponse:
         client = self._get_client()
-        oai_messages = _convert_messages_to_openai(system, messages)
+        # Flatten SystemPrompt to a plain string — OpenAI does not support cache_control.
+        if hasattr(system, "stable") and hasattr(system, "dynamic"):
+            system_str = system.stable + system.dynamic
+        else:
+            system_str = system
+        oai_messages = _convert_messages_to_openai(system_str, messages)
         oai_tools = _convert_tools_to_openai(tools)
 
         # Accumulate streamed response

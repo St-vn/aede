@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from dataclasses import dataclass
 from typing import Any
 
 # Backoff base in seconds for transient API error retries (429/500/502/503).
@@ -55,18 +56,32 @@ When a compaction summary or session notes are present (injected below), treat t
 """
 
 
+@dataclass
+class SystemPrompt:
+    """Split system prompt: stable cacheable prefix + dynamic per-session suffix.
+
+    The stable part is identical across all sessions and turns, making it
+    eligible for Anthropic prompt caching (cache_control breakpoint goes at
+    the end of this block).  The dynamic part contains per-session config,
+    session notes, and compaction summaries.
+    """
+    stable: str
+    dynamic: str
+
+
 def build_system_prompt(
     cfg: Any,
     session_id: str,
     is_resume: bool,
     session_notes: str | None,
     compaction_summary: str | None,
-) -> str:
+) -> SystemPrompt:
     """Assemble the full system prompt from the stable base and per-session context.
 
-    Appends configuration values and, for resumed sessions, injects any
-    persisted session notes and compaction summaries so the model can
-    reconstruct prior context.
+    Returns a ``SystemPrompt`` dataclass with ``.stable`` (the cacheable
+    STABLE_SYSTEM_PROMPT constant) and ``.dynamic`` (the per-session
+    configuration/notes suffix).  Providers use the split to place an Anthropic
+    ``cache_control`` breakpoint after the stable block.
 
     Args:
         cfg: AedeConfig instance with model, shell, and window settings.
@@ -76,10 +91,9 @@ def build_system_prompt(
         compaction_summary: LLM-generated summary from the most recent compaction.
 
     Returns:
-        The complete system prompt string to pass to the provider.
+        SystemPrompt with .stable and .dynamic fields.
     """
-    suffix_parts = [
-        STABLE_SYSTEM_PROMPT,
+    dynamic_parts = [
         "",
         "## Configuration",
         "",
@@ -97,11 +111,14 @@ def build_system_prompt(
 
     if is_resume and (session_notes or compaction_summary):
         if session_notes:
-            suffix_parts += ["", "## Session Notes", "", session_notes]
+            dynamic_parts += ["", "## Session Notes", "", session_notes]
         if compaction_summary:
-            suffix_parts += ["", "## Compaction Summary", "", compaction_summary]
+            dynamic_parts += ["", "## Compaction Summary", "", compaction_summary]
 
-    return "\n".join(suffix_parts)
+    return SystemPrompt(
+        stable=STABLE_SYSTEM_PROMPT,
+        dynamic="\n".join(dynamic_parts),
+    )
 
 
 def count_context_tokens(messages: list[dict]) -> int:
@@ -155,7 +172,7 @@ class AgentLoop:
         self._messages: list[dict] = []
         self._turn = 0
         self._provider: Any = None
-        self._system_prompt: str = ""
+        self._system_prompt: SystemPrompt | None = None
 
     def initialize(
         self,

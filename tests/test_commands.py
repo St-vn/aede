@@ -248,8 +248,8 @@ def test_load_session_notes_passed_to_build_system_prompt():
         session_notes=notes,
         compaction_summary=None,
     )
-    assert "## Session Notes" in prompt
-    assert notes in prompt
+    assert "## Session Notes" in prompt.dynamic
+    assert notes in prompt.dynamic
 
 
 # ---------------------------------------------------------------------------
