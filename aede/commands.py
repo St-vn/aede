@@ -170,6 +170,86 @@ def handle_setkey(args: list[str], console: Any, home: Path) -> None:
     )
 
 
+def handle_resume(args: list[str], db: Any, console: Any) -> "str | None":
+    """Resolve and return the target session id for a /resume command.
+
+    This function only performs resolution — the actual re-entry into a new
+    session is handled by ``cli._run``.
+
+    Args:
+        args: Either empty (interactive picker) or ``[id_or_prefix]``.
+        db: Open ``DB`` instance.
+        console: Rich Console (or compatible stub) used for output and input.
+
+    Returns:
+        The full session id to resume, or ``None`` if the user cancelled or
+        no matching session was found.
+    """
+    from aede.session import Session
+
+    if args:
+        prefix = args[0]
+        all_sessions = db.list_sessions(limit=500)
+        matches = [r for r in all_sessions if r["id"].startswith(prefix)]
+        if len(matches) == 0:
+            console.print(f"No session matching {prefix!r}")
+            return None
+        if len(matches) > 1:
+            console.print(f"Ambiguous prefix {prefix!r} — multiple matches:")
+            for r in matches:
+                console.print(f"  {r['id']}")
+            return None
+        return matches[0]["id"]
+
+    # Interactive picker
+    sessions = Session.list_recent(db=db, limit=20)
+    if not sessions:
+        console.print("No sessions to resume.")
+        return None
+
+    import time
+    now = time.time() * 1000
+    console.print("Recent sessions:")
+    for i, s in enumerate(sessions, 1):
+        age_str = _humanize_age(now - s.updated_at)
+        title = s.title or "(untitled)"
+        console.print(f"  {i:>2}.  {age_str:12}  {title[:60]}")
+
+    raw = console.input("Select session number (blank to cancel): ").strip()
+    if not raw:
+        return None
+    try:
+        idx = int(raw)
+    except ValueError:
+        console.print("Invalid selection.")
+        return None
+    if idx < 1 or idx > len(sessions):
+        console.print("Selection out of range.")
+        return None
+    return sessions[idx - 1].id
+
+
+def _load_session_notes(data_dir: "Path", session_id: str) -> "str | None":
+    """Read the notes file for ``session_id`` from ``data_dir/sessions/``.
+
+    Returns the file contents as a string, or ``None`` if no notes file exists.
+    This is the same path ``_maybe_compact`` writes notes to:
+    ``data_dir / "sessions" / f"{session_id}-notes.md"``.
+
+    Args:
+        data_dir: The aede data directory (``cfg.data_dir``).
+        session_id: The session whose notes should be loaded (typically the
+            *parent* session when creating a resume branch).
+
+    Returns:
+        Notes text or ``None``.
+    """
+    notes_path = data_dir / "sessions" / f"{session_id}-notes.md"
+    if notes_path.exists():
+        return notes_path.read_text(encoding="utf-8")
+    return None
+
+
 def _humanize_age(ms: float) -> str:
     """Convert a millisecond age into a human-readable string (e.g. '3h ago')."""
     s = ms / 1000

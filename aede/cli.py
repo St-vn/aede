@@ -54,11 +54,16 @@ def main() -> None:
     asyncio.run(_run(initial_task=args.task))
 
 
-async def _run(initial_task: str | None = None) -> None:
+async def _run(initial_task: str | None = None, resume_session_id: str | None = None) -> None:
     """Bootstrap all subsystems and run the interactive REPL until exit.
 
     If ``initial_task`` is provided it is submitted as the first user turn
     before the prompt loop starts.
+
+    If ``resume_session_id`` is provided a new branch session is created whose
+    ``parent_id`` points at the given session, and the parent's message history
+    is loaded as prior context.  The original session is left intact so it can
+    be resumed independently again in the future (branch-aware design).
     """
     from rich.console import Console
     from aede.config import load_config, bootstrap
@@ -69,7 +74,7 @@ async def _run(initial_task: str | None = None) -> None:
     from aede.gate import PermissionStore
     from aede.tokens import TokenTracker, PriceCache
     from aede.agent import AgentLoop
-    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_setkey
+    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_setkey, handle_resume, _load_session_notes
 
     console = Console()
 
@@ -85,9 +90,52 @@ async def _run(initial_task: str | None = None) -> None:
     cfg = load_config(home=home, project_dir=Path.cwd())
 
     db = DB(cfg.data_dir / "aede.db")
-    session = Session.create(db=db, model=cfg.model, parent_id=None)
+
+    if resume_session_id is not None:
+        # --- Resume path: create a branch session from the parent ---
+        try:
+            parent = Session.load(db, resume_session_id)
+        except KeyError:
+            console.print(f"[red]Session not found: {resume_session_id}[/red]")
+            return
+
+        session = Session.create(db=db, model=cfg.model, parent_id=parent.id)
+
+        # Reconstruct prior message history from the parent session.
+        # Phase-1 limitation: only user/assistant TEXT messages are replayed.
+        # tool_use and tool_result content blocks are skipped because replaying
+        # them would require reconstructing the full Anthropic multi-part content
+        # list (with tool_use_id cross-references), which is not stored in the
+        # messages table.  A future phase can persist the raw Anthropic content
+        # blocks in the rollout and restore them verbatim.
+        parent_rows = db.get_messages(parent.id)
+        prior_messages: list[dict] = [
+            {"role": r["role"], "content": r["content"]}
+            for r in parent_rows
+            if r["role"] in ("user", "assistant") and isinstance(r["content"], str)
+        ]
+
+        notes = _load_session_notes(cfg.data_dir, parent.id)
+
+        parent_short = parent.id[:8]
+        branch_short = session.id[:8]
+        console.print(
+            f"[dim]Resumed {branch_short} (branch of {parent_short}) "
+            f"· {len(prior_messages)} prior messages[/dim]"
+        )
+
+        is_resume = True
+        session_notes = notes
+        rollout_parent_id = parent.id
+    else:
+        # --- Normal (fresh) path ---
+        prior_messages = None
+        is_resume = False
+        session_notes = None
+        rollout_parent_id = None
+
     rollout = Rollout(cfg.data_dir / "sessions", session.id)
-    rollout.write({"type": "session_start", "session_id": session.id, "parent_id": None, "model": cfg.model})
+    rollout.write({"type": "session_start", "session_id": session.id, "parent_id": rollout_parent_id, "model": cfg.model})
 
     router = ToolRouter(
         shell=cfg.shell,
@@ -114,11 +162,16 @@ async def _run(initial_task: str | None = None) -> None:
         console=console,
         project_dir=Path.cwd(),
     )
-    agent.initialize()
+    agent.initialize(
+        is_resume=is_resume,
+        session_notes=session_notes,
+        prior_messages=prior_messages,
+    )
 
     console.print(build_header(model=cfg.model, session_id=session.id))
 
     stop_reason = "ctrl_c"
+    resume_target: str | None = None
 
     def _handle_sigint(sig, frame):
         nonlocal stop_reason
@@ -181,13 +234,20 @@ async def _run(initial_task: str | None = None) -> None:
                     f"{result.get('messages_compacted', 0)} messages compacted[/dim]"
                 )
             elif cmd.name == "resume":
-                console.print("[dim]/resume not yet implemented in this build[/dim]")
+                target_id = handle_resume(cmd.args, db, console)
+                if target_id is not None:
+                    resume_target = target_id
+                    stop_reason = "resume"
+                    break
             continue
 
         _maybe_set_title(session, db, user_input)
         await _run_turn_safe(agent, user_input, console)
 
     _shutdown(session, db, rollout, stop_reason)
+
+    if resume_target is not None:
+        return await _run(resume_session_id=resume_target)
 
 
 async def _run_turn_safe(agent: Any, user_input: str, console: Any) -> None:

@@ -101,3 +101,50 @@ def test_db_list_sessions(tmp_home):
         )
     rows = db.list_sessions(limit=10)
     assert len(rows) == 3
+
+
+def test_resume_branch_messages(tmp_home):
+    """Branch session gets correct parent_id; parent remains independently loadable;
+    db.get_messages returns seeded rows for the parent."""
+    from aede.session import Session
+
+    db = DB(tmp_home / "aede.db")
+
+    # Create parent session and seed two messages
+    parent = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
+    db.insert_message(
+        id="01J000000000000000000000M1",
+        session_id=parent.id,
+        role="user",
+        content="Hello parent",
+        token_count=None,
+    )
+    db.insert_message(
+        id="01J000000000000000000000M2",
+        session_id=parent.id,
+        role="assistant",
+        content="Hi from assistant",
+        token_count=10,
+    )
+
+    # Create a branch (child) session pointing at the parent
+    branch = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=parent.id)
+
+    # Branch must carry the parent reference
+    assert branch.parent_id == parent.id
+
+    # Parent is still independently loadable and unchanged
+    loaded_parent = Session.load(db=db, session_id=parent.id)
+    assert loaded_parent.id == parent.id
+    assert loaded_parent.parent_id is None
+
+    # Messages seeded under parent are returned by get_messages
+    msgs = db.get_messages(parent.id)
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "user"
+    assert msgs[0]["content"] == "Hello parent"
+    assert msgs[1]["role"] == "assistant"
+
+    # Branch session has no messages of its own yet
+    branch_msgs = db.get_messages(branch.id)
+    assert branch_msgs == []

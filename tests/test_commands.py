@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 from aede.commands import parse_command, CommandResult, COMMANDS
+from aede.db import DB
 
 
 def test_parse_help():
@@ -82,3 +83,170 @@ def test_keybinds_in_commands():
 def test_all_commands_registered():
     for name in ["help", "keybinds", "resume", "sessions", "tools", "config", "compact", "tokens", "clear", "exit"]:
         assert name in COMMANDS
+
+
+# ---------------------------------------------------------------------------
+# handle_resume tests
+# ---------------------------------------------------------------------------
+
+class _FakeConsole:
+    """Minimal console stub that captures print calls and returns canned input."""
+
+    def __init__(self, canned_input: str = ""):
+        self.printed: list[str] = []
+        self._canned_input = canned_input
+
+    def print(self, *args, **kwargs) -> None:
+        self.printed.append(" ".join(str(a) for a in args))
+
+    def input(self, prompt: str = "") -> str:
+        return self._canned_input
+
+
+def test_handle_resume_unique_prefix(tmp_home):
+    """Unique ULID prefix resolves to the full session id."""
+    from aede.commands import handle_resume
+    from aede.session import Session
+
+    db = DB(tmp_home / "aede.db")
+    s = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
+    prefix = s.id[:6]
+
+    console = _FakeConsole()
+    result = handle_resume([prefix], db, console)
+    assert result == s.id
+
+
+def test_handle_resume_ambiguous_prefix(tmp_home):
+    """Ambiguous prefix (matches multiple sessions) prints candidates and returns None."""
+    from aede.commands import handle_resume
+    from aede.session import Session
+
+    db = DB(tmp_home / "aede.db")
+    # Create two sessions; we'll fake the same prefix by using a shared prefix string
+    # that deliberately matches two known IDs by checking db.list_sessions directly.
+    s1 = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
+    s2 = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
+
+    # Find a prefix that matches both (they share ULID time prefix when created rapidly)
+    # Use the longest shared prefix
+    shared = ""
+    for i in range(min(len(s1.id), len(s2.id))):
+        if s1.id[i] == s2.id[i]:
+            shared += s1.id[i]
+        else:
+            break
+    # shared prefix must be at least 1 char and match both
+    assert s1.id.startswith(shared)
+    assert s2.id.startswith(shared)
+
+    console = _FakeConsole()
+    result = handle_resume([shared], db, console)
+    assert result is None
+    # Should print something mentioning the candidates
+    combined = " ".join(console.printed)
+    assert s1.id in combined or s2.id in combined
+
+
+def test_handle_resume_no_match(tmp_home):
+    """Non-matching prefix prints a not-found message and returns None."""
+    from aede.commands import handle_resume
+
+    db = DB(tmp_home / "aede.db")
+    console = _FakeConsole()
+    result = handle_resume(["ZZZZZZZZZZZZZ"], db, console)
+    assert result is None
+    combined = " ".join(console.printed).lower()
+    assert "no session" in combined or "not found" in combined or "zzzzz" in combined.lower()
+
+
+def test_handle_resume_interactive_picker(tmp_home):
+    """No-arg picker lists sessions and returns a valid session id when '1' is entered."""
+    from aede.commands import handle_resume
+    from aede.session import Session
+
+    db = DB(tmp_home / "aede.db")
+    s1 = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
+    s2 = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
+
+    valid_ids = {s1.id, s2.id}
+
+    # User picks the first item in the displayed list (index 1)
+    console = _FakeConsole(canned_input="1")
+    result = handle_resume([], db, console)
+    assert result in valid_ids
+
+
+def test_handle_resume_interactive_blank_cancels(tmp_home):
+    """Blank input in the interactive picker returns None (cancel)."""
+    from aede.commands import handle_resume
+    from aede.session import Session
+
+    db = DB(tmp_home / "aede.db")
+    Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
+
+    console = _FakeConsole(canned_input="")
+    result = handle_resume([], db, console)
+    assert result is None
+
+
+def test_handle_resume_interactive_out_of_range(tmp_home):
+    """Out-of-range number in the interactive picker returns None."""
+    from aede.commands import handle_resume
+    from aede.session import Session
+
+    db = DB(tmp_home / "aede.db")
+    Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
+
+    console = _FakeConsole(canned_input="99")
+    result = handle_resume([], db, console)
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _load_session_notes helper tests
+# ---------------------------------------------------------------------------
+
+def test_load_session_notes_returns_content(tmp_path):
+    """_load_session_notes reads the notes file when it exists."""
+    from aede.commands import _load_session_notes
+
+    session_id = "01TESTSESSION00000000000AB"
+    notes_dir = tmp_path / "sessions"
+    notes_dir.mkdir(parents=True)
+    notes_file = notes_dir / f"{session_id}-notes.md"
+    notes_file.write_text("Important context from prior session.")
+
+    result = _load_session_notes(tmp_path, session_id)
+    assert result == "Important context from prior session."
+
+
+def test_load_session_notes_returns_none_when_missing(tmp_path):
+    """_load_session_notes returns None when no notes file exists."""
+    from aede.commands import _load_session_notes
+
+    result = _load_session_notes(tmp_path, "NOSUCHSESSION")
+    assert result is None
+
+
+def test_load_session_notes_passed_to_build_system_prompt():
+    """Notes loaded by _load_session_notes appear under '## Session Notes' in the system prompt."""
+    from aede.agent import build_system_prompt
+
+    notes = "We were debugging the REPL resume flow."
+    cfg = MagicMock()
+    cfg.model = "claude-sonnet-4-20250514"
+    cfg.shell = "powershell"
+    cfg.tool_output_max_tokens = 2000
+    cfg.context_window = 200000
+    cfg.compaction_threshold = 0.8
+
+    prompt = build_system_prompt(
+        cfg=cfg,
+        session_id="01TEST",
+        is_resume=True,
+        session_notes=notes,
+        compaction_summary=None,
+    )
+    assert "## Session Notes" in prompt
+    assert notes in prompt
