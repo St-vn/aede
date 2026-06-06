@@ -24,13 +24,19 @@ def fetch_url(args: dict) -> str:
 
 
 def web_search(args: dict) -> str:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
     query = args["query"]
     count = int(args.get("count", 5))
-    with DDGS() as ddgs:
-        results = list(ddgs.text(query, max_results=count))
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=count))
+    except Exception as e:
+        # Surface backend failure as an error result — never silently return
+        # "(no results)", which the model cannot distinguish from a genuine
+        # empty result set.
+        raise RuntimeError(f"web_search backend failed: {e}") from e
     if not results:
-        return "(no results)"
+        return f"(no results for query: {query!r})"
     lines = []
     for r in results:
         lines.append(f"[{r.get('title', '')}]({r.get('href', '')})")
