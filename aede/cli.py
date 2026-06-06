@@ -129,6 +129,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         rollout_parent_id = parent.id
     else:
         # --- Normal (fresh) path ---
+        session = Session.create(db=db, model=cfg.model, parent_id=None)
         prior_messages = None
         is_resume = False
         session_notes = None
