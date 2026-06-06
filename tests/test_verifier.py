@@ -6,7 +6,7 @@ TDD: tests written FIRST.  Run before implementation to confirm RED.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -190,3 +190,150 @@ class TestLlmVerify:
         finally:
             if old is not None:
                 os.environ["ANTHROPIC_API_KEY"] = old
+
+
+# ---------------------------------------------------------------------------
+# T-11x — verifier post-write hook integration
+# ---------------------------------------------------------------------------
+
+class TestVerifierPostWriteHook:
+    """T-11x: _write_learning_tool runs the verifier after write and updates the learning."""
+
+    def _make_mock_verifier_code(self, trusted: bool = True) -> "Verifier":
+        """Verifier that always returns a code-path verdict."""
+        v = MagicMock(spec=Verifier)
+        v.run_code_verify = MagicMock(
+            return_value={"verifier_outcome": "pass", "trusted": trusted}
+        )
+        v.run_llm_verify = MagicMock(
+            return_value={
+                "verifier_outcome": "llm_coherence_pass",
+                "trusted": trusted,
+                "lower_trust": True,
+            }
+        )
+        return v
+
+    def test_code_type_learning_runs_code_verify(self, tmp_path):
+        """write_learning of type 'anti-pattern' must call run_code_verify, not run_llm_verify."""
+        from aede.tools.router import _write_learning_tool
+        from aede.memory.store import LearningsStore
+        from aede.memory.verifier import Verifier
+
+        mock_verifier = self._make_mock_verifier_code()
+
+        args = {
+            "type": "anti-pattern",
+            "content": "Never shadow builtin names",
+            "source": "auto_learned",
+        }
+
+        with patch("aede.memory.verifier.Verifier", return_value=mock_verifier):
+            result = _write_learning_tool(args, data_dir=tmp_path)
+
+        assert "Learning written" in result
+        mock_verifier.run_code_verify.assert_called_once()
+        mock_verifier.run_llm_verify.assert_not_called()
+
+    def test_non_code_type_learning_runs_llm_verify(self, tmp_path):
+        """write_learning of type 'root-cause' must call run_llm_verify, not run_code_verify."""
+        from aede.tools.router import _write_learning_tool
+        from aede.memory.verifier import Verifier
+
+        mock_verifier = self._make_mock_verifier_code()
+
+        args = {
+            "type": "root-cause",
+            "content": "Config was missing auth key",
+            "source": "user",
+        }
+
+        with patch("aede.memory.verifier.Verifier", return_value=mock_verifier):
+            result = _write_learning_tool(args, data_dir=tmp_path)
+
+        assert "Learning written" in result
+        mock_verifier.run_llm_verify.assert_called_once()
+        mock_verifier.run_code_verify.assert_not_called()
+
+    def test_verifier_verdict_updates_store(self, tmp_path):
+        """After verification, the learning must be updated with the verdict dict."""
+        from aede.tools.router import _write_learning_tool
+        from aede.memory.store import LearningsStore
+        from aede.memory.verifier import Verifier
+
+        mock_verifier = self._make_mock_verifier_code(trusted=True)
+
+        args = {
+            "type": "anti-pattern",
+            "content": "Do not use global state",
+            "source": "user",
+        }
+
+        with patch("aede.memory.verifier.Verifier", return_value=mock_verifier):
+            _write_learning_tool(args, data_dir=tmp_path)
+
+        # Read back via the store
+        store = LearningsStore(tmp_path)
+        records = store.list_all()
+        assert len(records) == 1
+        rec = records[0]
+        assert rec["trusted"] is True
+        assert rec["verifier_outcome"] == "pass"
+
+    def test_verifier_failure_does_not_crash_tool(self, tmp_path):
+        """If the verifier raises, _write_learning_tool must still return the write confirmation."""
+        from aede.tools.router import _write_learning_tool
+        from aede.memory.verifier import Verifier
+
+        # Verifier that blows up
+        exploding = MagicMock(spec=Verifier)
+        exploding.run_code_verify = MagicMock(side_effect=RuntimeError("no API key"))
+        exploding.run_llm_verify = MagicMock(side_effect=RuntimeError("no API key"))
+
+        args = {
+            "type": "anti-pattern",
+            "content": "Avoid mutable defaults",
+            "source": "test_failure",
+        }
+
+        with patch("aede.memory.verifier.Verifier", return_value=exploding):
+            result = _write_learning_tool(args, data_dir=tmp_path)
+
+        # Tool must still confirm the write
+        assert "Learning written" in result
+
+    def test_config_correction_runs_llm_verify(self, tmp_path):
+        """Type 'config-correction' is non-code → must use run_llm_verify."""
+        from aede.tools.router import _write_learning_tool
+        from aede.memory.verifier import Verifier
+
+        mock_verifier = self._make_mock_verifier_code()
+
+        args = {
+            "type": "config-correction",
+            "content": "Set PYTHONPATH in .env",
+            "source": "user",
+        }
+
+        with patch("aede.memory.verifier.Verifier", return_value=mock_verifier):
+            _write_learning_tool(args, data_dir=tmp_path)
+
+        mock_verifier.run_llm_verify.assert_called_once()
+
+    def test_failed_approach_runs_code_verify(self, tmp_path):
+        """Type 'failed-approach' is code-type → must use run_code_verify."""
+        from aede.tools.router import _write_learning_tool
+        from aede.memory.verifier import Verifier
+
+        mock_verifier = self._make_mock_verifier_code()
+
+        args = {
+            "type": "failed-approach",
+            "content": "Tried monkey-patching builtins — broke everything",
+            "source": "auto_learned",
+        }
+
+        with patch("aede.memory.verifier.Verifier", return_value=mock_verifier):
+            _write_learning_tool(args, data_dir=tmp_path)
+
+        mock_verifier.run_code_verify.assert_called_once()

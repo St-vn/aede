@@ -196,12 +196,16 @@ class ToolRouter:
         return schemas
 
 
+_CODE_LEARNING_TYPES = frozenset({"anti-pattern", "failed-approach"})
+
+
 def _write_learning_tool(args: dict[str, Any], data_dir: "Path | None") -> str:
     """Tool implementation for write_learning.
 
-    Validates args, writes the learning via LearningsStore, and returns a
-    human-readable confirmation string.  Errors are returned as strings so
-    execute_sync can wrap them into ToolResult(status="error").
+    Validates args, writes the learning via LearningsStore, runs the verifier,
+    applies the verdict via store.update, and returns a human-readable
+    confirmation string.  Verifier errors are caught and logged — they must
+    never prevent the write confirmation from being returned.
 
     Args:
         args: Tool call arguments dict from the agent.
@@ -221,6 +225,7 @@ def _write_learning_tool(args: dict[str, Any], data_dir: "Path | None") -> str:
 
     from pathlib import Path as _Path
     from aede.memory.store import LearningsStore
+    from aede.memory.verifier import Verifier  # lazy import
 
     store = LearningsStore(_Path(data_dir))
     record = store.write_learning(
@@ -229,6 +234,30 @@ def _write_learning_tool(args: dict[str, Any], data_dir: "Path | None") -> str:
         source=args["source"],
         source_session_id=args.get("source_session_id", ""),
     )
+
+    # T-11x — post-write verifier hook
+    # Code-type learnings use the test-suite path; non-code use LLM coherence.
+    # Verification errors are swallowed — never crash the tool.
+    try:
+        learning_type: str = args["type"]
+        verifier = Verifier(
+            # Safe defaults for no-API-key / test environments: the injectable
+            # deps default to None in Verifier.__init__ — the code path uses
+            # _default_test_runner (subprocess) and the LLM path constructs an
+            # anthropic.Anthropic() client lazily.  Both are overridable in tests.
+        )
+        if learning_type in _CODE_LEARNING_TYPES:
+            verdict = verifier.run_code_verify(record)
+        else:
+            verdict = verifier.run_llm_verify(record)
+
+        # Merge verdict into a copy of the record and persist
+        updated_record = {**record, **verdict}
+        store.update(record["id"], updated_record)
+    except Exception:
+        # Verification failure — learning is stored but remains unverified.
+        pass
+
     return f"Learning written: id={record['id']} type={record['type']!r} source={record['source']!r}"
 
 

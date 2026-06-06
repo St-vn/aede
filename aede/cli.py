@@ -356,6 +356,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         is_resume=is_resume,
         session_notes=session_notes,
         prior_messages=prior_messages,
+        initial_task=initial_task,
     )
 
     console.print(build_header(model=cfg.model, session_id=session.id))
