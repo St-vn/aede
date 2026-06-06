@@ -138,8 +138,73 @@ def handle_config_show(cfg: Any, console: Any) -> None:
         ("auto_approve", ", ".join(cfg.auto_approve) if cfg.auto_approve else "(none)"),
     ]
     for k, v in fields:
-        lines.append(f"  {k:<30} {v}")
+        source = cfg.sources.get(k, "default")
+        lines.append(f"  {k:<30} {v:<25} [{source}]")
     console.print("\n".join(lines))
+
+
+def handle_config_edit(
+    args: list[str],
+    cfg: Any,
+    console: Any,
+    home: Path,
+    project_dir: Path,
+) -> None:
+    """Handle editing config file or values via /config commands.
+
+    Usage:
+      /config global|project
+      /config <scope> <key> <value>
+      /config <scope> auto_approve add/remove <tool>
+    """
+    if not args:
+        handle_config_show(cfg, console)
+        return
+
+    scope = args[0].lower()
+    if scope not in ("global", "project"):
+        console.print("[red]Error: Scope must be 'global' or 'project'[/red]")
+        return
+
+    from aede.config import DEFAULT_CONFIG, write_config_value, edit_config_file
+
+    if len(args) == 1:
+        try:
+            edit_config_file(scope, home=home, project_dir=project_dir)
+            console.print(f"[green]✓[/green] Opened {scope} config file in editor.")
+        except Exception as e:
+            console.print(f"[red]Error launching editor: {e}[/red]")
+        return
+
+    if len(args) >= 4 and args[1].lower() == "auto_approve" and args[2].lower() in ("add", "remove"):
+        action = args[2].lower()
+        tool = args[3].lower()
+        try:
+            write_config_value(scope=scope, key="auto_approve", value=tool, action=action, home=home, project_dir=project_dir)
+            console.print(f"[green]✓[/green] auto_approve list updated (removed/added {tool}) in {scope} config.")
+        except Exception as e:
+            console.print(f"[red]Error updating config: {e}[/red]")
+        return
+
+    if len(args) >= 3:
+        key = args[1].lower()
+        value = args[2]
+        if key not in DEFAULT_CONFIG:
+            console.print(f"[red]Error: Unknown config key {key!r}[/red]")
+            return
+        try:
+            write_config_value(scope=scope, key=key, value=value, home=home, project_dir=project_dir)
+            console.print(f"[green]✓[/green] {key} set to {value!r} in {scope} config.")
+        except Exception as e:
+            console.print(f"[red]Error setting config: {e}[/red]")
+        return
+
+    console.print(
+        "Usage:\n"
+        "  /config [global|project]              — open config file in $EDITOR\n"
+        "  /config <scope> <key> <value>         — set config key inline\n"
+        "  /config <scope> auto_approve add/remove <tool> — update auto-approve list"
+    )
 
 
 def handle_setkey(args: list[str], console: Any, home: Path) -> None:

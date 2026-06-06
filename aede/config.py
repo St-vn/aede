@@ -79,7 +79,7 @@ class AedeConfig:
     code.
     """
 
-    def __init__(self, data: dict[str, Any], home: Path) -> None:
+    def __init__(self, data: dict[str, Any], home: Path, sources: dict[str, str] | None = None) -> None:
         self.model: str = data.get("model", DEFAULT_CONFIG["model"])
         self.context_window: int = data.get("context_window", DEFAULT_CONFIG["context_window"])
         self.compaction_threshold: float = data.get("compaction_threshold", DEFAULT_CONFIG["compaction_threshold"])
@@ -96,6 +96,7 @@ class AedeConfig:
         else:
             self.data_dir = home / "data"
         self.home = home
+        self.sources: dict[str, str] = sources or {}
 
 
 def load_config(
@@ -134,4 +135,113 @@ def load_config(
     for key, val in project_data.items():
         merged[key] = val
 
-    return AedeConfig(merged, home)
+    sources = {}
+    for key in DEFAULT_CONFIG:
+        if project_data and key in project_data:
+            sources[key] = "project"
+        elif global_data and key in global_data:
+            sources[key] = "global"
+        else:
+            sources[key] = "default"
+
+    return AedeConfig(merged, home, sources=sources)
+
+
+def write_config_value(
+    scope: str,
+    key: str,
+    value: Any,
+    action: str | None = None,
+    home: Path | None = None,
+    project_dir: Path | None = None,
+) -> None:
+    """Write a configuration value to either global config or project config.
+
+    Coerces type based on DEFAULT_CONFIG type. Supports list actions (add/remove)
+    for auto_approve.
+    """
+    import yaml
+    if home is None:
+        home = _aede_home()
+    if project_dir is None:
+        project_dir = Path.cwd()
+
+    if scope == "global":
+        file_path = home / "config.yml"
+    elif scope == "project":
+        file_path = project_dir / "aede.yml"
+    else:
+        raise ValueError(f"Invalid config scope: {scope}")
+
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    data = {}
+    if file_path.exists():
+        try:
+            data = yaml.safe_load(file_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            data = {}
+
+    default_val = DEFAULT_CONFIG.get(key)
+
+    if action in ("add", "remove"):
+        if key != "auto_approve":
+            raise ValueError(f"List operations only supported on 'auto_approve', not {key!r}")
+        curr_list = data.get("auto_approve") or []
+        if not isinstance(curr_list, list):
+            curr_list = [curr_list] if curr_list else []
+        curr_list = [str(x) for x in curr_list]
+        if action == "add":
+            if value not in curr_list:
+                curr_list.append(value)
+        elif action == "remove":
+            if value in curr_list:
+                curr_list.remove(value)
+        data["auto_approve"] = curr_list
+    else:
+        if isinstance(default_val, int) and not isinstance(default_val, bool):
+            coerced = int(value)
+        elif isinstance(default_val, float):
+            coerced = float(value)
+        elif isinstance(default_val, bool):
+            if str(value).lower() in ("true", "1", "yes"):
+                coerced = True
+            else:
+                coerced = False
+        else:
+            coerced = str(value)
+        data[key] = coerced
+
+    file_path.write_text(yaml.safe_dump(data, default_flow_style=False), encoding="utf-8")
+
+
+def edit_config_file(scope: str, home: Path | None = None, project_dir: Path | None = None) -> Path:
+    """Launch user editor ($EDITOR, notepad.exe, or vi) on config file."""
+    if home is None:
+        home = _aede_home()
+    if project_dir is None:
+        project_dir = Path.cwd()
+
+    if scope == "global":
+        file_path = home / "config.yml"
+        bootstrap(home)
+    elif scope == "project":
+        file_path = project_dir / "aede.yml"
+        if not file_path.exists():
+            file_path.write_text("# project-local configuration\n", encoding="utf-8")
+    else:
+        raise ValueError(f"Invalid config scope: {scope}")
+
+    import sys
+    import os
+    import subprocess
+
+    editor = os.environ.get("EDITOR")
+    if not editor:
+        if sys.platform == "win32":
+            editor = "notepad.exe"
+        else:
+            editor = "vi"
+
+    subprocess.run([editor, str(file_path)])
+    return file_path

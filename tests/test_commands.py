@@ -250,3 +250,72 @@ def test_load_session_notes_passed_to_build_system_prompt():
     )
     assert "## Session Notes" in prompt
     assert notes in prompt
+
+
+# ---------------------------------------------------------------------------
+# config command handler tests
+# ---------------------------------------------------------------------------
+
+def test_handle_config_show_output():
+    from aede.commands import handle_config_show
+    cfg = MagicMock()
+    cfg.model = "my-model"
+    cfg.compaction_threshold = 0.8
+    cfg.tool_output_max_tokens = 500
+    cfg.shell = "bash"
+    cfg.batch_approval_max = 5
+    cfg.auto_approve = ["read_file"]
+    cfg.sources = {
+        "model": "global",
+        "shell": "project",
+        "compaction_threshold": "default",
+    }
+
+    console = _FakeConsole()
+    handle_config_show(cfg, console)
+
+    output = "\n".join(console.printed)
+    assert "[global]" in output
+    assert "[project]" in output
+    assert "[default]" in output
+    assert "my-model" in output
+    assert "bash" in output
+
+
+def test_handle_config_edit_dispatcher(tmp_path):
+    from aede.commands import handle_config_edit
+    from unittest.mock import patch
+
+    cfg = MagicMock()
+    console = _FakeConsole()
+    home = tmp_path / "home"
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    # 1. Test invalid scope
+    handle_config_edit(["invalid_scope"], cfg, console, home, project_dir)
+    assert "error: scope must be 'global' or 'project'" in "\n".join(console.printed).lower()
+
+    # 2. Test edit_config_file trigger
+    with patch("aede.config.edit_config_file") as mock_edit:
+        handle_config_edit(["global"], cfg, console, home, project_dir)
+        mock_edit.assert_called_once_with("global", home=home, project_dir=project_dir)
+        assert "opened global config file in editor" in "\n".join(console.printed).lower()
+
+    # 3. Test write_config_value trigger for key-value scalar
+    with patch("aede.config.write_config_value") as mock_write:
+        handle_config_edit(["project", "shell", "cmd"], cfg, console, home, project_dir)
+        mock_write.assert_called_once_with(scope="project", key="shell", value="cmd", home=home, project_dir=project_dir)
+        assert "shell set to 'cmd'" in "\n".join(console.printed).lower()
+
+    # 4. Test write_config_value trigger for list add
+    with patch("aede.config.write_config_value") as mock_write_list:
+        handle_config_edit(["global", "auto_approve", "add", "web_search"], cfg, console, home, project_dir)
+        mock_write_list.assert_called_once_with(scope="global", key="auto_approve", value="web_search", action="add", home=home, project_dir=project_dir)
+        assert "auto_approve list updated" in "\n".join(console.printed).lower()
+
+    # 5. Test unknown key
+    console = _FakeConsole()
+    handle_config_edit(["project", "no_such_key", "val"], cfg, console, home, project_dir)
+    assert "unknown config key" in "\n".join(console.printed).lower()
+

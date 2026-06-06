@@ -74,7 +74,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     from aede.gate import PermissionStore
     from aede.tokens import TokenTracker, PriceCache
     from aede.agent import AgentLoop
-    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_setkey, handle_resume, _load_session_notes
+    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, _load_session_notes
 
     console = Console()
 
@@ -221,10 +221,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
             elif cmd.name == "tokens":
                 handle_tokens(tracker, cfg.model, prices, console)
             elif cmd.name == "config":
-                if not cmd.args:
-                    handle_config_show(cfg, console)
-                else:
-                    console.print("[dim]/config editing not yet implemented in this build[/dim]")
+                handle_config_edit(cmd.args, cfg, console, home, Path.cwd())
             elif cmd.name == "setkey":
                 handle_setkey(cmd.args, console, home)
             elif cmd.name == "compact":
