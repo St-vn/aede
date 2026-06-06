@@ -68,6 +68,17 @@ def test_parse_unknown_returns_none():
     assert result is None
 
 
+def test_parse_keybinds():
+    result = parse_command("/keybinds")
+    assert result is not None
+    assert result.name == "keybinds"
+    assert result.args == []
+
+
+def test_keybinds_in_commands():
+    assert "keybinds" in COMMANDS
+
+
 def test_all_commands_registered():
-    for name in ["help", "resume", "sessions", "tools", "config", "compact", "tokens", "clear", "exit"]:
+    for name in ["help", "keybinds", "resume", "sessions", "tools", "config", "compact", "tokens", "clear", "exit"]:
         assert name in COMMANDS

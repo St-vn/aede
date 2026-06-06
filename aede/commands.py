@@ -13,7 +13,7 @@ from typing import Any
 
 
 COMMANDS = {
-    "help", "resume", "sessions", "tools", "config",
+    "help", "keybinds", "resume", "sessions", "tools", "config",
     "compact", "tokens", "clear", "exit", "setkey",
 }
 
@@ -50,6 +50,7 @@ def handle_help(console: Any) -> None:
         "\n".join([
             "Available commands:",
             "  /help                         — this list",
+            "  /keybinds                     — show keyboard shortcuts",
             "  /resume [id]                  — resume a session",
             "  /sessions                     — list recent sessions",
             "  /tools                        — list tools and approval status",
@@ -59,6 +60,18 @@ def handle_help(console: Any) -> None:
             "  /setkey <NAME> <value>        — save a credential to aede's vault (loaded on every launch)",
             "  /clear                        — start a new session",
             "  /exit                         — end session cleanly",
+        ])
+    )
+
+
+def handle_keybinds(console: Any) -> None:
+    """Print the keyboard shortcuts active in the REPL loop."""
+    console.print(
+        "\n".join([
+            "Keyboard shortcuts:",
+            "  Enter                         — submit the current line",
+            "  Ctrl+C                        — end session, stays resumable (active)",
+            "  Ctrl+D                        — end session cleanly (archived)",
         ])
     )
 

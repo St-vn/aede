@@ -52,7 +52,7 @@ async def _run(initial_task: str | None = None) -> None:
     from aede.gate import PermissionStore
     from aede.tokens import TokenTracker, PriceCache
     from aede.agent import AgentLoop
-    from aede.commands import parse_command, handle_help, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_setkey
+    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_setkey
 
     console = Console()
 
@@ -141,6 +141,8 @@ async def _run(initial_task: str | None = None) -> None:
                     break
             elif cmd.name == "help":
                 handle_help(console)
+            elif cmd.name == "keybinds":
+                handle_keybinds(console)
             elif cmd.name == "sessions":
                 handle_sessions(db, console)
             elif cmd.name == "tools":
