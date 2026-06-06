@@ -495,4 +495,22 @@ class AgentLoop:
                 f"↩ Context compacted · {result.get('messages_compacted', 0)} messages → summary · method: {result['method']}"
             )
 
+        # Step 4: stamp compacted_at on DB rows for the summarized middle messages.
+        # This only applies to the llm_summary path — string_pass_only keeps all
+        # messages in-memory (just with stubbed content) so no DB stamp is needed.
+        #
+        # Alignment assumption: run_compaction preserves head (first 3 rows) and
+        # tail (last 15 rows) of the collapsed message list.  We mirror that split
+        # here by excluding the first 3 and last 15 DB rows from the stamp set.
+        # This couples to the head=3/tail=15 constants in run_compaction; if those
+        # change, this exclusion must change too.
+        if result["method"] == "llm_summary":
+            all_rows = self._db.get_messages(self._session.id, include_compacted=True)
+            HEAD = 3
+            TAIL = 15
+            middle_rows = all_rows[HEAD : max(HEAD, len(all_rows) - TAIL)]
+            middle_ids = [row["id"] for row in middle_rows]
+            if middle_ids:
+                self._db.mark_messages_compacted(middle_ids)
+
         return result

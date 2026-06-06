@@ -114,6 +114,27 @@ async def run_compaction(
         for m in middle
     )
 
+    # Step 2a: Memory flush — write critical context to session_notes_path
+    # before the summary pass, so it survives the compaction boundary.
+    # Errors here must NOT abort compaction; capture into result dict instead.
+    notes_error: str | None = None
+    try:
+        flush_messages = [
+            {"role": "user", "content": f"{MEMORY_FLUSH_PROMPT}\n\n<conversation>\n{middle_text}\n</conversation>"}
+        ]
+        flush_response = await anthropic_client.messages.create(
+            model=model,
+            max_tokens=1000,
+            messages=flush_messages,
+        )
+        notes_text = flush_response.content[0].text
+        from pathlib import Path
+        notes_path = Path(session_notes_path)
+        notes_path.parent.mkdir(parents=True, exist_ok=True)
+        notes_path.write_text(notes_text, encoding="utf-8")
+    except Exception as exc:
+        notes_error = str(exc)
+
     summary_messages = [
         {"role": "user", "content": f"{COMPACTION_PROMPT}\n\n<conversation>\n{middle_text}\n</conversation>"}
     ]
@@ -136,10 +157,13 @@ async def run_compaction(
     new_tokens_after = sum(count_tokens_approx(m.get("content", "")) for m in new_messages)
     tokens_reclaimed = current_tokens - new_tokens_after
 
-    return {
+    result: dict = {
         "messages": new_messages,
         "summary": summary,
         "tokens_reclaimed": tokens_reclaimed,
         "method": "llm_summary",
         "messages_compacted": len(middle),
     }
+    if notes_error is not None:
+        result["notes_error"] = notes_error
+    return result
