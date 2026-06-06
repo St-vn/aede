@@ -224,3 +224,59 @@ def test_db_search_without_db_raises(tmp_home):
     assert result.status == "error", (
         "session_search without db should return error status"
     )
+
+
+# ---------------------------------------------------------------------------
+# T-06: write_learning tool registration
+# ---------------------------------------------------------------------------
+
+
+def test_write_learning_registered(tmp_home):
+    """write_learning is in the registry with a valid schema and requires approval."""
+    from aede.config import bootstrap
+    from aede.tools.router import ToolRouter, GATE_TOOLS
+
+    bootstrap(tmp_home)
+    data_dir = tmp_home / "data"
+
+    router = ToolRouter(
+        shell="powershell",
+        wsl_distro="",
+        tool_output_max_tokens=4096,
+        db=None,
+        data_dir=data_dir,
+    )
+
+    # Must appear in tool_names
+    assert "write_learning" in router.tool_names(), (
+        "write_learning not found in tool_names()"
+    )
+
+    # Must appear in anthropic_tool_schemas with correct fields
+    schemas = router.anthropic_tool_schemas()
+    schema_names = [s["name"] for s in schemas]
+    assert "write_learning" in schema_names, (
+        "write_learning not found in anthropic_tool_schemas()"
+    )
+
+    wl_schema = next(s for s in schemas if s["name"] == "write_learning")
+    props = wl_schema["input_schema"]["properties"]
+    required = wl_schema["input_schema"].get("required", [])
+
+    assert "type" in props, "schema missing 'type' property"
+    assert "content" in props, "schema missing 'content' property"
+    assert "source" in props, "schema missing 'source' property"
+    assert "source_session_id" in props, "schema missing 'source_session_id' property"
+
+    for field in ["type", "content", "source"]:
+        assert field in required, f"'{field}' must be required in schema"
+
+    # MUST require approval — it is a memory write (MEM-03 / Q10)
+    assert router.requires_approval("write_learning"), (
+        "write_learning must require approval (memory write — gated)"
+    )
+
+    # Confirm it is in GATE_TOOLS (the canonical gated set)
+    assert "write_learning" in GATE_TOOLS, (
+        "write_learning must be listed in GATE_TOOLS"
+    )

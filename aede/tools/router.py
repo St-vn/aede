@@ -11,10 +11,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from aede.db import DB
 
 
-GATE_TOOLS = {"powershell", "write_file", "create_file"}
+GATE_TOOLS = {"powershell", "write_file", "create_file", "write_learning"}
 
 
 class UnknownToolError(Exception):
@@ -48,11 +49,13 @@ class ToolRouter:
         wsl_distro: str,
         tool_output_max_tokens: int,
         db: "DB | None" = None,
+        data_dir: "Path | None" = None,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
         self._max_tokens = tool_output_max_tokens
         self._db = db
+        self._data_dir = data_dir
         self._session_auto_approve: set[str] = set()
         self._registry = self._build_registry()
 
@@ -80,6 +83,12 @@ class ToolRouter:
         # Bind db via closure so execute_sync can call it like any other tool.
         _db = self._db
         reg["session_search"] = lambda args: session_search(args, db=_db)
+
+        # write_learning is gated (in GATE_TOOLS) — requires user approval.
+        # Bind the LearningsStore via closure; if data_dir is not provided the
+        # tool returns an error result rather than raising.
+        _data_dir = self._data_dir
+        reg["write_learning"] = lambda args: _write_learning_tool(args, data_dir=_data_dir)
 
         return reg
 
@@ -185,6 +194,42 @@ class ToolRouter:
         for name in self._registry:
             schemas.append(_TOOL_SCHEMAS[name])
         return schemas
+
+
+def _write_learning_tool(args: dict[str, Any], data_dir: "Path | None") -> str:
+    """Tool implementation for write_learning.
+
+    Validates args, writes the learning via LearningsStore, and returns a
+    human-readable confirmation string.  Errors are returned as strings so
+    execute_sync can wrap them into ToolResult(status="error").
+
+    Args:
+        args: Tool call arguments dict from the agent.
+        data_dir: The aede data directory path.  When None, returns an error string.
+
+    Returns:
+        A confirmation message string on success.
+
+    Raises:
+        ValueError: Propagated from LearningsStore for invalid type/source.
+        RuntimeError: When data_dir is not configured.
+    """
+    if data_dir is None:
+        raise RuntimeError(
+            "write_learning: no data_dir configured — ToolRouter was constructed without data_dir"
+        )
+
+    from pathlib import Path as _Path
+    from aede.memory.store import LearningsStore
+
+    store = LearningsStore(_Path(data_dir))
+    record = store.write_learning(
+        type=args["type"],
+        content=args["content"],
+        source=args["source"],
+        source_session_id=args.get("source_session_id", ""),
+    )
+    return f"Learning written: id={record['id']} type={record['type']!r} source={record['source']!r}"
 
 
 _TOOL_SCHEMAS: dict[str, dict] = {
@@ -301,6 +346,41 @@ _TOOL_SCHEMAS: dict[str, dict] = {
                 },
             },
             "required": ["query"],
+        },
+    },
+    "write_learning": {
+        "name": "write_learning",
+        "description": (
+            "Persist a learning (an insight, anti-pattern, root-cause, or config correction) "
+            "to the long-term learnings store.  This is a memory write — it requires user approval."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "description": (
+                        "Category of learning. Must be one of: "
+                        "'anti-pattern', 'failed-approach', 'root-cause', 'config-correction'."
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Free-text body of the learning.",
+                },
+                "source": {
+                    "type": "string",
+                    "description": (
+                        "Origin of the learning. Must be one of: "
+                        "'user', 'auto_learned', 'test_failure', 'tool_error'."
+                    ),
+                },
+                "source_session_id": {
+                    "type": "string",
+                    "description": "ID of the session that produced this learning (optional).",
+                },
+            },
+            "required": ["type", "content", "source"],
         },
     },
 }
