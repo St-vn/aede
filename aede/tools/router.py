@@ -44,7 +44,6 @@ class ToolRouter:
         shell: str,
         wsl_distro: str,
         tool_output_max_tokens: int,
-        brave_api_key: str | None = None,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
