@@ -11,6 +11,10 @@ import json
 import time
 from typing import Any
 
+# Backoff base in seconds for transient API error retries (429/500/502/503).
+# Set to a small value so tests can monkeypatch asyncio.sleep or just use 0.
+BACKOFF_BASE: float = 0.5
+
 STABLE_SYSTEM_PROMPT = """\
 You are a personal AI agent assistant running as a CLI tool called aede.
 
@@ -375,22 +379,47 @@ class AgentLoop:
             if tool_results:
                 self._messages.append({"role": "user", "content": tool_results})
 
+    # Transient HTTP status codes that warrant a retry.
+    _TRANSIENT_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503})
+    # Maximum total attempts (1 initial + 2 retries = 3 total).
+    _MAX_ATTEMPTS: int = 3
+
     async def _stream_response(self) -> Any:
-        """Call the active provider and return a NormalizedResponse, or None on error."""
+        """Call the active provider and return a NormalizedResponse, or None on error.
+
+        Retries up to ``_MAX_ATTEMPTS`` times on transient API errors (status
+        codes in ``_TRANSIENT_STATUS_CODES``), sleeping ``BACKOFF_BASE * 2**attempt``
+        seconds between attempts.  Non-transient errors (e.g. 400, 401) are
+        surfaced immediately without retry.
+        """
         self._console.print("[dim]thinking...[/dim]", end="\r")
-        try:
-            provider = self._get_provider()
-            return await provider.stream_turn(
-                model=self._cfg.model,
-                system=self._system_prompt,
-                tools=self._router.anthropic_tool_schemas(),
-                messages=self._messages,
-                max_tokens=8096,
-                console=self._console,
-            )
-        except Exception as e:
-            self._handle_api_error(e)
-            return None
+        provider = self._get_provider()
+        last_exc: Exception | None = None
+        for attempt in range(self._MAX_ATTEMPTS):
+            try:
+                return await provider.stream_turn(
+                    model=self._cfg.model,
+                    system=self._system_prompt,
+                    tools=self._router.anthropic_tool_schemas(),
+                    messages=self._messages,
+                    max_tokens=8096,
+                    console=self._console,
+                )
+            except Exception as e:
+                status_code: int | None = getattr(e, "status_code", None)
+                if status_code in self._TRANSIENT_STATUS_CODES and attempt < self._MAX_ATTEMPTS - 1:
+                    # Transient error with attempts remaining — backoff and retry.
+                    delay = BACKOFF_BASE * (2 ** attempt)
+                    await asyncio.sleep(delay)
+                    last_exc = e
+                    continue
+                # Non-transient, or exhausted retries — surface the error.
+                self._handle_api_error(e)
+                return None
+        # Exhausted all retries on a transient error.
+        if last_exc is not None:
+            self._handle_api_error(last_exc)
+        return None
 
     def _handle_api_error(self, e: Exception) -> None:
         """Print a short, sanitised error message — never dump raw HTML."""

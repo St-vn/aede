@@ -608,3 +608,115 @@ async def test_agent_validation_retry_allows_corrected_call(tmp_path):
 
     # execute_sync must have been called exactly once (for the corrected call)
     router.execute_sync.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Task 7 — API 429/500 retry with exponential backoff
+# ---------------------------------------------------------------------------
+
+class FakeAPIError(Exception):
+    """Fake API error that mimics anthropic/openai SDK error shape."""
+    def __init__(self, status_code: int, message: str = "error"):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+@pytest.mark.asyncio
+async def test_stream_response_retries_on_429_then_succeeds():
+    """Provider raising 429 twice then succeeding → _stream_response returns success.
+    asyncio.sleep is patched to no-op and call count is exactly 3."""
+    from aede.agent import AgentLoop, BACKOFF_BASE
+    from aede.config import AedeConfig
+    from pathlib import Path
+
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+
+    # Override _system_prompt (needed by _stream_response)
+    loop._system_prompt = "test prompt"
+    loop._router = MagicMock()
+    loop._router.anthropic_tool_schemas = MagicMock(return_value=[])
+
+    success_resp = MagicMock()
+    call_count = {"n": 0}
+
+    async def flaky_stream_turn(**kwargs):
+        call_count["n"] += 1
+        if call_count["n"] <= 2:
+            raise FakeAPIError(429, "rate limited")
+        return success_resp
+
+    mock_provider = MagicMock()
+    mock_provider.stream_turn = AsyncMock(side_effect=flaky_stream_turn)
+    loop._get_provider = MagicMock(return_value=mock_provider)
+
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        result = await loop._stream_response()
+
+    assert result is success_resp, "Expected successful response after retries"
+    assert call_count["n"] == 3, f"Expected 3 attempts, got {call_count['n']}"
+    # Sleep must have been called for the two retries
+    assert mock_sleep.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_response_exhausts_retries_on_persistent_500():
+    """Persistent 500 errors across all attempts → returns None + error printed."""
+    from aede.agent import AgentLoop
+    from pathlib import Path
+
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+    loop._system_prompt = "test"
+    loop._router = MagicMock()
+    loop._router.anthropic_tool_schemas = MagicMock(return_value=[])
+
+    call_count = {"n": 0}
+
+    async def always_fail(**kwargs):
+        call_count["n"] += 1
+        raise FakeAPIError(500, "internal server error")
+
+    mock_provider = MagicMock()
+    mock_provider.stream_turn = AsyncMock(side_effect=always_fail)
+    loop._get_provider = MagicMock(return_value=mock_provider)
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        result = await loop._stream_response()
+
+    assert result is None
+    assert call_count["n"] == 3, f"Expected exactly 3 attempts, got {call_count['n']}"
+    # Error must have been printed
+    loop._console.print.assert_called()
+    error_printed = any(
+        "500" in str(a) or "error" in str(a).lower()
+        for call_args in loop._console.print.call_args_list
+        for a in call_args[0]
+    )
+    assert error_printed, "Expected error message to be printed"
+
+
+@pytest.mark.asyncio
+async def test_stream_response_no_retry_on_non_transient_error():
+    """A 400 error (non-transient) must result in exactly 1 attempt and return None."""
+    from aede.agent import AgentLoop
+
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+    loop._system_prompt = "test"
+    loop._router = MagicMock()
+    loop._router.anthropic_tool_schemas = MagicMock(return_value=[])
+
+    call_count = {"n": 0}
+
+    async def bad_request(**kwargs):
+        call_count["n"] += 1
+        raise FakeAPIError(400, "bad request")
+
+    mock_provider = MagicMock()
+    mock_provider.stream_turn = AsyncMock(side_effect=bad_request)
+    loop._get_provider = MagicMock(return_value=mock_provider)
+
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        result = await loop._stream_response()
+
+    assert result is None
+    assert call_count["n"] == 1, f"Expected 1 attempt (no retry), got {call_count['n']}"
+    mock_sleep.assert_not_called()
