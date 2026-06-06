@@ -115,10 +115,44 @@ def build_system_prompt(
         if compaction_summary:
             dynamic_parts += ["", "## Compaction Summary", "", compaction_summary]
 
+    if getattr(cfg, "grounding_enabled", True):
+        dynamic_parts += [
+            "",
+            "## Grounding",
+            "",
+            "Before generating code that references project symbols (function names, class names, "
+            "import paths, types), verify they exist by calling list_dir to explore the directory "
+            "structure, search_files with patterns ^def  and ^class  to find real symbol names, "
+            "and read_file to confirm signatures. Scope your search to the directory containing "
+            "the file you are about to write. If the project directory is empty or no matches are "
+            "found, proceed with your best judgment and note the uncertainty.",
+        ]
+
     return SystemPrompt(
         stable=STABLE_SYSTEM_PROMPT,
         dynamic="\n".join(dynamic_parts),
     )
+
+
+# Code keywords used by _is_code_content heuristic.
+_CODE_KEYWORDS: tuple[str, ...] = (
+    "\ndef ", "\nclass ", "\nimport ", "\nfunction ", "\nconst ", "\nvar ", "\nlet ", "\n=> ",
+    "\npublic ", "\nprivate ", "\nprotected ", "\nasync def ", "\nreturn ",
+)
+
+
+def _is_code_content(content: str) -> bool:
+    """Return True when content looks like source code rather than plain prose.
+
+    Heuristic: must have more than 3 lines AND contain at least one code keyword
+    that typically starts a definition or declaration.
+    """
+    lines = content.splitlines()
+    if len(lines) < 3:
+        return False
+    # Normalise for keyword matching (prepend newline so patterns work on first line too)
+    normalised = "\n" + content
+    return any(kw in normalised for kw in _CODE_KEYWORDS)
 
 
 def count_context_tokens(messages: list[dict]) -> int:
@@ -311,6 +345,15 @@ class AgentLoop:
                     })
                     continue
 
+                # BC-04/05: Run critic before the gate for write_file / create_file
+                # with code-like content, when critic is enabled.
+                if (
+                    tool_name in {"write_file", "create_file"}
+                    and getattr(self._cfg, "critic_enabled", False)
+                    and _is_code_content(tool_input.get("content", ""))
+                ):
+                    await self._run_critic_panel(tool_input)
+
                 needs_approval = self._router.requires_approval(tool_name)
                 if not self._gate_store.is_allowed(tool_name) and needs_approval and not batch_approved:
                     from aede.gate import prompt_gate, GateDecision
@@ -468,6 +511,52 @@ class AgentLoop:
         else:
             first_line = error_str.split("\n")[0][:200]
             self._console.print(f"[red]API error: {first_line}[/red]")
+
+    async def _run_critic_panel(self, tool_input: dict) -> None:
+        """Call the critic LLM, render a Rich panel of findings, and handle failures.
+
+        This is BC-05: non-fatal — any exception from the critic is caught and
+        a warning is printed.  The caller (run_turn) proceeds to prompt_gate
+        regardless of outcome.
+        """
+        from rich.panel import Panel
+        from rich.text import Text
+        import aede.critic as _critic
+
+        code = tool_input.get("content", "")
+        path = tool_input.get("path", "<unknown>")
+        task_context = f"Writing file: {path}"
+
+        try:
+            findings = await _critic.evaluate(
+                self._cfg,
+                code=code,
+                task_context=task_context,
+                tracker=self._tracker,
+                turn=self._turn,
+            )
+        except Exception as exc:
+            self._console.print(f"[dim yellow]⚠ Critic unavailable: {exc}[/dim yellow]")
+            return
+
+        if not findings:
+            self._console.print("[dim]Critic: no issues found.[/dim]")
+            return
+
+        # Build a Rich Text with severity-coloured lines.
+        _SEVERITY_COLOR: dict[str, str] = {
+            "HIGH": "bold red",
+            "MEDIUM": "yellow",
+            "LOW": "dim",
+        }
+        lines = Text()
+        for f in findings:
+            color = _SEVERITY_COLOR.get(f.severity.upper(), "white")
+            lines.append(f"[{f.severity}] ", style=color)
+            lines.append(f.message + "\n")
+
+        panel = Panel(lines, title="[bold]Critic Findings[/bold]", border_style="yellow")
+        self._console.print(panel)
 
     async def _maybe_compact(self) -> None:
         """Run compaction if the current message history exceeds the threshold.

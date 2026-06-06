@@ -742,6 +742,272 @@ async def test_stream_response_exhausts_retries_on_persistent_500():
     assert error_printed, "Expected error message to be printed"
 
 
+# ---------------------------------------------------------------------------
+# BC-02 — Grounding suffix in build_system_prompt
+# ---------------------------------------------------------------------------
+
+def _make_cfg_bc(**overrides) -> "AedeConfig":
+    from aede.config import AedeConfig
+    from pathlib import Path
+    defaults = {
+        "model": "claude-sonnet-4-20250514",
+        "shell": "powershell",
+        "tool_output_max_tokens": 8000,
+        "context_window": 200000,
+        "compaction_threshold": 0.85,
+        "grounding_enabled": True,
+        "critic_enabled": False,
+        "critic_model": None,
+        "critic_api_base_url": None,
+    }
+    defaults.update(overrides)
+    return AedeConfig(defaults, home=Path("/tmp"))
+
+
+def test_grounding_suffix_present_when_enabled():
+    """When grounding_enabled=True, build_system_prompt dynamic must contain ## Grounding section."""
+    from aede.agent import build_system_prompt, STABLE_SYSTEM_PROMPT
+    cfg = _make_cfg_bc(grounding_enabled=True)
+    sp = build_system_prompt(cfg=cfg, session_id="SID-G", is_resume=False, session_notes=None, compaction_summary=None)
+    assert "## Grounding" in sp.dynamic, "Expected '## Grounding' section in dynamic suffix"
+    assert "list_dir" in sp.dynamic, "Grounding section must mention list_dir"
+    assert "search_files" in sp.dynamic, "Grounding section must mention search_files"
+    assert "read_file" in sp.dynamic, "Grounding section must mention read_file"
+    # Stable must be unchanged
+    assert sp.stable == STABLE_SYSTEM_PROMPT
+
+
+def test_grounding_suffix_absent_when_disabled():
+    """When grounding_enabled=False, build_system_prompt dynamic must NOT contain ## Grounding."""
+    from aede.agent import build_system_prompt
+    cfg = _make_cfg_bc(grounding_enabled=False)
+    sp = build_system_prompt(cfg=cfg, session_id="SID-NG", is_resume=False, session_notes=None, compaction_summary=None)
+    assert "## Grounding" not in sp.dynamic, "Expected NO grounding section when disabled"
+
+
+# ---------------------------------------------------------------------------
+# BC-04 — _is_code_content heuristic + critic hook
+# ---------------------------------------------------------------------------
+
+def test_code_content_detection_with_def_and_class():
+    """_is_code_content must return True for code-like content and False for prose."""
+    from aede.agent import _is_code_content
+
+    code_snippet = "def foo():\n    x = 1\n    return x"
+    assert _is_code_content(code_snippet) is True, "Expected True for def/return code"
+
+    class_snippet = "class Foo:\n    def __init__(self):\n        self.x = 0"
+    assert _is_code_content(class_snippet) is True, "Expected True for class code"
+
+    import_snippet = "import os\nimport sys\nfrom pathlib import Path"
+    assert _is_code_content(import_snippet) is True, "Expected True for import block"
+
+    prose = "just some text without any code keywords here"
+    assert _is_code_content(prose) is False, "Expected False for plain prose"
+
+    short_code = "def foo(): pass"  # only 1 line — should be False
+    assert _is_code_content(short_code) is False, "Expected False for single-line code (< 3 lines)"
+
+
+@pytest.mark.asyncio
+async def test_critic_hook_fires_on_write():
+    """When critic_enabled and write_file with code content, _run_critic_panel is called before gate."""
+    from aede.gate import GateDecision
+
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+    loop._cfg.critic_enabled = True
+    loop._cfg.grounding_enabled = False
+
+    code_content = "def bar():\n    x = 1\n    return x * 2"
+    tool_calls = [{"id": "tc1", "name": "write_file", "input": {"path": "/f.py", "content": code_content}}]
+
+    resp_tools = _make_response(tool_calls)
+    resp_done = _make_response([])
+    resp_done.text = "done"
+    call_count = {"n": 0}
+
+    async def fake_stream(*a, **kw):
+        call_count["n"] += 1
+        return resp_tools if call_count["n"] == 1 else resp_done
+
+    loop._stream_response = fake_stream
+    loop._router = MagicMock()
+    loop._router.validate_name = MagicMock()
+    loop._router.requires_approval = MagicMock(return_value=False)
+    loop._router.validate_args = MagicMock()
+    loop._router.execute_sync = MagicMock(return_value=_make_tool_result())
+    loop._gate_store = MagicMock()
+    loop._gate_store.is_allowed = MagicMock(return_value=True)
+
+    critic_panel_calls = []
+
+    async def fake_run_critic_panel(tool_input):
+        critic_panel_calls.append(tool_input)
+
+    loop._run_critic_panel = fake_run_critic_panel
+
+    async def no_compact():
+        pass
+    loop._maybe_compact = no_compact
+
+    await loop.run_turn("write code")
+
+    assert len(critic_panel_calls) == 1, (
+        f"Expected _run_critic_panel called once, got {len(critic_panel_calls)}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_critic_hook_not_fires_when_disabled():
+    """When critic_enabled is False, _run_critic_panel must NOT be called."""
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+    loop._cfg.critic_enabled = False
+
+    code_content = "def bar():\n    x = 1\n    return x * 2"
+    tool_calls = [{"id": "tc1", "name": "write_file", "input": {"path": "/f.py", "content": code_content}}]
+    resp_tools = _make_response(tool_calls)
+    resp_done = _make_response([])
+    resp_done.text = "done"
+    call_count = {"n": 0}
+
+    async def fake_stream(*a, **kw):
+        call_count["n"] += 1
+        return resp_tools if call_count["n"] == 1 else resp_done
+
+    loop._stream_response = fake_stream
+    loop._router = MagicMock()
+    loop._router.validate_name = MagicMock()
+    loop._router.requires_approval = MagicMock(return_value=False)
+    loop._router.validate_args = MagicMock()
+    loop._router.execute_sync = MagicMock(return_value=_make_tool_result())
+    loop._gate_store = MagicMock()
+    loop._gate_store.is_allowed = MagicMock(return_value=True)
+
+    critic_panel_calls = []
+
+    async def fake_run_critic_panel(tool_input):
+        critic_panel_calls.append(tool_input)
+
+    loop._run_critic_panel = fake_run_critic_panel
+
+    async def no_compact():
+        pass
+    loop._maybe_compact = no_compact
+
+    await loop.run_turn("write code")
+
+    assert len(critic_panel_calls) == 0, "Expected _run_critic_panel NOT called when critic_enabled=False"
+
+
+# ---------------------------------------------------------------------------
+# BC-05 — Critic panel renders before prompt_gate
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_critic_panel_renders():
+    """When critic returns HIGH+MEDIUM findings, console.print is called with a Panel before gate."""
+    from rich.panel import Panel
+    from aede.critic import CriticFinding
+
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+    loop._cfg.critic_enabled = True
+    loop._cfg.grounding_enabled = False
+    loop._cfg.critic_model = None
+    loop._cfg.critic_api_base_url = None
+
+    code_content = "def bar():\n    x = 1\n    return x * 2"
+    tool_calls = [{"id": "tc1", "name": "write_file", "input": {"path": "/f.py", "content": code_content}}]
+    resp_tools = _make_response(tool_calls)
+    resp_done = _make_response([])
+    resp_done.text = "done"
+    call_count = {"n": 0}
+
+    async def fake_stream(*a, **kw):
+        call_count["n"] += 1
+        return resp_tools if call_count["n"] == 1 else resp_done
+
+    loop._stream_response = fake_stream
+    loop._router = MagicMock()
+    loop._router.validate_name = MagicMock()
+    loop._router.requires_approval = MagicMock(return_value=False)
+    loop._router.validate_args = MagicMock()
+    loop._router.execute_sync = MagicMock(return_value=_make_tool_result())
+    loop._gate_store = MagicMock()
+    loop._gate_store.is_allowed = MagicMock(return_value=True)
+
+    async def no_compact():
+        pass
+    loop._maybe_compact = no_compact
+
+    findings = [
+        CriticFinding(severity="HIGH", message="null dereference"),
+        CriticFinding(severity="MEDIUM", message="off-by-one in loop"),
+    ]
+
+    printed_args = []
+    original_print = loop._console.print
+
+    def capture_print(*args, **kwargs):
+        printed_args.extend(args)
+        return original_print(*args, **kwargs)
+
+    loop._console.print = capture_print
+
+    with patch("aede.critic.evaluate", new_callable=AsyncMock, return_value=findings):
+        await loop.run_turn("write code")
+
+    # A Panel must have been printed
+    panel_found = any(isinstance(a, Panel) for a in printed_args)
+    assert panel_found, f"Expected a Rich Panel to be printed; got: {[type(a) for a in printed_args]}"
+
+
+@pytest.mark.asyncio
+async def test_critic_failure_non_fatal():
+    """When critic.evaluate raises, the turn must NOT crash and gate must still be reachable."""
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+    loop._cfg.critic_enabled = True
+    loop._cfg.grounding_enabled = False
+    loop._cfg.critic_model = None
+    loop._cfg.critic_api_base_url = None
+
+    code_content = "def bar():\n    x = 1\n    return x * 2"
+    tool_calls = [{"id": "tc1", "name": "write_file", "input": {"path": "/f.py", "content": code_content}}]
+    resp_tools = _make_response(tool_calls)
+    resp_done = _make_response([])
+    resp_done.text = "done"
+    call_count = {"n": 0}
+
+    async def fake_stream(*a, **kw):
+        call_count["n"] += 1
+        return resp_tools if call_count["n"] == 1 else resp_done
+
+    loop._stream_response = fake_stream
+    loop._router = MagicMock()
+    loop._router.validate_name = MagicMock()
+    loop._router.requires_approval = MagicMock(return_value=False)
+    loop._router.validate_args = MagicMock()
+    loop._router.execute_sync = MagicMock(return_value=_make_tool_result())
+    loop._gate_store = MagicMock()
+    loop._gate_store.is_allowed = MagicMock(return_value=True)
+
+    async def no_compact():
+        pass
+    loop._maybe_compact = no_compact
+
+    async def boom(cfg, code, task_context):
+        raise RuntimeError("network timeout")
+
+    # Must not raise even when critic errors
+    with patch("aede.critic.evaluate", side_effect=RuntimeError("network timeout")):
+        try:
+            await loop.run_turn("write code")
+        except Exception as exc:
+            pytest.fail(f"run_turn must not propagate critic errors; got: {exc}")
+
+    # execute_sync still ran (gate reached, tool executed)
+    loop._router.execute_sync.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_stream_response_no_retry_on_non_transient_error():
     """A 400 error (non-transient) must result in exactly 1 attempt and return None."""

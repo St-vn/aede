@@ -72,6 +72,73 @@ def test_price_cache_load_and_save(tmp_path):
     assert "claude-sonnet-4-20250514" in loaded
 
 
+# ---------------------------------------------------------------------------
+# BC-06 — TokenTracker.record(role=) + DB schema migration
+# ---------------------------------------------------------------------------
+
+def test_token_record_with_role_column(tmp_home, tmp_path):
+    """Inserting a token record with role='critic' must persist to DB with that role."""
+    from aede.db import DB
+    from aede.tokens import TokenTracker
+    import sqlite3
+
+    db_path = tmp_path / "test.db"
+    # Create a dummy session first (foreign key)
+    db = DB(db_path)
+    db.insert_session(id="SID-TC", parent_id=None, title="test", model="claude-sonnet-4-20250514")
+
+    tracker = TokenTracker(session_id="SID-TC", db=db)
+    tracker.record(turn=1, input_tokens=500, output_tokens=200, cached_tokens=0, role="critic")
+
+    # Query the DB directly to confirm role column is stored
+    con = sqlite3.connect(str(db_path))
+    row = con.execute("SELECT role FROM token_usage WHERE session_id='SID-TC'").fetchone()
+    con.close()
+    assert row is not None, "No token_usage row found"
+    assert row[0] == "critic", f"Expected role='critic', got {row[0]!r}"
+
+
+def test_critic_tokens_tracked(tmp_home, tmp_path):
+    """Recording critic tokens with role='critic' and agent with role='agent' both work."""
+    from aede.db import DB
+    from aede.tokens import TokenTracker
+
+    db_path = tmp_path / "test2.db"
+    db = DB(db_path)
+    db.insert_session(id="SID-TT", parent_id=None, title="test", model="m")
+
+    tracker = TokenTracker(session_id="SID-TT", db=db)
+    tracker.record(turn=1, input_tokens=100, output_tokens=50, cached_tokens=0)           # default role="agent"
+    tracker.record(turn=1, input_tokens=500, output_tokens=200, cached_tokens=0, role="critic")
+
+    totals = tracker.totals()
+    assert totals["input_tokens"] == 600
+    assert totals["output_tokens"] == 250
+
+
+def test_totals_by_role(tmp_home, tmp_path):
+    """totals_by_role() must return per-role sums correctly."""
+    from aede.db import DB
+    from aede.tokens import TokenTracker
+
+    db_path = tmp_path / "test3.db"
+    db = DB(db_path)
+    db.insert_session(id="SID-TR", parent_id=None, title="test", model="m")
+
+    tracker = TokenTracker(session_id="SID-TR", db=db)
+    tracker.record(turn=1, input_tokens=100, output_tokens=50, cached_tokens=0)           # agent
+    tracker.record(turn=2, input_tokens=200, output_tokens=80, cached_tokens=0)           # agent
+    tracker.record(turn=1, input_tokens=500, output_tokens=200, cached_tokens=0, role="critic")
+
+    by_role = tracker.totals_by_role()
+    assert "agent" in by_role
+    assert "critic" in by_role
+    assert by_role["agent"]["input_tokens"] == 300
+    assert by_role["agent"]["output_tokens"] == 130
+    assert by_role["critic"]["input_tokens"] == 500
+    assert by_role["critic"]["output_tokens"] == 200
+
+
 def test_price_cache_stale_returns_none(tmp_path):
     import time
     from aede.tokens import PriceCache
