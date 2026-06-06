@@ -238,6 +238,102 @@ class DB:
             "cached_tokens": row["cached_tokens"] or 0,
         }
 
+    def search_messages(
+        self, query: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Full-text search over message history using FTS5.
+
+        For each hit, gathers a ±5 message context window (by insertion order
+        within the session), plus session bookends (first and last message of
+        the session), plus session metadata.  Overlapping context windows for
+        hits in the same session are deduplicated.
+
+        Args:
+            query: FTS5 MATCH expression (e.g. a keyword or phrase).
+            limit: Maximum number of hit messages to process.
+
+        Returns:
+            A list of result-group dicts, one per hit, each containing:
+            ``session_id``, ``session_title``, ``session_created_at``,
+            ``hit`` (the matching message dict), ``context`` (list of message
+            dicts in the ±5 window, ordered by created_at), and ``bookends``
+            (list containing the first and last message of the session,
+            deduplicated with context).
+        """
+        # Find matching rows via FTS5, joined back to the messages table.
+        hits = self.con.execute(
+            """
+            SELECT m.*
+            FROM messages m
+            JOIN messages_fts f ON m.rowid = f.rowid
+            WHERE messages_fts MATCH ?
+            ORDER BY m.created_at DESC
+            LIMIT ?
+            """,
+            (query, limit),
+        ).fetchall()
+
+        if not hits:
+            return []
+
+        results: list[dict[str, Any]] = []
+        for hit in hits:
+            session_id: str = hit["session_id"]
+
+            # Fetch session metadata.
+            session_row = self.con.execute(
+                "SELECT id, title, created_at FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+
+            # Fetch all messages for this session ordered by created_at.
+            all_msgs = self.con.execute(
+                "SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC",
+                (session_id,),
+            ).fetchall()
+
+            # Locate the hit position in the ordered list.
+            hit_idx = next(
+                (i for i, m in enumerate(all_msgs) if m["id"] == hit["id"]),
+                None,
+            )
+            if hit_idx is None:
+                # Should not happen, but skip gracefully.
+                continue
+
+            # ±5 window.
+            window_start = max(0, hit_idx - 5)
+            window_end = min(len(all_msgs) - 1, hit_idx + 5)
+            context_msgs = all_msgs[window_start : window_end + 1]
+
+            # Bookends: first and last message of the session.
+            bookend_ids = {all_msgs[0]["id"], all_msgs[-1]["id"]}
+            context_ids = {m["id"] for m in context_msgs}
+            bookends = [
+                m for m in [all_msgs[0], all_msgs[-1]]
+                if m["id"] not in context_ids
+            ]
+            # Deduplicate when first == last (single-message session).
+            seen: set[str] = set()
+            deduped_bookends: list[dict[str, Any]] = []
+            for m in bookends:
+                if m["id"] not in seen:
+                    seen.add(m["id"])
+                    deduped_bookends.append(m)
+
+            results.append(
+                {
+                    "session_id": session_id,
+                    "session_title": session_row["title"] if session_row else None,
+                    "session_created_at": session_row["created_at"] if session_row else None,
+                    "hit": hit,
+                    "context": context_msgs,
+                    "bookends": deduped_bookends,
+                }
+            )
+
+        return results
+
     def close(self) -> None:
         """Close the underlying SQLite connection."""
         self.con.close()

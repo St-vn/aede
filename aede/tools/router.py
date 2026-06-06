@@ -8,7 +8,10 @@ exposes Anthropic-format JSON schemas for each registered tool.
 """
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from aede.db import DB
 
 
 GATE_TOOLS = {"powershell", "write_file", "create_file"}
@@ -44,10 +47,12 @@ class ToolRouter:
         shell: str,
         wsl_distro: str,
         tool_output_max_tokens: int,
+        db: "DB | None" = None,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
         self._max_tokens = tool_output_max_tokens
+        self._db = db
         self._session_auto_approve: set[str] = set()
         self._registry = self._build_registry()
 
@@ -70,6 +75,11 @@ class ToolRouter:
 
         from aede.tools.web import web_search
         reg["web_search"] = web_search
+
+        from aede.tools.search import session_search
+        # Bind db via closure so execute_sync can call it like any other tool.
+        _db = self._db
+        reg["session_search"] = lambda args: session_search(args, db=_db)
 
         return reg
 
@@ -267,6 +277,28 @@ _TOOL_SCHEMAS: dict[str, dict] = {
             "properties": {
                 "query": {"type": "string"},
                 "count": {"type": "integer", "default": 5},
+            },
+            "required": ["query"],
+        },
+    },
+    "session_search": {
+        "name": "session_search",
+        "description": (
+            "Search past session message history by keyword using full-text search. "
+            "Returns matching messages with ±5 message context window and session bookends."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Keyword or phrase to search for in past messages.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of hit messages to return (default: 10).",
+                    "default": 10,
+                },
             },
             "required": ["query"],
         },

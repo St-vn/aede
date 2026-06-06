@@ -142,6 +142,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         shell=cfg.shell,
         wsl_distro=cfg.wsl_distro,
         tool_output_max_tokens=cfg.tool_output_max_tokens,
+        db=db,
     )
     router.set_auto_approved(cfg.auto_approve)
 
