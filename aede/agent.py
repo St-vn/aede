@@ -1,5 +1,5 @@
 """
-Core agent loop for Jarvis.
+Core agent loop for aede.
 
 Manages the multi-turn conversation with the LLM: building the system prompt,
 dispatching tool calls through the router, handling the approval gate, and
@@ -12,7 +12,7 @@ import time
 from typing import Any
 
 STABLE_SYSTEM_PROMPT = """\
-You are a personal AI agent assistant running as a CLI tool called Jarvis.
+You are a personal AI agent assistant running as a CLI tool called aede.
 
 ## Role
 
@@ -65,7 +65,7 @@ def build_system_prompt(
     reconstruct prior context.
 
     Args:
-        cfg: JarvisConfig instance with model, shell, and window settings.
+        cfg: AedeConfig instance with model, shell, and window settings.
         session_id: ULID string for the current session.
         is_resume: Whether this session was loaded from a prior run.
         session_notes: Free-text notes persisted across compaction boundaries.
@@ -102,7 +102,7 @@ def build_system_prompt(
 
 def count_context_tokens(messages: list[dict]) -> int:
     """Return a rough token count for a list of message dicts."""
-    from jarvis.compaction import count_tokens_approx
+    from aede.compaction import count_tokens_approx
     return sum(count_tokens_approx(m.get("content", "")) for m in messages)
 
 
@@ -177,7 +177,7 @@ class AgentLoop:
     def _get_provider(self) -> Any:
         """Lazily instantiate and cache the provider selected by config."""
         if self._provider is None:
-            from jarvis.provider import get_provider
+            from aede.provider import get_provider
             self._provider = get_provider(self._cfg)
         return self._provider
 
@@ -257,7 +257,7 @@ class AgentLoop:
                 tool_input = tc["input"]
                 tool_use_id = tc["id"]
 
-                from jarvis.tools.router import UnknownToolError
+                from aede.tools.router import UnknownToolError
                 try:
                     self._router.validate_name(tool_name)
                 except UnknownToolError:
@@ -270,7 +270,7 @@ class AgentLoop:
                     })
                     continue
 
-                from jarvis.hooks import pre_tool_use, HardDeniedError
+                from aede.hooks import pre_tool_use, HardDeniedError
                 try:
                     pre_tool_use(tool_name, tool_input)
                 except HardDeniedError as e:
@@ -286,7 +286,7 @@ class AgentLoop:
 
                 needs_approval = self._router.requires_approval(tool_name)
                 if not self._gate_store.is_allowed(tool_name) and needs_approval:
-                    from jarvis.gate import prompt_gate, GateDecision
+                    from aede.gate import prompt_gate, GateDecision
                     decision, redirect_msg = prompt_gate(
                         tool_name=tool_name,
                         args=tool_input,
@@ -394,7 +394,7 @@ class AgentLoop:
         using the default model, because the compaction call goes directly to
         api.anthropic.com and cannot use an OpenRouter model id.
         """
-        from jarvis.compaction import needs_compaction, count_tokens_approx
+        from aede.compaction import needs_compaction, count_tokens_approx
         current_tokens = sum(
             count_tokens_approx(m.get("content", "") if isinstance(m.get("content"), str) else "")
             for m in self._messages
@@ -412,7 +412,7 @@ class AgentLoop:
         # to creating an Anthropic client directly.
         # TODO: make compaction provider-aware so it works with OpenAI providers.
         provider = self._get_provider()
-        from jarvis.provider import AnthropicProvider
+        from aede.provider import AnthropicProvider
         if isinstance(provider, AnthropicProvider):
             compaction_client = provider.raw_client
             # Active model is already an Anthropic id — safe to reuse.
@@ -424,7 +424,7 @@ class AgentLoop:
             # Anthropic model for the compaction call instead.
             import os
             import anthropic
-            from jarvis.config import DEFAULT_CONFIG
+            from aede.config import DEFAULT_CONFIG
             api_key = os.environ.get("ANTHROPIC_API_KEY", "")
             compaction_client = anthropic.AsyncAnthropic(api_key=api_key) if api_key else None
             compaction_model = DEFAULT_CONFIG["model"]
@@ -433,7 +433,7 @@ class AgentLoop:
             self._console.print("[yellow]⚠ Skipping compaction — ANTHROPIC_API_KEY not set for non-Anthropic provider.[/yellow]")
             return
 
-        from jarvis.compaction import run_compaction
+        from aede.compaction import run_compaction
         result = await run_compaction(
             messages=self._messages,
             context_window=self._cfg.context_window,

@@ -1,5 +1,5 @@
 """
-Web tools for Jarvis: HTTP fetch and DuckDuckGo search.
+Web tools for aede: HTTP fetch and DuckDuckGo search.
 
 ``fetch_url`` retrieves raw non-HTML content from a known URL (raises for
 HTML/SPA responses so the model cannot accidentally dump a rendered page).
@@ -29,7 +29,7 @@ def fetch_url(args: dict) -> str:
     url = args["url"]
     try:
         response = httpx.get(url, timeout=30, follow_redirects=True, headers={
-            "User-Agent": "Mozilla/5.0 (compatible; Jarvis/0.1)"
+            "User-Agent": "Mozilla/5.0 (compatible; aede/0.1)"
         })
         response.raise_for_status()
         content_type = response.headers.get("content-type", "")

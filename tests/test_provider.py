@@ -1,5 +1,5 @@
 """
-Tests for jarvis/provider.py.
+Tests for aede/provider.py.
 
 All tests are hermetic — no network calls. SDK clients are mocked.
 """
@@ -29,28 +29,28 @@ def _make_cfg(model: str, api_base_url: str | None = None) -> MagicMock:
 class TestGetProvider:
     def test_openai_provider_when_base_url_and_non_anthropic_model(self, monkeypatch):
         monkeypatch.setenv("OPENROUTER_API_KEY", "or-test-key")
-        from jarvis.provider import get_provider, OpenAIProvider
+        from aede.provider import get_provider, OpenAIProvider
         cfg = _make_cfg(model="google/gemini-2.5-flash", api_base_url="https://openrouter.ai/api/v1")
         provider = get_provider(cfg)
         assert isinstance(provider, OpenAIProvider)
 
     def test_anthropic_provider_for_claude_model_even_with_base_url(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        from jarvis.provider import get_provider, AnthropicProvider
+        from aede.provider import get_provider, AnthropicProvider
         cfg = _make_cfg(model="claude-sonnet-4-20250514", api_base_url="https://openrouter.ai/api/v1")
         provider = get_provider(cfg)
         assert isinstance(provider, AnthropicProvider)
 
     def test_anthropic_provider_for_anthropic_slash_prefix(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        from jarvis.provider import get_provider, AnthropicProvider
+        from aede.provider import get_provider, AnthropicProvider
         cfg = _make_cfg(model="anthropic/claude-opus-4", api_base_url="https://openrouter.ai/api/v1")
         provider = get_provider(cfg)
         assert isinstance(provider, AnthropicProvider)
 
     def test_anthropic_provider_when_no_base_url(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        from jarvis.provider import get_provider, AnthropicProvider
+        from aede.provider import get_provider, AnthropicProvider
         cfg = _make_cfg(model="google/gemini-2.5-flash", api_base_url=None)
         provider = get_provider(cfg)
         assert isinstance(provider, AnthropicProvider)
@@ -58,7 +58,7 @@ class TestGetProvider:
     def test_openai_provider_fallback_to_openai_api_key(self, monkeypatch):
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-test")
-        from jarvis.provider import get_provider, OpenAIProvider
+        from aede.provider import get_provider, OpenAIProvider
         cfg = _make_cfg(model="google/gemini-2.5-flash", api_base_url="https://openrouter.ai/api/v1")
         provider = get_provider(cfg)
         assert isinstance(provider, OpenAIProvider)
@@ -66,14 +66,14 @@ class TestGetProvider:
     def test_missing_openrouter_key_raises(self, monkeypatch):
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        from jarvis.provider import get_provider
+        from aede.provider import get_provider
         cfg = _make_cfg(model="google/gemini-2.5-flash", api_base_url="https://openrouter.ai/api/v1")
         with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
             get_provider(cfg)
 
     def test_missing_anthropic_key_raises(self, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        from jarvis.provider import get_provider
+        from aede.provider import get_provider
         cfg = _make_cfg(model="claude-sonnet-4-20250514", api_base_url=None)
         with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
             get_provider(cfg)
@@ -85,7 +85,7 @@ class TestGetProvider:
 
 class TestConvertMessagesToOpenAI:
     def _convert(self, system: str, messages: list[dict]) -> list[dict]:
-        from jarvis.provider import _convert_messages_to_openai
+        from aede.provider import _convert_messages_to_openai
         return _convert_messages_to_openai(system, messages)
 
     def test_system_becomes_first_message(self):
@@ -200,7 +200,7 @@ class TestConvertMessagesToOpenAI:
 
 class TestConvertToolsToOpenAI:
     def _convert(self, tools: list[dict]) -> list[dict]:
-        from jarvis.provider import _convert_tools_to_openai
+        from aede.provider import _convert_tools_to_openai
         return _convert_tools_to_openai(tools)
 
     def test_single_tool_conversion(self):
@@ -247,7 +247,7 @@ class TestConvertToolsToOpenAI:
 class TestAnthropicProviderStreamTurn:
     @pytest.mark.asyncio
     async def test_returns_normalized_response(self):
-        from jarvis.provider import AnthropicProvider
+        from aede.provider import AnthropicProvider
 
         # Build a fake final message from the Anthropic SDK
         fake_text_block = MagicMock()
@@ -336,7 +336,7 @@ class TestOpenAIProviderStreamTurn:
 
     @pytest.mark.asyncio
     async def test_plain_text_response(self):
-        from jarvis.provider import OpenAIProvider
+        from aede.provider import OpenAIProvider
 
         chunks = [
             self._make_chunk(content="Hello "),
@@ -375,7 +375,7 @@ class TestOpenAIProviderStreamTurn:
 
     @pytest.mark.asyncio
     async def test_tool_call_accumulation(self):
-        from jarvis.provider import OpenAIProvider
+        from aede.provider import OpenAIProvider
 
         # Simulate fragmented tool_call deltas
         def _tc_delta(index, id=None, name=None, arguments=None):
@@ -430,21 +430,21 @@ class TestOpenAIProviderStreamTurn:
 
 class TestIsHtmlBody:
     def test_detects_doctype(self):
-        from jarvis.agent import _is_html_body
+        from aede.agent import _is_html_body
         assert _is_html_body("<!DOCTYPE html><html>...")
 
     def test_detects_html_tag(self):
-        from jarvis.agent import _is_html_body
+        from aede.agent import _is_html_body
         assert _is_html_body("<html><head>...</head>")
 
     def test_detects_next_js_marker(self):
-        from jarvis.agent import _is_html_body
+        from aede.agent import _is_html_body
         assert _is_html_body('self.__next_f.push([1,""])')
 
     def test_plain_error_not_html(self):
-        from jarvis.agent import _is_html_body
+        from aede.agent import _is_html_body
         assert not _is_html_body("404 Not Found — resource missing")
 
     def test_empty_string(self):
-        from jarvis.agent import _is_html_body
+        from aede.agent import _is_html_body
         assert not _is_html_body("")

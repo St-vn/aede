@@ -1,5 +1,5 @@
 """
-Provider abstraction for Jarvis agent.
+Provider abstraction for aede agent.
 
 Supports Anthropic (native SDK) and OpenAI-compatible endpoints (e.g. OpenRouter).
 Heavy imports (anthropic, openai) are lazy — loaded inside methods, not at module level.

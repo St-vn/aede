@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from jarvis.credentials import (
+from aede.credentials import (
     credentials_path,
     load_credentials_into_env,
     set_credential,
@@ -80,7 +80,7 @@ def test_missing_file_returns_empty_no_raise(tmp_path):
 def test_handle_setkey_writes_vault_and_sets_env(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     from unittest.mock import MagicMock
-    from jarvis.commands import handle_setkey
+    from aede.commands import handle_setkey
 
     console = MagicMock()
     handle_setkey(["openrouter_api_key", "sk-or-v1-xyz"], console, tmp_path)
@@ -101,7 +101,7 @@ def test_handle_setkey_writes_vault_and_sets_env(tmp_path, monkeypatch):
 
 def test_handle_setkey_usage_when_too_few_args(tmp_path):
     from unittest.mock import MagicMock
-    from jarvis.commands import handle_setkey
+    from aede.commands import handle_setkey
     console = MagicMock()
     handle_setkey(["only_one"], console, tmp_path)
     assert not (tmp_path / "credentials.json").exists()

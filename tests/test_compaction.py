@@ -1,5 +1,5 @@
 import pytest
-from jarvis.compaction import collapse_old_tool_outputs, count_tokens_approx, needs_compaction
+from aede.compaction import collapse_old_tool_outputs, count_tokens_approx, needs_compaction
 
 
 def test_count_tokens_approx():

@@ -1,5 +1,5 @@
 """
-File search tool for Jarvis, backed by ripgrep.
+File search tool for aede, backed by ripgrep.
 
 Searches for a regex pattern across a directory tree and returns matching
 lines with file paths and line numbers.  Requires ``rg`` to be on the PATH.

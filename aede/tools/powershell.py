@@ -1,5 +1,5 @@
 """
-Shell execution tool for Jarvis.
+Shell execution tool for aede.
 
 Supports three shell backends (``powershell``, ``cmd``, ``wsl``) selected at
 router initialisation time.  All three return combined stdout+stderr; a

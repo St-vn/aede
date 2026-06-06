@@ -1,5 +1,5 @@
 """
-Tool registry and dispatcher for the Jarvis agent.
+Tool registry and dispatcher for the aede agent.
 
 ``ToolRouter`` maps tool names to implementation functions, enforces the
 approval requirement for gated tools, executes tools synchronously (wrapping
@@ -49,9 +49,9 @@ class ToolRouter:
         self._registry = self._build_registry()
 
     def _build_registry(self) -> dict[str, Callable]:
-        from jarvis.tools.files import read_file, write_file, create_file, list_dir
-        from jarvis.tools.search import search_files
-        from jarvis.tools.web import fetch_url
+        from aede.tools.files import read_file, write_file, create_file, list_dir
+        from aede.tools.search import search_files
+        from aede.tools.web import fetch_url
 
         reg: dict[str, Callable] = {
             "read_file": read_file,
@@ -62,10 +62,10 @@ class ToolRouter:
             "fetch_url": fetch_url,
         }
 
-        from jarvis.tools.powershell import run_powershell
+        from aede.tools.powershell import run_powershell
         reg["powershell"] = run_powershell
 
-        from jarvis.tools.web import web_search
+        from aede.tools.web import web_search
         reg["web_search"] = web_search
 
         return reg

@@ -1,7 +1,7 @@
 import pytest
 import json
 from pathlib import Path
-from jarvis.tokens import TokenTracker, FALLBACK_PRICES, estimate_cost
+from aede.tokens import TokenTracker, FALLBACK_PRICES, estimate_cost
 
 
 def test_tracker_accumulates(tmp_home):
@@ -62,7 +62,7 @@ def test_estimate_cost_cached_cheaper():
 
 
 def test_price_cache_load_and_save(tmp_path):
-    from jarvis.tokens import PriceCache
+    from aede.tokens import PriceCache
     cache_path = tmp_path / "model_prices.json"
     prices = {"claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0, "cache_read": 0.3}}
     pc = PriceCache(cache_path)
@@ -74,7 +74,7 @@ def test_price_cache_load_and_save(tmp_path):
 
 def test_price_cache_stale_returns_none(tmp_path):
     import time
-    from jarvis.tokens import PriceCache
+    from aede.tokens import PriceCache
     cache_path = tmp_path / "model_prices.json"
     pc = PriceCache(cache_path)
     data = {"prices": {}, "fetched_at": time.time() - 90000}

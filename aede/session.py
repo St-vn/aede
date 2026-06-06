@@ -1,5 +1,5 @@
 """
-Session model for Jarvis.
+Session model for aede.
 
 A Session is the top-level unit of conversation history in the DB.  Each run
 of the CLI creates a new Session (or resumes an existing one).  Sessions can
@@ -31,7 +31,7 @@ def make_title(first_message: str) -> str:
 
 
 class Session:
-    """In-memory representation of a Jarvis session loaded from the DB.
+    """In-memory representation of an aede session loaded from the DB.
 
     Use the class methods ``create``, ``load``, and ``list_recent`` to
     construct instances — do not call the constructor directly.

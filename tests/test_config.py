@@ -2,10 +2,10 @@
 import pytest
 from pathlib import Path
 import yaml
-from jarvis.config import load_config, bootstrap, JarvisConfig
+from aede.config import load_config, bootstrap, AedeConfig
 
 
-def test_bootstrap_creates_jarvis_dir(tmp_home):
+def test_bootstrap_creates_aede_dir(tmp_home):
     bootstrap(tmp_home)
     assert tmp_home.exists()
     assert (tmp_home / "data").exists()
@@ -40,7 +40,7 @@ def test_load_config_project_overrides_global(tmp_home, tmp_path):
     bootstrap(tmp_home)
     project_dir = tmp_path / "project"
     project_dir.mkdir()
-    (project_dir / "jarvis.yml").write_text(
+    (project_dir / "aede.yml").write_text(
         yaml.dump({"auto_approve": ["read_file", "list_dir"]})
     )
     cfg = load_config(home=tmp_home, project_dir=project_dir)

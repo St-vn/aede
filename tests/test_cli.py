@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from jarvis.cli import build_header, parse_args
+from aede.cli import build_header, parse_args
 
 
 def test_build_header_contains_version():

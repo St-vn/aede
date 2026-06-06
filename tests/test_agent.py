@@ -1,12 +1,12 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from jarvis.agent import build_system_prompt, count_context_tokens
+from aede.agent import build_system_prompt, count_context_tokens
 
 
 def test_build_system_prompt_stable_prefix():
-    from jarvis.config import JarvisConfig
+    from aede.config import AedeConfig
     from pathlib import Path
-    cfg = JarvisConfig({
+    cfg = AedeConfig({
         "model": "claude-sonnet-4-20250514",
         "shell": "powershell",
         "tool_output_max_tokens": 8000,
@@ -20,7 +20,7 @@ def test_build_system_prompt_stable_prefix():
         session_notes=None,
         compaction_summary=None,
     )
-    assert "Jarvis" in prompt
+    assert "aede" in prompt
     assert "powershell" in prompt
     assert "read_file" in prompt
     assert "research" in prompt.lower()
@@ -31,10 +31,10 @@ def test_build_system_prompt_stable_prefix():
 
 def test_build_system_prompt_no_timestamps_in_stable():
     """Stable prefix must never change between sessions — no dynamic content."""
-    from jarvis.config import JarvisConfig
+    from aede.config import AedeConfig
     from pathlib import Path
     import time
-    cfg = JarvisConfig({
+    cfg = AedeConfig({
         "model": "claude-sonnet-4-20250514",
         "shell": "powershell",
         "tool_output_max_tokens": 8000,
@@ -50,9 +50,9 @@ def test_build_system_prompt_no_timestamps_in_stable():
 
 
 def test_build_system_prompt_resume_includes_notes():
-    from jarvis.config import JarvisConfig
+    from aede.config import AedeConfig
     from pathlib import Path
-    cfg = JarvisConfig({
+    cfg = AedeConfig({
         "model": "claude-sonnet-4-20250514",
         "shell": "powershell",
         "tool_output_max_tokens": 8000,
@@ -75,12 +75,12 @@ async def test_compaction_fallback_uses_anthropic_model_not_gemini():
     """On a non-Anthropic provider, compaction must NOT pass the active
     (e.g. Gemini) model id to the Anthropic compaction client — that id
     would 404 against api.anthropic.com. It must substitute an Anthropic id."""
-    from jarvis.agent import AgentLoop
-    from jarvis.config import JarvisConfig, DEFAULT_CONFIG
-    from jarvis.provider import OpenAIProvider
+    from aede.agent import AgentLoop
+    from aede.config import AedeConfig, DEFAULT_CONFIG
+    from aede.provider import OpenAIProvider
     from pathlib import Path
 
-    cfg = JarvisConfig({
+    cfg = AedeConfig({
         "model": "google/gemini-2.5-flash",
         "shell": "powershell",
         "tool_output_max_tokens": 8000,
@@ -107,7 +107,7 @@ async def test_compaction_fallback_uses_anthropic_model_not_gemini():
 
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "ak"}), \
          patch("anthropic.AsyncAnthropic", MagicMock()), \
-         patch("jarvis.compaction.run_compaction", side_effect=fake_run_compaction):
+         patch("aede.compaction.run_compaction", side_effect=fake_run_compaction):
         await loop._maybe_compact()
 
     assert captured, "run_compaction was not called"

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from jarvis.tools.router import ToolRouter, ToolResult, UnknownToolError
+from aede.tools.router import ToolRouter, ToolResult, UnknownToolError
 
 
 def make_router() -> ToolRouter:

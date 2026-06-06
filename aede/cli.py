@@ -1,5 +1,5 @@
 """
-Entry point and REPL loop for the Jarvis CLI.
+Entry point and REPL loop for the aede CLI.
 
 Bootstraps configuration and infrastructure (DB, session, rollout, router),
 then runs an interactive prompt loop that dispatches slash-commands and
@@ -20,14 +20,14 @@ VERSION = "0.1.0"
 def build_header(model: str, session_id: str) -> str:
     """Return the one-line startup banner shown at the top of each session."""
     short_id = session_id[:4] if len(session_id) >= 4 else session_id
-    return f"jarvis v{VERSION} · {model} · session {short_id}"
+    return f"aede v{VERSION} · {model} · session {short_id}"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse CLI arguments. Accepts an optional first task as a positional arg."""
-    parser = argparse.ArgumentParser(prog="jarvis", description="Personal AI agent CLI")
+    parser = argparse.ArgumentParser(prog="aede", description="Personal AI agent CLI")
     parser.add_argument("task", nargs="?", default=None, help="Optional first message")
-    parser.add_argument("--version", action="version", version=f"jarvis {VERSION}")
+    parser.add_argument("--version", action="version", version=f"aede {VERSION}")
     return parser.parse_args(argv)
 
 
@@ -44,22 +44,22 @@ async def _run(initial_task: str | None = None) -> None:
     before the prompt loop starts.
     """
     from rich.console import Console
-    from jarvis.config import load_config, bootstrap
-    from jarvis.db import DB
-    from jarvis.rollout import Rollout
-    from jarvis.session import Session
-    from jarvis.tools.router import ToolRouter
-    from jarvis.gate import PermissionStore
-    from jarvis.tokens import TokenTracker, PriceCache
-    from jarvis.agent import AgentLoop
-    from jarvis.commands import parse_command, handle_help, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_setkey
+    from aede.config import load_config, bootstrap
+    from aede.db import DB
+    from aede.rollout import Rollout
+    from aede.session import Session
+    from aede.tools.router import ToolRouter
+    from aede.gate import PermissionStore
+    from aede.tokens import TokenTracker, PriceCache
+    from aede.agent import AgentLoop
+    from aede.commands import parse_command, handle_help, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_setkey
 
     console = Console()
 
-    home = Path(os.environ.get("JARVIS_HOME", str(Path.home() / ".jarvis")))
+    home = Path(os.environ.get("AEDE_HOME", str(Path.home() / ".aede")))
     bootstrap(home)
 
-    from jarvis.credentials import load_credentials_into_env, CredentialsError
+    from aede.credentials import load_credentials_into_env, CredentialsError
     try:
         load_credentials_into_env(home)
     except CredentialsError as e:
@@ -67,7 +67,7 @@ async def _run(initial_task: str | None = None) -> None:
 
     cfg = load_config(home=home, project_dir=Path.cwd())
 
-    db = DB(cfg.data_dir / "jarvis.db")
+    db = DB(cfg.data_dir / "aede.db")
     session = Session.create(db=db, model=cfg.model, parent_id=None)
     rollout = Rollout(cfg.data_dir / "sessions", session.id)
     rollout.write({"type": "session_start", "session_id": session.id, "parent_id": None, "model": cfg.model})

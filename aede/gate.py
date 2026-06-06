@@ -1,11 +1,11 @@
 """
-Interactive approval gate for Jarvis tool calls.
+Interactive approval gate for aede tool calls.
 
 Before executing tools that require user consent (powershell, write_file,
 create_file), the agent pauses and shows a permission prompt.  The user can
 allow once, allow for the session/project/globally, deny, redirect the agent
 with a text message, or approve/deny an entire batch.  Persistent approvals
-are written back to ``jarvis.yml`` or ``~/.jarvis/config.yml``.
+are written back to ``aede.yml`` or ``~/.aede/config.yml``.
 """
 from __future__ import annotations
 from enum import Enum
@@ -55,7 +55,7 @@ class PermissionStore:
         self._session.add(tool_name)
 
     def allow_project(self, tool_name: str, project_dir: Path) -> None:
-        """Grant the tool and persist it to ``<project_dir>/jarvis.yml``."""
+        """Grant the tool and persist it to ``<project_dir>/aede.yml``."""
         self._project.add(tool_name)
         self._persist_project(project_dir)
 
@@ -66,7 +66,7 @@ class PermissionStore:
 
     def _persist_project(self, project_dir: Path) -> None:
         import yaml
-        path = project_dir / "jarvis.yml"
+        path = project_dir / "aede.yml"
         data: dict = {}
         if path.exists():
             data = yaml.safe_load(path.read_text()) or {}

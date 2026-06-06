@@ -36,7 +36,7 @@ keeps secrets out of the process table / registry, and allows future scoping.
 
 ## Decision
 
-Introduce `~/.jarvis/credentials.json` (restricted file permissions). Jarvis
+Introduce `~/.aede/credentials.json` (restricted file permissions). aede
 loads it into `os.environ` at startup, *before* any provider call, without
 overwriting variables already present in the real environment (real env wins).
 `/setkey <NAME> <value>` writes to this file (and sets `os.environ` for the
@@ -49,7 +49,7 @@ and takes precedence, so nothing that worked before breaks.
 
 ## Consequences
 
-- **Positive:** Keys persist across reboots and new shells by design (Jarvis
+- **Positive:** Keys persist across reboots and new shells by design (aede
   reads the file every launch). No registry/quoting/injection bug. Cross-platform.
   Matches the OpenCode/Claude Code model. Real env vars still override, so CI and
   power users are unaffected.

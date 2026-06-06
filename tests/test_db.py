@@ -1,10 +1,10 @@
 import pytest
 from pathlib import Path
-from jarvis.db import DB
+from aede.db import DB
 
 
 def test_db_creates_schema(tmp_home):
-    db = DB(tmp_home / "data" / "jarvis.db")
+    db = DB(tmp_home / "data" / "aede.db")
     tables = db.con.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()
@@ -16,13 +16,13 @@ def test_db_creates_schema(tmp_home):
 
 
 def test_db_wal_mode(tmp_home):
-    db = DB(tmp_home / "data" / "jarvis.db")
+    db = DB(tmp_home / "data" / "aede.db")
     mode = db.con.execute("PRAGMA journal_mode").fetchone()["journal_mode"]
     assert mode == "wal"
 
 
 def test_db_insert_and_get_session(tmp_home):
-    db = DB(tmp_home / "data" / "jarvis.db")
+    db = DB(tmp_home / "data" / "aede.db")
     db.insert_session(
         id="01J000000000000000000000AA",
         parent_id=None,
@@ -36,7 +36,7 @@ def test_db_insert_and_get_session(tmp_home):
 
 
 def test_db_insert_message(tmp_home):
-    db = DB(tmp_home / "data" / "jarvis.db")
+    db = DB(tmp_home / "data" / "aede.db")
     db.insert_session(
         id="01J000000000000000000000AB",
         parent_id=None,
@@ -57,7 +57,7 @@ def test_db_insert_message(tmp_home):
 
 
 def test_db_update_session_status(tmp_home):
-    db = DB(tmp_home / "data" / "jarvis.db")
+    db = DB(tmp_home / "data" / "aede.db")
     db.insert_session(
         id="01J000000000000000000000AD",
         parent_id=None,
@@ -70,7 +70,7 @@ def test_db_update_session_status(tmp_home):
 
 
 def test_db_insert_token_usage(tmp_home):
-    db = DB(tmp_home / "data" / "jarvis.db")
+    db = DB(tmp_home / "data" / "aede.db")
     db.insert_session(
         id="01J000000000000000000000AE",
         parent_id=None,
@@ -91,7 +91,7 @@ def test_db_insert_token_usage(tmp_home):
 
 
 def test_db_list_sessions(tmp_home):
-    db = DB(tmp_home / "data" / "jarvis.db")
+    db = DB(tmp_home / "data" / "aede.db")
     for i in range(3):
         db.insert_session(
             id=f"01J000000000000000000000A{i}",

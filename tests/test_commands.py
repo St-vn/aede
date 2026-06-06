@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from jarvis.commands import parse_command, CommandResult, COMMANDS
+from aede.commands import parse_command, CommandResult, COMMANDS
 
 
 def test_parse_help():

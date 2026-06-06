@@ -1,5 +1,5 @@
 import pytest
-from jarvis.hooks import pre_tool_use, HardDeniedError
+from aede.hooks import pre_tool_use, HardDeniedError
 
 
 def test_safe_command_passes():

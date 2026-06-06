@@ -1,7 +1,7 @@
 import json
 import pytest
 from pathlib import Path
-from jarvis.rollout import Rollout
+from aede.rollout import Rollout
 
 
 def test_rollout_creates_file(tmp_home):

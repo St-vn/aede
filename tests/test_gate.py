@@ -1,5 +1,5 @@
 import pytest
-from jarvis.gate import PermissionStore, GateDecision
+from aede.gate import PermissionStore, GateDecision
 
 
 def test_permission_store_session_allow():
@@ -25,7 +25,7 @@ def test_permission_store_persists_project(tmp_path):
     import yaml
     store = PermissionStore()
     store.allow_project("write_file", project_dir=tmp_path)
-    cfg = yaml.safe_load((tmp_path / "jarvis.yml").read_text())
+    cfg = yaml.safe_load((tmp_path / "aede.yml").read_text())
     assert "write_file" in cfg.get("auto_approve", [])
 
 

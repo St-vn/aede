@@ -1,5 +1,5 @@
 """
-SQLite persistence layer for Jarvis.
+SQLite persistence layer for aede.
 
 Maintains tables for sessions, messages, tool calls, and token usage using
 WAL mode and foreign-key enforcement.  An FTS5 virtual table on messages

@@ -1,8 +1,8 @@
 """
-Configuration loading for Jarvis.
+Configuration loading for aede.
 
-Merges defaults, a global ``~/.jarvis/config.yml``, and an optional
-per-project ``jarvis.yml`` into a single ``JarvisConfig`` object.
+Merges defaults, a global ``~/.aede/config.yml``, and an optional
+per-project ``aede.yml`` into a single ``AedeConfig`` object.
 Also provides ``bootstrap`` to create the home directory tree on first run.
 """
 from __future__ import annotations
@@ -49,21 +49,21 @@ batch_approval_max: 20
 """
 
 
-def _jarvis_home() -> Path:
-    """Return the Jarvis home directory from ``JARVIS_HOME`` or ``~/.jarvis``."""
-    env = os.environ.get("JARVIS_HOME")
+def _aede_home() -> Path:
+    """Return the aede home directory from ``AEDE_HOME`` or ``~/.aede``."""
+    env = os.environ.get("AEDE_HOME")
     if env:
         return Path(env)
-    return Path.home() / ".jarvis"
+    return Path.home() / ".aede"
 
 
 def bootstrap(home: Path | None = None) -> None:
-    """Create the Jarvis home directory tree and write a default config if absent.
+    """Create the aede home directory tree and write a default config if absent.
 
     Idempotent — safe to call on every launch.
     """
     if home is None:
-        home = _jarvis_home()
+        home = _aede_home()
     home.mkdir(parents=True, exist_ok=True)
     (home / "data").mkdir(exist_ok=True)
     (home / "data" / "sessions").mkdir(exist_ok=True)
@@ -72,8 +72,8 @@ def bootstrap(home: Path | None = None) -> None:
         cfg_path.write_text(DEFAULT_CONFIG_YAML)
 
 
-class JarvisConfig:
-    """Resolved, type-annotated view of the merged Jarvis configuration.
+class AedeConfig:
+    """Resolved, type-annotated view of the merged aede configuration.
 
     Constructed by ``load_config``; do not instantiate directly in application
     code.
@@ -101,20 +101,20 @@ class JarvisConfig:
 def load_config(
     home: Path | None = None,
     project_dir: Path | None = None,
-) -> JarvisConfig:
+) -> AedeConfig:
     """Load and merge config from defaults → global config → project config.
 
     Args:
-        home: Jarvis home directory; defaults to ``_jarvis_home()``.
-        project_dir: Directory to search for ``jarvis.yml``; defaults to cwd.
+        home: aede home directory; defaults to ``_aede_home()``.
+        project_dir: Directory to search for ``aede.yml``; defaults to cwd.
 
     Returns:
-        A fully resolved ``JarvisConfig`` instance.
+        A fully resolved ``AedeConfig`` instance.
     """
     import yaml
 
     if home is None:
-        home = _jarvis_home()
+        home = _aede_home()
 
     bootstrap(home)
 
@@ -126,7 +126,7 @@ def load_config(
     project_data: dict[str, Any] = {}
     if project_dir is None:
         project_dir = Path.cwd()
-    project_path = project_dir / "jarvis.yml"
+    project_path = project_dir / "aede.yml"
     if project_path.exists():
         project_data = yaml.safe_load(project_path.read_text()) or {}
 
@@ -134,4 +134,4 @@ def load_config(
     for key, val in project_data.items():
         merged[key] = val
 
-    return JarvisConfig(merged, home)
+    return AedeConfig(merged, home)

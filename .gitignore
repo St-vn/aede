@@ -14,7 +14,7 @@ venv/
 # env
 .env
 
-# credentials vault (Jarvis owns ~/.jarvis/credentials.json; ignore defensively)
+# credentials vault (aede owns ~/.aede/credentials.json; ignore defensively)
 credentials.json
 
 # ---------------------------------------------------------------
@@ -26,3 +26,5 @@ credentials.json
 /CLAUDE.md
 # .claudeignore (Claude Code ignore list — internal tooling config)
 /.claudeignore
+# Private planning docs (PRD/roadmap scratch — internal only)
+/docs/plans/

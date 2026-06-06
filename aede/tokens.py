@@ -1,5 +1,5 @@
 """
-Token tracking and cost estimation for Jarvis sessions.
+Token tracking and cost estimation for aede sessions.
 
 ``TokenTracker`` accumulates per-turn usage reported by the provider and
 persists it to the DB.  ``PriceCache`` maintains a 24-hour disk cache of

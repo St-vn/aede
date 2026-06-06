@@ -1,5 +1,5 @@
 """
-Context compaction for long-running Jarvis sessions.
+Context compaction for long-running aede sessions.
 
 When conversation history grows close to the model's context window, this
 module shrinks it in two passes: a cheap string pass that stubs out old tool

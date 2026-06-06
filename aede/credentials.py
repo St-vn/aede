@@ -1,7 +1,7 @@
 """
-Credentials vault for Jarvis.
+Credentials vault for aede.
 
-Stores API keys and other secrets in ``~/.jarvis/credentials.json`` so they
+Stores API keys and other secrets in ``~/.aede/credentials.json`` so they
 are loaded automatically on every launch without requiring OS-level environment
 variables.  Real environment variables always take precedence over vault values.
 """

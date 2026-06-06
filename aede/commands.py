@@ -1,5 +1,5 @@
 """
-Slash-command parsing and handler functions for the Jarvis REPL.
+Slash-command parsing and handler functions for the aede REPL.
 
 Recognises ``/command [args...]`` lines typed at the prompt, parses them into
 ``CommandResult`` values, and implements each handler (help, sessions, tools,
@@ -56,7 +56,7 @@ def handle_help(console: Any) -> None:
             "  /config [scope] [key] [value] — view or set config",
             "  /compact                      — manually compact context",
             "  /tokens                       — show token usage and cost",
-            "  /setkey <NAME> <value>        — save a credential to Jarvis's vault (loaded on every launch)",
+            "  /setkey <NAME> <value>        — save a credential to aede's vault (loaded on every launch)",
             "  /clear                        — start a new session",
             "  /exit                         — end session cleanly",
         ])
@@ -65,7 +65,7 @@ def handle_help(console: Any) -> None:
 
 def handle_sessions(db: Any, console: Any) -> None:
     """Print the 20 most recent sessions with humanised age and truncated title."""
-    from jarvis.session import Session
+    from aede.session import Session
     sessions = Session.list_recent(db=db, limit=20)
     if not sessions:
         console.print("No sessions yet.")
@@ -83,7 +83,7 @@ def handle_sessions(db: Any, console: Any) -> None:
 
 def handle_tools(router: Any, console: Any) -> None:
     """Print all registered tools with their approval mode (gate vs auto)."""
-    from jarvis.tools.router import GATE_TOOLS
+    from aede.tools.router import GATE_TOOLS
     lines = ["Available tools:"]
     for name in router.tool_names():
         approval = "gate" if name in GATE_TOOLS else "auto"
@@ -96,7 +96,7 @@ def handle_tokens(tracker: Any, model: str, prices: Any, console: Any) -> None:
     """Print cumulative token usage and estimated cost for the current session."""
     totals = tracker.totals()
     hit_rate = tracker.cache_hit_rate()
-    from jarvis.tokens import estimate_cost
+    from aede.tokens import estimate_cost
     cost = estimate_cost(
         model=model,
         input_tokens=totals["input_tokens"],
@@ -135,7 +135,7 @@ def handle_setkey(args: list[str], console: Any, home: Path) -> None:
     Args:
         args: Expects ``[NAME, value]``; prints usage help if fewer than 2 items.
         console: Rich Console for output.
-        home: Jarvis home directory (Path) where ``credentials.json`` lives.
+        home: aede home directory (Path) where ``credentials.json`` lives.
     """
     if len(args) < 2:
         console.print("Usage: /setkey <NAME> <value>")
@@ -145,14 +145,14 @@ def handle_setkey(args: list[str], console: Any, home: Path) -> None:
     value = args[1]
 
     import os
-    from jarvis.credentials import set_credential
+    from aede.credentials import set_credential
     set_credential(home, name, value)
     os.environ[name] = value
 
     console.print(
-        f"[green]✓[/green] {name} saved to ~/.jarvis/credentials.json and active "
-        f"in this session. Jarvis will load it automatically on every future launch. "
-        f"(Other already-open terminals are unaffected — this is Jarvis's own "
+        f"[green]✓[/green] {name} saved to ~/.aede/credentials.json and active "
+        f"in this session. aede will load it automatically on every future launch. "
+        f"(Other already-open terminals are unaffected — this is aede's own "
         f"credential store, not an OS environment variable.)"
     )
 

@@ -1,5 +1,5 @@
 """
-Pre-execution safety hooks for Jarvis tool calls.
+Pre-execution safety hooks for aede tool calls.
 
 Performs a hard-deny check on shell commands before they reach the approval
 gate or the subprocess layer.  Commands matching any pattern in

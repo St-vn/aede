@@ -1,6 +1,6 @@
 import pytest
-from jarvis.session import generate_session_id, make_title, Session
-from jarvis.db import DB
+from aede.session import generate_session_id, make_title, Session
+from aede.db import DB
 
 
 def test_generate_session_id_is_ulid():
@@ -35,7 +35,7 @@ def test_make_title_normal():
 
 
 def test_session_create_and_get(tmp_home):
-    db = DB(tmp_home / "jarvis.db")
+    db = DB(tmp_home / "aede.db")
     s = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
     assert s.id is not None
     loaded = Session.load(db=db, session_id=s.id)
@@ -44,7 +44,7 @@ def test_session_create_and_get(tmp_home):
 
 
 def test_session_branch(tmp_home):
-    db = DB(tmp_home / "jarvis.db")
+    db = DB(tmp_home / "aede.db")
     parent = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
     branch = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=parent.id)
     assert branch.parent_id == parent.id
@@ -53,7 +53,7 @@ def test_session_branch(tmp_home):
 
 
 def test_session_list(tmp_home):
-    db = DB(tmp_home / "jarvis.db")
+    db = DB(tmp_home / "aede.db")
     for i in range(3):
         Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
     sessions = Session.list_recent(db=db, limit=10)

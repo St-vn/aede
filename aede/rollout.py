@@ -1,9 +1,9 @@
 """
-Append-only JSONL rollout log for Jarvis sessions.
+Append-only JSONL rollout log for aede sessions.
 
 Every significant event (session start/end, user and assistant messages, tool
 calls and results, compaction) is appended as a versioned JSON line to a daily
-file under ``~/.jarvis/data/sessions/YYYY/MM/DD/rollout-<session_id>.jsonl``.
+file under ``~/.aede/data/sessions/YYYY/MM/DD/rollout-<session_id>.jsonl``.
 This provides a full audit trail independent of the SQLite database.
 """
 from __future__ import annotations
