@@ -18,6 +18,10 @@ class UnknownToolError(Exception):
     """Raised by ``ToolRouter.validate_name`` when the model requests a non-existent tool."""
 
 
+class ToolParamError(Exception):
+    """Raised by ``ToolRouter.validate_args`` when required params are missing or wrong-typed."""
+
+
 @dataclass
 class ToolResult:
     """Result of a single tool execution returned to the agent loop."""
@@ -78,6 +82,47 @@ class ToolRouter:
         """Raise ``UnknownToolError`` if ``name`` is not in the registry."""
         if name not in self._registry:
             raise UnknownToolError(f"Unknown tool: {name!r}. Valid tools: {self.tool_names()}")
+
+    def validate_args(self, name: str, args: dict[str, Any]) -> None:
+        """Validate ``args`` against the JSON schema for ``name``.
+
+        Raises ``ToolParamError`` when a required field is absent or a field
+        has the wrong JSON-schema type (string/integer/number/boolean).
+        The schema is read directly from ``_TOOL_SCHEMAS`` — it is the single
+        source of truth; no hand-duplicated checks here.
+
+        Heavy import (pydantic) is lazy per project convention.
+        """
+        schema = _TOOL_SCHEMAS.get(name, {}).get("input_schema", {})
+        properties: dict[str, Any] = schema.get("properties", {})
+        required: list[str] = schema.get("required", [])
+
+        # Check required fields first.
+        for field in required:
+            if field not in args:
+                raise ToolParamError(
+                    f"Tool {name!r} missing required field: {field!r}"
+                )
+
+        # Type-check fields that are present.
+        _JSON_SCHEMA_TO_PYTHON: dict[str, type | tuple] = {
+            "string": str,
+            "integer": int,
+            "number": (int, float),
+            "boolean": bool,
+        }
+        for field, value in args.items():
+            if field not in properties:
+                continue  # extra fields are allowed (forward-compat)
+            expected_type_str: str = properties[field].get("type", "")
+            expected_python = _JSON_SCHEMA_TO_PYTHON.get(expected_type_str)
+            if expected_python is None:
+                continue  # object/array/unknown — skip type check
+            if not isinstance(value, expected_python):
+                raise ToolParamError(
+                    f"Tool {name!r} field {field!r}: expected {expected_type_str}, "
+                    f"got {type(value).__name__!r}"
+                )
 
     def requires_approval(self, name: str) -> bool:
         """Return True if the tool must pass through the user approval gate.

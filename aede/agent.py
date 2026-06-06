@@ -209,6 +209,9 @@ class AgentLoop:
         await self._maybe_compact()
 
         retry_count: dict[str, int] = {}
+        # validation_retry tracks per-call validation failures; each call may
+        # be retried ONCE after injecting the ToolParamError back as a result.
+        validation_retry: dict[str, int] = {}
 
         while True:
             resp = await self._stream_response()
@@ -320,6 +323,25 @@ class AgentLoop:
                                 f"[yellow]Batch of {len(tool_calls)} exceeds "
                                 f"batch_approval_max={batch_approval_max} — approving individually[/yellow]"
                             )
+
+                # Validate params before execution.  On failure inject an
+                # is_error tool_result (re-prompts the model) and allow ONE
+                # corrected attempt per unique call key.  The existing 3×
+                # stuck-breaker remains as backstop for execution errors.
+                from aede.tools.router import ToolParamError
+                try:
+                    self._router.validate_args(tool_name, tool_input)
+                except ToolParamError as ve:
+                    val_key = f"val:{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
+                    validation_retry[val_key] = validation_retry.get(val_key, 0) + 1
+                    self._console.print(f"[yellow]⚠ Param validation failed for {tool_name!r}: {ve}[/yellow]")
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": f"Parameter validation error: {ve}",
+                        "is_error": True,
+                    })
+                    continue
 
                 self._console.print(f"⚡ {tool_name} · running...")
                 self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id})

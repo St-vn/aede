@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, call
 from aede.agent import build_system_prompt, count_context_tokens
 
 
@@ -377,3 +377,234 @@ async def test_batch_approve_within_cap_skips_remaining():
     assert len(gate_calls) == 1, (
         f"Expected gate called once (batch approved remaining), got {len(gate_calls)}: {gate_calls}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Task 4 — compacted_at DB stamp after llm_summary
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_run_compaction_body_stamps_compacted_at_on_llm_summary():
+    """After a successful llm_summary compaction, _run_compaction_body must call
+    db.mark_messages_compacted with a non-empty list of message ids."""
+    from aede.agent import AgentLoop
+    from aede.config import AedeConfig
+    from aede.provider import AnthropicProvider
+    from pathlib import Path
+
+    cfg = AedeConfig(
+        {
+            "model": "claude-sonnet-4-20250514",
+            "shell": "powershell",
+            "tool_output_max_tokens": 8000,
+            "context_window": 200000,
+            "compaction_threshold": 0.85,
+        },
+        home=Path("/tmp"),
+    )
+
+    loop = AgentLoop.__new__(AgentLoop)
+    loop._cfg = cfg
+    loop._session = MagicMock(id="SID-STAMP")
+    loop._rollout = MagicMock()
+    loop._console = MagicMock()
+    loop._messages = [{"role": "user", "content": "hello"}]
+    loop._provider = MagicMock()
+
+    # DB mock: get_messages returns rows with ids
+    db_mock = MagicMock()
+    db_mock.get_messages.return_value = [
+        {"id": f"msg-{i}", "role": "user", "content": "hello", "created_at": i}
+        for i in range(25)
+    ]
+    loop._db = db_mock
+
+    # Provider is Anthropic-type
+    mock_provider = MagicMock(spec=AnthropicProvider)
+    mock_provider.raw_client = MagicMock()
+    loop._get_provider = MagicMock(return_value=mock_provider)
+
+    fake_result = {
+        "method": "llm_summary",
+        "messages": loop._messages,
+        "messages_compacted": 7,
+        "summary": "summary text",
+        "tokens_reclaimed": 1000,
+    }
+
+    with patch("aede.compaction.run_compaction", new_callable=AsyncMock, return_value=fake_result):
+        await loop._run_compaction_body()
+
+    db_mock.mark_messages_compacted.assert_called_once()
+    stamped_ids = db_mock.mark_messages_compacted.call_args[0][0]
+    assert len(stamped_ids) > 0, "mark_messages_compacted called with empty id list"
+
+
+@pytest.mark.asyncio
+async def test_run_compaction_body_does_not_stamp_on_string_pass():
+    """string_pass_only compaction must NOT call db.mark_messages_compacted."""
+    from aede.agent import AgentLoop
+    from aede.config import AedeConfig
+    from aede.provider import AnthropicProvider
+    from pathlib import Path
+
+    cfg = AedeConfig(
+        {
+            "model": "claude-sonnet-4-20250514",
+            "shell": "powershell",
+            "tool_output_max_tokens": 8000,
+            "context_window": 200000,
+            "compaction_threshold": 0.85,
+        },
+        home=Path("/tmp"),
+    )
+
+    loop = AgentLoop.__new__(AgentLoop)
+    loop._cfg = cfg
+    loop._session = MagicMock(id="SID-NOMARK")
+    loop._rollout = MagicMock()
+    loop._console = MagicMock()
+    loop._messages = [{"role": "user", "content": "hello"}]
+    loop._provider = MagicMock()
+
+    db_mock = MagicMock()
+    loop._db = db_mock
+
+    mock_provider = MagicMock(spec=AnthropicProvider)
+    mock_provider.raw_client = MagicMock()
+    loop._get_provider = MagicMock(return_value=mock_provider)
+
+    fake_result = {
+        "method": "string_pass_only",
+        "messages": loop._messages,
+        "messages_compacted": 0,
+        "summary": None,
+        "tokens_reclaimed": 100,
+    }
+
+    with patch("aede.compaction.run_compaction", new_callable=AsyncMock, return_value=fake_result):
+        await loop._run_compaction_body()
+
+    db_mock.mark_messages_compacted.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Task 6 — Pydantic param validation with retry-once
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_agent_validates_tool_args_before_execute(tmp_path):
+    """When a tool call has bad args, agent must inject is_error tool_result
+    and NOT call execute_sync."""
+    from aede.agent import AgentLoop
+    from aede.config import AedeConfig
+    from aede.tools.router import ToolParamError
+    from pathlib import Path
+
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+
+    # First response: tool call with MISSING required arg (write_file needs path+content)
+    bad_tc = {"id": "tc-bad", "name": "write_file", "input": {"path": "x"}}
+    resp_bad = _make_response([bad_tc])
+
+    # Second response: no more tool calls (stop)
+    resp_done = _make_response([])
+    resp_done.text = "done"
+
+    call_count = {"n": 0}
+
+    async def fake_stream(*a, **kw):
+        call_count["n"] += 1
+        return resp_bad if call_count["n"] == 1 else resp_done
+
+    loop._stream_response = fake_stream
+
+    # Router: validate_args raises ToolParamError for the bad call
+    router = MagicMock()
+    router.validate_name = MagicMock()  # name is valid
+    router.requires_approval = MagicMock(return_value=False)
+    router.execute_sync = MagicMock()
+
+    def fake_validate_args(name, args):
+        if name == "write_file" and "content" not in args:
+            raise ToolParamError("Missing required field: content")
+
+    router.validate_args = MagicMock(side_effect=fake_validate_args)
+    loop._router = router
+
+    gate_store = MagicMock()
+    gate_store.is_allowed = MagicMock(return_value=True)  # always pre-allowed
+    loop._gate_store = gate_store
+
+    async def no_compact():
+        pass
+    loop._maybe_compact = no_compact
+
+    await loop.run_turn("write something")
+
+    # execute_sync must NOT have been called for the bad tool call
+    router.execute_sync.assert_not_called()
+
+    # An is_error tool_result must have been appended to messages
+    tool_result_messages = [
+        m for m in loop._messages
+        if isinstance(m.get("content"), list)
+        and any(isinstance(b, dict) and b.get("is_error") for b in m["content"])
+    ]
+    assert tool_result_messages, "Expected an is_error tool_result in messages"
+
+
+@pytest.mark.asyncio
+async def test_agent_validation_retry_allows_corrected_call(tmp_path):
+    """After a validation-failed tool result, a corrected second call must execute normally."""
+    from aede.agent import AgentLoop
+    from aede.tools.router import ToolParamError
+
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+
+    # Call 1: bad args (missing content)
+    bad_tc = {"id": "tc-bad", "name": "write_file", "input": {"path": "x"}}
+    resp_bad = _make_response([bad_tc])
+
+    # Call 2: corrected args
+    good_tc = {"id": "tc-good", "name": "write_file", "input": {"path": "x", "content": "y"}}
+    resp_good = _make_response([good_tc])
+
+    # Call 3: done
+    resp_done = _make_response([])
+    resp_done.text = "done"
+
+    call_count = {"n": 0}
+    responses = [resp_bad, resp_good, resp_done]
+
+    async def fake_stream(*a, **kw):
+        i = call_count["n"]
+        call_count["n"] += 1
+        return responses[i] if i < len(responses) else resp_done
+
+    loop._stream_response = fake_stream
+
+    router = MagicMock()
+    router.validate_name = MagicMock()
+    router.requires_approval = MagicMock(return_value=False)
+    router.execute_sync = MagicMock(return_value=_make_tool_result())
+
+    def fake_validate_args(name, args):
+        if name == "write_file" and "content" not in args:
+            raise ToolParamError("Missing required field: content")
+
+    router.validate_args = MagicMock(side_effect=fake_validate_args)
+    loop._router = router
+
+    gate_store = MagicMock()
+    gate_store.is_allowed = MagicMock(return_value=True)  # always pre-allowed
+    loop._gate_store = gate_store
+
+    async def no_compact():
+        pass
+    loop._maybe_compact = no_compact
+
+    await loop.run_turn("write something")
+
+    # execute_sync must have been called exactly once (for the corrected call)
+    router.execute_sync.assert_called_once()

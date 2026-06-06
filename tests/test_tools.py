@@ -108,3 +108,49 @@ def test_list_dir(tmp_path):
     assert result.status == "success"
     assert "a.txt" in result.output
     assert "b.txt" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Task 6 — ToolRouter.validate_args (Pydantic param validation)
+# ---------------------------------------------------------------------------
+
+def test_validate_args_missing_required_raises():
+    """write_file requires path + content; missing content must raise ToolParamError."""
+    from aede.tools.router import ToolParamError
+    r = make_router()
+    with pytest.raises(ToolParamError):
+        r.validate_args("write_file", {"path": "x"})
+
+
+def test_validate_args_valid_args_passes():
+    """write_file with path + content must not raise."""
+    r = make_router()
+    r.validate_args("write_file", {"path": "x", "content": "y"})  # no exception
+
+
+def test_validate_args_wrong_type_raises():
+    """list_dir requires path as a string; passing an int must raise ToolParamError."""
+    from aede.tools.router import ToolParamError
+    r = make_router()
+    with pytest.raises(ToolParamError):
+        r.validate_args("list_dir", {"path": 123})
+
+
+def test_validate_args_valid_list_dir_passes():
+    """list_dir with a string path must not raise."""
+    r = make_router()
+    r.validate_args("list_dir", {"path": "/some/dir"})  # no exception
+
+
+def test_validate_args_powershell_missing_cmd():
+    """powershell requires cmd; missing it must raise ToolParamError."""
+    from aede.tools.router import ToolParamError
+    r = make_router()
+    with pytest.raises(ToolParamError):
+        r.validate_args("powershell", {})
+
+
+def test_validate_args_powershell_valid():
+    """powershell with cmd string must not raise."""
+    r = make_router()
+    r.validate_args("powershell", {"cmd": "echo hello"})  # no exception
