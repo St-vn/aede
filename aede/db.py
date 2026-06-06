@@ -56,6 +56,16 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
     content='messages',
     content_rowid='rowid'
 );
+CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+  INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+  INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
 """
 
 
@@ -79,14 +89,17 @@ class DB:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.con = sqlite3.connect(str(path), check_same_thread=False)
-        # Execute pragma statements
+        # Pragmas must be set before executescript (executescript does an implicit COMMIT)
         self.con.execute("PRAGMA journal_mode=WAL")
         self.con.execute("PRAGMA foreign_keys=ON")
-        # Execute DDL statements - split by ; and filter empty lines
-        for stmt in DDL.split(";"):
-            stmt = stmt.strip()
-            if stmt:
-                self.con.execute(stmt)
+        self.con.commit()
+        # Execute full DDL (tables + FTS virtual table + sync triggers).
+        # executescript is used because trigger bodies contain semicolons inside
+        # BEGIN...END blocks, which the simple split(";") approach cannot handle.
+        self.con.executescript(DDL)
+        # Rebuild FTS index idempotently to backfill any pre-existing rows
+        # (cheap at personal scale; external-content FTS5 requires explicit sync)
+        self.con.execute("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
         self.con.commit()
         # Set row_factory after schema is created
         self.con.row_factory = _row_factory
