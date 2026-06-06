@@ -58,3 +58,30 @@ def test_session_list(tmp_home):
         Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
     sessions = Session.list_recent(db=db, limit=10)
     assert len(sessions) == 3
+
+
+def test_maybe_set_title_sets_on_first_message(tmp_home):
+    """_maybe_set_title should update the DB title on the first (non-empty) call."""
+    from aede.cli import _maybe_set_title
+    db = DB(tmp_home / "aede.db")
+    session = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None, title="")
+    msg = "Help me refactor the parser"
+    _maybe_set_title(session, db, msg)
+    row = db.get_session(session.id)
+    expected = make_title(msg)
+    assert row["title"] == expected
+    assert row["title"]  # non-empty
+
+
+def test_maybe_set_title_one_shot(tmp_home):
+    """_maybe_set_title must NOT overwrite the title on a second call."""
+    from aede.cli import _maybe_set_title
+    db = DB(tmp_home / "aede.db")
+    session = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None, title="")
+    first_msg = "Help me refactor the parser"
+    second_msg = "Now do something completely different"
+    _maybe_set_title(session, db, first_msg)
+    _maybe_set_title(session, db, second_msg)
+    row = db.get_session(session.id)
+    assert row["title"] == make_title(first_msg)
+    assert row["title"] != make_title(second_msg)

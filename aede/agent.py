@@ -252,6 +252,9 @@ class AgentLoop:
                 break
 
             tool_results = []
+            # batch_approved is scoped to THIS assistant message's tool_calls list.
+            # It is only honoured when len(tool_calls) <= batch_approval_max.
+            batch_approved: bool = False
             for tc in tool_calls:
                 tool_name = tc["name"]
                 tool_input = tc["input"]
@@ -285,7 +288,7 @@ class AgentLoop:
                     continue
 
                 needs_approval = self._router.requires_approval(tool_name)
-                if not self._gate_store.is_allowed(tool_name) and needs_approval:
+                if not self._gate_store.is_allowed(tool_name) and needs_approval and not batch_approved:
                     from aede.gate import prompt_gate, GateDecision
                     decision, redirect_msg = prompt_gate(
                         tool_name=tool_name,
@@ -308,6 +311,15 @@ class AgentLoop:
                         if redirect_msg:
                             self._messages.append({"role": "user", "content": redirect_msg})
                         continue
+                    elif decision == GateDecision.BATCH_APPROVE:
+                        batch_approval_max = self._cfg.batch_approval_max
+                        if len(tool_calls) <= batch_approval_max:
+                            batch_approved = True
+                        else:
+                            self._console.print(
+                                f"[yellow]Batch of {len(tool_calls)} exceeds "
+                                f"batch_approval_max={batch_approval_max} — approving individually[/yellow]"
+                            )
 
                 self._console.print(f"⚡ {tool_name} · running...")
                 self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id})
@@ -390,9 +402,9 @@ class AgentLoop:
     async def _maybe_compact(self) -> None:
         """Run compaction if the current message history exceeds the threshold.
 
-        For non-Anthropic providers, falls back to a bare Anthropic client
-        using the default model, because the compaction call goes directly to
-        api.anthropic.com and cannot use an OpenRouter model id.
+        This is the automatic path called before each provider request.
+        It is a no-op when the history is below the compaction threshold.
+        See ``compact()`` for the forced manual path.
         """
         from aede.compaction import needs_compaction, count_tokens_approx
         current_tokens = sum(
@@ -401,7 +413,35 @@ class AgentLoop:
         )
         if not needs_compaction(current_tokens, self._cfg.context_window, self._cfg.compaction_threshold):
             return
+        await self._run_compaction_body()
 
+    async def compact(self) -> dict:
+        """Manually trigger compaction regardless of the current token count.
+
+        Intended for the ``/compact`` CLI command.  Bypasses the threshold
+        check and always invokes the compaction body.
+
+        Returns:
+            A dict with at minimum a ``"method"`` key reflecting what
+            ``run_compaction`` returned (e.g. ``"string_pass_only"``,
+            ``"llm_summary"``, or ``"none"``).
+        """
+        return await self._run_compaction_body()
+
+    async def _run_compaction_body(self) -> dict:
+        """Execute the full compaction sequence and update message history.
+
+        Shared implementation used by both ``_maybe_compact`` (auto) and
+        ``compact`` (manual/forced).  Selects the appropriate Anthropic client,
+        calls ``run_compaction``, and persists the result if compaction fired.
+
+        For non-Anthropic providers, falls back to a bare Anthropic client
+        using the default model, because the compaction call goes directly to
+        api.anthropic.com and cannot use an OpenRouter model id.
+
+        Returns:
+            The raw ``run_compaction`` result dict.
+        """
         self._console.print("[dim]↩ Compacting context...[/dim]")
 
         # Compaction always uses the active provider's raw client.
@@ -431,7 +471,7 @@ class AgentLoop:
 
         if compaction_client is None:
             self._console.print("[yellow]⚠ Skipping compaction — ANTHROPIC_API_KEY not set for non-Anthropic provider.[/yellow]")
-            return
+            return {"method": "none"}
 
         from aede.compaction import run_compaction
         result = await run_compaction(
@@ -454,3 +494,5 @@ class AgentLoop:
             self._console.print(
                 f"↩ Context compacted · {result.get('messages_compacted', 0)} messages → summary · method: {result['method']}"
             )
+
+        return result

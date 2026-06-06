@@ -17,6 +17,23 @@ from typing import Any
 VERSION = "0.1.0"
 
 
+def _maybe_set_title(session: Any, db: Any, text: str) -> None:
+    """Set the session title from ``text`` if it has not been set yet.
+
+    Calls ``Session.set_title`` exactly once per session.  Subsequent calls
+    are no-ops.  Intended to be called after the first user message.
+
+    Args:
+        session: The active ``Session`` object (mutated in place).
+        db: Open ``DB`` instance.
+        text: The first user message from which the title is derived.
+    """
+    if session.title:
+        return
+    from aede.session import make_title
+    session.set_title(db, make_title(text))
+
+
 def build_header(model: str, session_id: str) -> str:
     """Return the one-line startup banner shown at the top of each session."""
     short_id = session_id[:4] if len(session_id) >= 4 else session_id
@@ -113,6 +130,7 @@ async def _run(initial_task: str | None = None) -> None:
     signal.signal(signal.SIGINT, _handle_sigint)
 
     if initial_task:
+        _maybe_set_title(session, db, initial_task)
         await _run_turn_safe(agent, initial_task, console)
 
     while True:
@@ -157,11 +175,16 @@ async def _run(initial_task: str | None = None) -> None:
             elif cmd.name == "setkey":
                 handle_setkey(cmd.args, console, home)
             elif cmd.name == "compact":
-                console.print("[dim]Manual compaction not yet wired — use /compact after more turns[/dim]")
+                result = await agent.compact()
+                console.print(
+                    f"[dim]Compaction done · method: {result['method']} · "
+                    f"{result.get('messages_compacted', 0)} messages compacted[/dim]"
+                )
             elif cmd.name == "resume":
                 console.print("[dim]/resume not yet implemented in this build[/dim]")
             continue
 
+        _maybe_set_title(session, db, user_input)
         await _run_turn_safe(agent, user_input, console)
 
     _shutdown(session, db, rollout, stop_reason)
