@@ -75,6 +75,8 @@ def build_system_prompt(
     is_resume: bool,
     session_notes: str | None,
     compaction_summary: str | None,
+    skills: list[Any] | None = None,
+    learnings_suffix: str | None = None,
 ) -> SystemPrompt:
     """Assemble the full system prompt from the stable base and per-session context.
 
@@ -127,6 +129,14 @@ def build_system_prompt(
             "the file you are about to write. If the project directory is empty or no matches are "
             "found, proceed with your best judgment and note the uncertainty.",
         ]
+
+    if skills:
+        dynamic_parts += ["", "## Agent Skills"]
+        for s in skills:
+            dynamic_parts += ["", f"### {s.name}", "", s.description]
+
+    if learnings_suffix:
+        dynamic_parts += [learnings_suffix]
 
     return SystemPrompt(
         stable=STABLE_SYSTEM_PROMPT,
@@ -193,6 +203,7 @@ class AgentLoop:
         tracker: Any,
         console: Any,
         project_dir: Any,
+        gate_backend: Any = None,
     ) -> None:
         self._cfg = cfg
         self._session = session
@@ -203,10 +214,22 @@ class AgentLoop:
         self._tracker = tracker
         self._console = console
         self._project_dir = project_dir
+
+        from aede.gate import TerminalGateBackend
+        self._gate_backend = gate_backend or TerminalGateBackend(
+            store=self._gate_store,
+            project_dir=self._project_dir,
+            global_config_path=self._cfg.home / "config.yml",
+            console=self._console,
+        )
+
         self._messages: list[dict] = []
         self._turn = 0
         self._provider: Any = None
         self._system_prompt: SystemPrompt | None = None
+        self._skills: list[Any] | None = None
+        self._learnings_suffix: str | None = None
+        self._trace_logger: Any = None
 
     def initialize(
         self,
@@ -214,13 +237,19 @@ class AgentLoop:
         session_notes: str | None = None,
         compaction_summary: str | None = None,
         prior_messages: list[dict] | None = None,
+        skills: list[Any] | None = None,
+        learnings_suffix: str | None = None,
     ) -> None:
         """Build the system prompt and optionally restore prior message history.
 
         Must be called once before the first ``run_turn``.
         """
+        self._skills = skills
+        self._learnings_suffix = learnings_suffix
         self._system_prompt = build_system_prompt(
             cfg=self._cfg,
+            skills=skills,
+            learnings_suffix=learnings_suffix,
             session_id=self._session.id,
             is_resume=is_resume,
             session_notes=session_notes,
@@ -356,14 +385,14 @@ class AgentLoop:
 
                 needs_approval = self._router.requires_approval(tool_name)
                 if not self._gate_store.is_allowed(tool_name) and needs_approval and not batch_approved:
-                    from aede.gate import prompt_gate, GateDecision
-                    decision, redirect_msg = prompt_gate(
+                    import uuid
+                    from aede.gate import GateDecision
+                    gate_id = uuid.uuid4().hex[:8]
+                    decision, redirect_msg = await self._gate_backend.request(
+                        gate_id=gate_id,
                         tool_name=tool_name,
                         args=tool_input,
-                        store=self._gate_store,
-                        project_dir=self._project_dir,
-                        global_config_path=self._cfg.home / "config.yml",
-                        console=self._console,
+                        batch_count=len(tool_calls),
                     )
                     if decision == GateDecision.DENY:
                         self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "denied"})

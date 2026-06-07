@@ -87,9 +87,76 @@ class PermissionStore:
         config_path.write_text(yaml.dump(data))
 
 
-def render_gate(tool_name: str, args: dict[str, Any]) -> str:
+import asyncio
+from typing import Any, Protocol, runtime_checkable
+
+
+@runtime_checkable
+class GateBackend(Protocol):
+    """Protocol for tool-approval backends (CLI terminal or Web UI)."""
+
+    async def request(
+        self,
+        gate_id: str,
+        tool_name: str,
+        args: dict[str, Any],
+        batch_count: int,
+    ) -> tuple[GateDecision, str]:
+        """Request approval for a tool call. Returns (decision, redirect_msg)."""
+        ...
+
+
+class TerminalGateBackend:
+    """Wraps existing prompt_gate for CLI usage.
+
+    Maintains byte-for-byte identical behavior with the original CLI gate.
+    """
+
+    def __init__(
+        self,
+        store: PermissionStore | None = None,
+        project_dir: Path | None = None,
+        global_config_path: Path | None = None,
+        console: Any = None,
+    ) -> None:
+        self._store = store
+        self._project_dir = project_dir
+        self._global_config_path = global_config_path
+        self._console = console
+
+    async def request(
+        self,
+        gate_id: str,
+        tool_name: str,
+        args: dict[str, Any],
+        batch_count: int,
+    ) -> tuple[GateDecision, str]:
+        """Delegates to the synchronous prompt_gate in a thread executor."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: prompt_gate(
+                tool_name=tool_name,
+                args=args,
+                store=self._store,  # type: ignore
+                project_dir=self._project_dir,  # type: ignore
+                global_config_path=self._global_config_path,  # type: ignore
+                console=self._console,
+                batch_count=batch_count,
+            ),
+        )
+
+
+def render_gate(tool_name: str, args: dict[str, Any], batch_count: int = 1) -> str:
     """Render a human-readable gate prompt string for the given tool and arguments."""
-    lines = [f"⚡ {tool_name}"]
+    header = f"⚡ {tool_name}"
+    if tool_name.startswith("mcp__"):
+        parts = tool_name.split("__", 2)
+        if len(parts) >= 2:
+            header += f"  [server: {parts[1]}]"
+    lines = [header]
+    if batch_count > 1:
+        lines.append(f"  (part of a batch of {batch_count} tools)")
     for k, v in args.items():
         lines.append(f"  {k}: {v}")
     lines.append("")
@@ -104,13 +171,14 @@ def prompt_gate(
     project_dir: Path,
     global_config_path: Path,
     console: Any,
+    batch_count: int = 1,
 ) -> tuple[GateDecision, str]:
     """
     Renders the approval gate and reads a single keypress.
     Returns (decision, redirect_message).
     redirect_message is non-empty only when decision is REDIRECT.
     """
-    console.print(render_gate(tool_name, args))
+    console.print(render_gate(tool_name, args, batch_count=batch_count))
 
     key = _read_key().lower()
 

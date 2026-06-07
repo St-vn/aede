@@ -1,0 +1,130 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: rgb(var(--sidebar-ring));
+  --color-sidebar-border: rgb(var(--sidebar-border));
+  --color-sidebar-accent-foreground: rgb(var(--sidebar-accent-foreground));
+  --color-sidebar-accent: rgb(var(--sidebar-accent));
+  --color-sidebar-primary-foreground: rgb(var(--sidebar-primary-foreground));
+  --color-sidebar-primary: rgb(var(--sidebar-primary));
+  --color-sidebar-foreground: rgb(var(--sidebar-foreground));
+  --color-sidebar: rgb(var(--sidebar));
+  
+  --color-ring: rgb(var(--ring));
+  --color-input: rgb(var(--input));
+  --color-border: rgb(var(--border));
+  --color-destructive: rgb(var(--destructive));
+  --color-destructive-foreground: rgb(var(--destructive-foreground));
+  --color-accent-foreground: rgb(var(--accent-foreground));
+  --color-accent: rgb(var(--accent));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+  --color-muted: rgb(var(--muted));
+  --color-secondary-foreground: rgb(var(--secondary-foreground));
+  --color-secondary: rgb(var(--secondary));
+  --color-primary-foreground: rgb(var(--primary-foreground));
+  --color-primary: rgb(var(--primary));
+  --color-popover-foreground: rgb(var(--popover-foreground));
+  --color-popover: rgb(var(--popover));
+  --color-card-foreground: rgb(var(--card-foreground));
+  --color-card: rgb(var(--card));
+  
+  --color-warning: rgb(var(--color-warning));
+  --color-success: rgb(var(--color-success));
+  --color-error: rgb(var(--color-error));
+  
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  color-scheme: dark;
+  --background: 5 5 8;
+  --foreground: 232 232 234;
+  --card: 20 20 22;
+  --card-foreground: 232 232 234;
+  --popover: 20 20 22;
+  --popover-foreground: 232 232 234;
+  --primary: 94 106 210;
+  --primary-foreground: 255 255 255;
+  --secondary: 26 26 28;
+  --secondary-foreground: 232 232 234;
+  --muted: 26 26 28;
+  --muted-foreground: 90 90 100;
+  --accent: 26 26 28;
+  --accent-foreground: 232 232 234;
+  --destructive: 239 68 68;
+  --destructive-foreground: 255 255 255;
+  --border: 31 31 36;
+  --input: 31 31 36;
+  --ring: 94 106 210;
+  --radius: 0.5rem;
+  --color-warning: 240 160 32;
+  --color-success: 34 197 94;
+  --color-error: 239 68 68;
+  
+  --sidebar: 20 20 22;
+  --sidebar-foreground: 232 232 234;
+  --sidebar-primary: 94 106 210;
+  --sidebar-primary-foreground: 255 255 255;
+  --sidebar-accent: 26 26 28;
+  --sidebar-accent-foreground: 232 232 234;
+  --sidebar-border: 31 31 36;
+  --sidebar-ring: 94 106 210;
+}
+
+.dark {
+  --background: 5 5 8;
+  --foreground: 232 232 234;
+  --card: 20 20 22;
+  --card-foreground: 232 232 234;
+  --popover: 20 20 22;
+  --popover-foreground: 232 232 234;
+  --primary: 94 106 210;
+  --primary-foreground: 255 255 255;
+  --secondary: 26 26 28;
+  --secondary-foreground: 232 232 234;
+  --muted: 26 26 28;
+  --muted-foreground: 90 90 100;
+  --accent: 26 26 28;
+  --accent-foreground: 232 232 234;
+  --destructive: 239 68 68;
+  --destructive-foreground: 255 255 255;
+  --border: 31 31 36;
+  --input: 31 31 36;
+  --ring: 94 106 210;
+  --radius: 0.5rem;
+  --color-warning: 240 160 32;
+  --color-success: 34 197 94;
+  --color-error: 239 68 68;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cursor-blink { animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+}

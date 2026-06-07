@@ -242,6 +242,14 @@ def _make_agent_loop_for_gate_test(batch_approval_max: int) -> "AgentLoop":
     loop._system_prompt = ""
     loop._tracker = MagicMock()
     loop._tracker.record = MagicMock()
+
+    from aede.gate import TerminalGateBackend
+    loop._gate_backend = TerminalGateBackend(
+        store=loop._db,  # dummy, usually monkeypatched
+        project_dir=loop._project_dir,
+        global_config_path=loop._cfg.home / "config.yml",
+        console=loop._console,
+    )
     return loop
 
 

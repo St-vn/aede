@@ -15,6 +15,7 @@ from typing import Any
 COMMANDS = {
     "help", "keybinds", "resume", "sessions", "tools", "config",
     "compact", "tokens", "clear", "exit", "setkey",
+    "skills", "agents", "delete-session", "rm",
 }
 
 
@@ -53,7 +54,10 @@ def handle_help(console: Any) -> None:
             "  /keybinds                     — show keyboard shortcuts",
             "  /resume [id]                  — resume a session",
             "  /sessions                     — list recent sessions",
+            "  /delete-session [id]          — delete a session (alias: /rm)",
             "  /tools                        — list tools and approval status",
+            "  /skills                       — list loaded skills",
+            "  /agents                       — list loaded agents",
             "  /config [scope] [key] [value] — view or set config",
             "  /compact                      — manually compact context",
             "  /tokens                       — show token usage and cost",
@@ -105,6 +109,31 @@ def handle_tools(router: Any, console: Any) -> None:
     console.print("\n".join(lines))
 
 
+def handle_skills(skill_registry: dict[str, Any], console: Any) -> None:
+    """Print all loaded skills as a table with Name, Description (60-char), and Source."""
+    if not skill_registry:
+        console.print("No skills loaded.")
+        return
+    lines = ["Skills:"]
+    for name, skill in sorted(skill_registry.items()):
+        desc = (skill.description[:60] + "...") if len(skill.description) > 60 else skill.description
+        lines.append(f"  {name:<25} {desc}")
+    console.print("\n".join(lines))
+
+
+def handle_agents(agent_registry: dict[str, Any], console: Any) -> None:
+    """Print all loaded agents as a table with Name, Description, Model."""
+    if not agent_registry:
+        console.print("No agents loaded.")
+        return
+    lines = ["Agents:"]
+    for name, agent in sorted(agent_registry.items()):
+        desc = (agent.description[:60] + "...") if len(agent.description) > 60 else agent.description
+        model_str = agent.model if agent.model != "inherit" else "inherit"
+        lines.append(f"  {name:<25} {desc:<62} {model_str}")
+    console.print("\n".join(lines))
+
+
 def handle_tokens(tracker: Any, model: str, prices: Any, console: Any) -> None:
     """Print cumulative token usage and estimated cost for the current session."""
     totals = tracker.totals()
@@ -137,6 +166,9 @@ def handle_config_show(cfg: Any, console: Any) -> None:
         ("batch_approval_max", cfg.batch_approval_max),
         ("auto_approve", ", ".join(cfg.auto_approve) if cfg.auto_approve else "(none)"),
     ]
+    mcp_servers = getattr(cfg, "mcp_servers", {})
+    mcp_count = len(mcp_servers)
+    fields.append(("mcp_servers", f"{mcp_count} configured" if mcp_count else "(none)"))
     for k, v in fields:
         source = cfg.sources.get(k, "default")
         lines.append(f"  {k:<30} {v:<25} [{source}]")
@@ -294,6 +326,114 @@ def handle_resume(args: list[str], db: Any, console: Any) -> "str | None":
     return sessions[idx - 1].id
 
 
+def handle_delete_session(
+    args: list[str],
+    db: Any,
+    console: Any,
+    data_dir: Path,
+) -> None:
+    """Delete a session from the DB and filesystem.
+
+    Args:
+        args: Either empty (interactive picker) or ``[id_or_prefix]``.
+        db: Open ``DB`` instance.
+        console: Rich Console (or compatible stub) for output.
+        data_dir: aede data directory (for cleaning up rollout logs).
+    """
+    from aede.session import Session
+
+    target_id = None
+    if args:
+        prefix = args[0]
+        all_sessions = db.list_sessions(limit=500)
+        matches = [r for r in all_sessions if r["id"].startswith(prefix)]
+        if len(matches) == 0:
+            console.print(f"No session matching {prefix!r}")
+            return
+        if len(matches) > 1:
+            console.print(f"Ambiguous prefix {prefix!r} — multiple matches:")
+            for r in matches:
+                console.print(f"  {r['id']}")
+            return
+        target_id = matches[0]["id"]
+    else:
+        # Interactive picker
+        sessions = Session.list_recent(db=db, limit=20)
+        if not sessions:
+            console.print("No sessions to delete.")
+            return
+
+        import time
+        now = time.time() * 1000
+        console.print("Recent sessions:")
+        for i, s in enumerate(sessions, 1):
+            age_str = _humanize_age(now - s.updated_at)
+            title = s.title or "(untitled)"
+            console.print(f"  {i:>2}.  {age_str:12}  {title[:60]}")
+
+        raw = console.input("Select session number to DELETE (blank to cancel): ").strip()
+        if not raw:
+            return
+        try:
+            idx = int(raw)
+        except ValueError:
+            console.print("Invalid selection.")
+            return
+        if idx < 1 or idx > len(sessions):
+            console.print("Selection out of range.")
+            return
+        target_id = sessions[idx - 1].id
+
+    if not target_id:
+        return
+
+    confirm = console.input(f"Are you sure you want to delete session {target_id[:8]}? [y/N] ").strip().lower()
+    if confirm != "y":
+        console.print("Cancelled.")
+        return
+
+    try:
+        session = Session.load(db, target_id)
+        session.delete(db)
+
+        # Cleanup rollout logs
+        from aede.rollout import Rollout
+        # Rollout handles path resolution in __init__
+        rollout = Rollout(data_dir / "sessions", target_id)
+        if rollout._path.exists():
+            rollout._path.unlink()
+
+        # Cleanup notes if they exist
+        notes_path = data_dir / "sessions" / f"{target_id}-notes.md"
+        if notes_path.exists():
+            notes_path.unlink()
+
+        console.print(f"[green]✓[/green] Session {target_id[:8]} deleted.")
+    except Exception as e:
+        console.print(f"[red]Error deleting session: {e}[/red]")
+
+
+def handle_serve(
+    cfg: Any,
+    db: Any,
+    console: Any,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+) -> None:
+    """Launch the FastAPI backend server."""
+    import uvicorn
+    from aede.server import app
+
+    app.state.cfg = cfg
+    app.state.db = db
+
+    console.print(f"[green]Starting aede backend server at http://{host}:{port}[/green]")
+    console.print("[dim]Press Ctrl+C to stop.[/dim]")
+
+    # SEC-01: Explicitly bind to 127.0.0.1 by default.
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
 def _load_session_notes(data_dir: "Path", session_id: str) -> "str | None":
     """Read the notes file for ``session_id`` from ``data_dir/sessions/``.
 
@@ -325,3 +465,74 @@ def _humanize_age(ms: float) -> str:
     if s < 86400:
         return f"{int(s // 3600)}h ago"
     return f"{int(s // 86400)}d ago"
+
+
+def handle_learnings_list(store: Any, console: Any) -> None:
+    """Print all learnings in a table."""
+    items = store.read_all()
+    if not items:
+        console.print("No learnings stored.")
+        return
+    lines = ["Learnings:"]
+    for item in items:
+        tid = item.get("id", "?")[:8]
+        ttype = item.get("type", "?")
+        trusted = "✓" if item.get("trusted") else " "
+        content = item.get("content", "")[:60]
+        lines.append(f"  {tid} [{ttype}] {trusted} {content}")
+    console.print("\n".join(lines))
+
+
+def handle_learnings_show(learning_id: str, store: Any, console: Any) -> None:
+    """Print detail for a single learning."""
+    items = store.read_all()
+    for item in items:
+        if item.get("id") == learning_id:
+            for k, v in item.items():
+                console.print(f"  {k}: {v}")
+            return
+    console.print(f"Learning {learning_id!r} not found.")
+
+
+def handle_learnings_delete(learning_id: str, store: Any, console: Any) -> None:
+    """Delete a learning by id."""
+    if store.delete(learning_id):
+        console.print(f"Deleted learning {learning_id[:8]}")
+    else:
+        console.print(f"Learning {learning_id!r} not found.")
+
+
+def handle_learnings_edit(learning_id: str, store: Any, console: Any) -> None:
+    """Edit a learning by opening $EDITOR on a temp file."""
+    import os
+    import subprocess
+    import tempfile
+
+    items = store.read_all()
+    target = None
+    for item in items:
+        if item.get("id") == learning_id:
+            target = item
+            break
+    if target is None:
+        console.print(f"Learning {learning_id!r} not found.")
+        return
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as f:
+        f.write(target.get("content", ""))
+        tmp_path = f.name
+
+    editor = os.environ.get("EDITOR", "notepad.exe" if os.name == "nt" else "vi")
+    from pathlib import Path
+    try:
+        subprocess.run([editor, tmp_path], check=True)
+        new_content = Path(tmp_path).read_text(encoding="utf-8")
+        store.update(learning_id, content=new_content)
+        console.print(f"Updated learning {learning_id[:8]}")
+    except Exception as e:
+        console.print(f"Edit error: {e}")
+    finally:
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except Exception:
+            pass

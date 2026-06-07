@@ -143,6 +143,30 @@ class DB:
         )
         self.con.commit()
 
+    def delete_session(self, id: str) -> None:
+        """Delete a session and all its associated messages, tool calls, and tokens.
+
+        Relies on ON DELETE CASCADE if available, but for safety and because
+        SQLite requires PRAGMA foreign_keys=ON (which we set), we handle it.
+        Actually, we just delete the session and let FKs handle the rest if configured.
+        """
+        # Delete messages first to ensure triggers etc. are handled if necessary,
+        # although with CASCADE it should be fine.
+        # token_usage and messages both have REFERENCES sessions(id)
+        # tool_calls references messages(id)
+        
+        # We don't have ON DELETE CASCADE in the DDL currently.
+        # Let's check the DDL.
+        self.con.execute("DELETE FROM token_usage WHERE session_id = ?", (id,))
+        # tool_calls references messages, so delete them first
+        self.con.execute(
+            "DELETE FROM tool_calls WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)",
+            (id,),
+        )
+        self.con.execute("DELETE FROM messages WHERE session_id = ?", (id,))
+        self.con.execute("DELETE FROM sessions WHERE id = ?", (id,))
+        self.con.commit()
+
     def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
         """Return the most recent sessions ordered by ``updated_at`` descending."""
         return self.con.execute(

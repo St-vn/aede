@@ -28,6 +28,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "critic_enabled": False,     # Run a critic LLM pass before gated writes (opt-in; costs an extra call)
     "critic_model": None,        # str | None — None → same-model persona fallback
     "critic_api_base_url": None, # str | None — None → use main provider routing
+    # Memory System — Phase 2
+    "ollama_base_url": "http://localhost:11434",
+    "ollama_embed_model": "nomic-embed-text",
+    "ollama_timeout_s": 5.0,
+    "learnings_top_k": 5,
+    "learnings_max_tokens": 2000,
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -78,6 +84,8 @@ def bootstrap(home: Path | None = None) -> None:
     home.mkdir(parents=True, exist_ok=True)
     (home / "data").mkdir(exist_ok=True)
     (home / "data" / "sessions").mkdir(exist_ok=True)
+    (home / "skills").mkdir(exist_ok=True)
+    (home / "agents").mkdir(exist_ok=True)
     cfg_path = home / "config.yml"
     if not cfg_path.exists():
         cfg_path.write_text(DEFAULT_CONFIG_YAML)
@@ -101,11 +109,23 @@ class AedeConfig:
         self.auto_approve: list[str] = data.get("auto_approve") or []
         self.model_prices: dict[str, Any] = data.get("model_prices") or {}
         self.api_base_url: str | None = data.get("api_base_url") or None
+        raw_mcp = data.get("mcpServers")
+        if raw_mcp:
+            from aede.mcp.client import _parse_mcp_servers
+            self.mcp_servers: dict[str, Any] = _parse_mcp_servers(raw_mcp)
+        else:
+            self.mcp_servers: dict[str, Any] = {}
         # Basic Correctness — Phase 2
         self.grounding_enabled: bool = data.get("grounding_enabled", True)
         self.critic_enabled: bool = data.get("critic_enabled", False)
         self.critic_model: str | None = data.get("critic_model") or None
         self.critic_api_base_url: str | None = data.get("critic_api_base_url") or None
+        # Memory System — Phase 2
+        self.ollama_base_url: str = data.get("ollama_base_url", "http://localhost:11434")
+        self.ollama_embed_model: str = data.get("ollama_embed_model", "nomic-embed-text")
+        self.ollama_timeout_s: float = float(data.get("ollama_timeout_s", 5.0))
+        self.learnings_top_k: int = int(data.get("learnings_top_k", 5))
+        self.learnings_max_tokens: int = int(data.get("learnings_max_tokens", 2000))
         raw_data_dir = data.get("data_dir")
         if raw_data_dir:
             self.data_dir = Path(raw_data_dir).expanduser()

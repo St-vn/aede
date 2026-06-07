@@ -91,6 +91,10 @@ class Session:
         db.update_session_status(self.id, "archived")
         self.status = "archived"
 
+    def delete(self, db: Any) -> None:
+        """Permanently delete this session and all its data from the DB."""
+        db.delete_session(self.id)
+
     def set_active(self, db: Any) -> None:
         """Mark the session as active in the DB and update local state."""
         db.update_session_status(self.id, "active")
