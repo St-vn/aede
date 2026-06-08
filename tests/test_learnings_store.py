@@ -1,119 +1,166 @@
+"""
+Tests for LearningsStore — T-03 (write_learning JSONL) and T-04 (provenance + schema).
+
+TDD: these tests are written FIRST and must fail before implementation.
+"""
+from __future__ import annotations
+import json
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock
 
 
-def test_write_learning_append(tmp_path):
-    """write_learning appends a JSONL line with all required fields."""
-    from aede.memory.store import LearningsStore, LearningType, LearningSource
+# ---------------------------------------------------------------------------
+# T-03: write_learning append path
+# ---------------------------------------------------------------------------
 
-    store = LearningsStore(tmp_path / "learnings.jsonl")
+
+def test_write_learning_append(tmp_home):
+    """write_learning appends one JSONL line with all required fields."""
+    from aede.config import bootstrap
+    from aede.memory.store import LearningsStore
+
+    bootstrap(tmp_home)
+    data_dir = tmp_home / "data"
+    store = LearningsStore(data_dir)
+
     store.write_learning(
-        type=LearningType.ANTI_PATTERN,
-        content="Avoid using bare except clauses",
-        source=LearningSource.USER,
-        source_session_id="session-001",
+        type="anti-pattern",
+        content="Never do X when Y is true.",
+        source="user",
+        source_session_id="01SESSION000000000000000S1",
     )
 
-    lines = store._path.read_text().strip().split("\n")
-    assert len(lines) == 1
+    jsonl_path = data_dir / "learnings.jsonl"
+    assert jsonl_path.exists(), "learnings.jsonl was not created"
 
-    import json
-    data = json.loads(lines[0])
-    assert data["type"] == "anti-pattern"
-    assert data["content"] == "Avoid using bare except clauses"
-    assert data["source"] == "user"
-    assert data["source_session_id"] == "session-001"
-    assert data["trusted"] is False
-    assert "id" in data
-    assert "created_at" in data
+    lines = [l for l in jsonl_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(lines) == 1, f"Expected 1 JSONL line, got {len(lines)}"
 
+    record = json.loads(lines[0])
 
-def test_write_learning_multiple(tmp_path):
-    """Multiple writes append sequentially."""
-    from aede.memory.store import LearningsStore, LearningType, LearningSource
-
-    store = LearningsStore(tmp_path / "learnings.jsonl")
-    store.write_learning(LearningType.ROOT_CAUSE, "First", LearningSource.USER, "s1")
-    store.write_learning(LearningType.FAILED_APPROACH, "Second", LearningSource.AUTO_LEARNED, "s2")
-
-    lines = store._path.read_text().strip().split("\n")
-    assert len(lines) == 2
-    import json
-    assert json.loads(lines[0])["content"] == "First"
-    assert json.loads(lines[1])["content"] == "Second"
+    # Required fields
+    assert "id" in record, "Missing 'id' field"
+    assert isinstance(record["id"], str) and len(record["id"]) > 0
+    assert "created_at" in record, "Missing 'created_at' field"
+    assert isinstance(record["created_at"], int), "'created_at' must be an int (ms epoch)"
+    assert "type" in record and record["type"] == "anti-pattern"
+    assert "content" in record and record["content"] == "Never do X when Y is true."
+    assert "source" in record and record["source"] == "user"
+    assert "source_session_id" in record and record["source_session_id"] == "01SESSION000000000000000S1"
+    assert "trusted" in record and record["trusted"] is False, "'trusted' must default to False"
 
 
-def test_provenance_fields(tmp_path):
-    """Written learning contains source, trusted, source_session_id, verifier_outcome."""
-    from aede.memory.store import LearningsStore, LearningType, LearningSource
+def test_write_learning_appends_multiple(tmp_home):
+    """Each call to write_learning appends a new line — does not overwrite."""
+    from aede.config import bootstrap
+    from aede.memory.store import LearningsStore
 
-    store = LearningsStore(tmp_path / "learnings.jsonl")
+    bootstrap(tmp_home)
+    data_dir = tmp_home / "data"
+    store = LearningsStore(data_dir)
+
+    store.write_learning(type="anti-pattern", content="First", source="user", source_session_id="S1")
+    store.write_learning(type="failed-approach", content="Second", source="auto_learned", source_session_id="S2")
+
+    jsonl_path = data_dir / "learnings.jsonl"
+    lines = [l for l in jsonl_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(lines) == 2, f"Expected 2 JSONL lines, got {len(lines)}"
+
+    first = json.loads(lines[0])
+    second = json.loads(lines[1])
+    assert first["content"] == "First"
+    assert second["content"] == "Second"
+    assert first["id"] != second["id"], "Two learnings must have distinct IDs"
+
+
+# ---------------------------------------------------------------------------
+# T-04: Provenance tagging + schema validation
+# ---------------------------------------------------------------------------
+
+
+def test_provenance_fields(tmp_home):
+    """Written learning contains source, trusted, source_session_id, lower_trust, verifier_outcome."""
+    from aede.config import bootstrap
+    from aede.memory.store import LearningsStore
+
+    bootstrap(tmp_home)
+    data_dir = tmp_home / "data"
+    store = LearningsStore(data_dir)
+
     store.write_learning(
-        type=LearningType.CONFIG_CORRECTION,
-        content="Set context_window to 200000",
-        source=LearningSource.TOOL_ERROR,
-        source_session_id="session-002",
+        type="root-cause",
+        content="The bug was in the parser.",
+        source="test_failure",
+        source_session_id="01SESSION000000000000000S2",
     )
 
-    import json
-    data = json.loads(store._path.read_text().strip())
-    assert data["source"] == "tool_error"
-    assert data["trusted"] is False
-    assert data["lower_trust"] is False
-    assert data["source_session_id"] == "session-002"
-    assert data["verifier_outcome"] is None
+    jsonl_path = data_dir / "learnings.jsonl"
+    lines = [l for l in jsonl_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    record = json.loads(lines[0])
+
+    # Provenance fields per T-04
+    assert record["source"] == "test_failure"
+    assert record["trusted"] is False, "'trusted' default is False"
+    assert record["lower_trust"] is False, "'lower_trust' default is False"
+    assert record["verifier_outcome"] is None, "'verifier_outcome' default is None"
+    assert record["source_session_id"] == "01SESSION000000000000000S2"
 
 
-def test_provenance_type_validation(tmp_path):
-    """Invalid type/source raises ValueError."""
-    from aede.memory.store import LearningsStore, LearningType, LearningSource
+def test_invalid_type_rejected(tmp_home):
+    """write_learning raises ValueError for an invalid 'type'."""
+    from aede.config import bootstrap
+    from aede.memory.store import LearningsStore
 
-    store = LearningsStore(tmp_path / "learnings.jsonl")
+    bootstrap(tmp_home)
+    store = LearningsStore(tmp_home / "data")
+
     with pytest.raises(ValueError, match="type"):
-        store.write_learning("bad_type", "content", LearningSource.USER, "s1")
+        store.write_learning(
+            type="not-a-valid-type",
+            content="Some content.",
+            source="user",
+            source_session_id="S1",
+        )
 
 
-def test_read_all_learnings(tmp_path):
-    """Read all returns list of dicts from JSONL."""
-    from aede.memory.store import LearningsStore, LearningType, LearningSource
+def test_invalid_source_rejected(tmp_home):
+    """write_learning raises ValueError for an invalid 'source'."""
+    from aede.config import bootstrap
+    from aede.memory.store import LearningsStore
 
-    store = LearningsStore(tmp_path / "learnings.jsonl")
-    store.write_learning(LearningType.ANTI_PATTERN, "First", LearningSource.USER, "s1")
-    store.write_learning(LearningType.ROOT_CAUSE, "Second", LearningSource.AUTO_LEARNED, "s2")
+    bootstrap(tmp_home)
+    store = LearningsStore(tmp_home / "data")
 
-    all_items = store.read_all()
-    assert len(all_items) == 2
-    assert all_items[0]["content"] == "First"
-
-
-def test_delete_learning(tmp_path):
-    """Delete removes by id."""
-    from aede.memory.store import LearningsStore, LearningType, LearningSource
-
-    store = LearningsStore(tmp_path / "learnings.jsonl")
-    store.write_learning(LearningType.ANTI_PATTERN, "Keep me", LearningSource.USER, "s1")
-    store.write_learning(LearningType.ROOT_CAUSE, "Delete me", LearningSource.USER, "s2")
-
-    all_items = store.read_all()
-    target_id = all_items[1]["id"]
-    store.delete(target_id)
-
-    remaining = store.read_all()
-    assert len(remaining) == 1
-    assert remaining[0]["content"] == "Keep me"
+    with pytest.raises(ValueError, match="source"):
+        store.write_learning(
+            type="anti-pattern",
+            content="Some content.",
+            source="made_up_source",
+            source_session_id="S1",
+        )
 
 
-def test_update_learning(tmp_path):
-    """Update replaces content by id."""
-    from aede.memory.store import LearningsStore, LearningType, LearningSource
+def test_all_valid_types_accepted(tmp_home):
+    """All four valid type values are accepted without error."""
+    from aede.config import bootstrap
+    from aede.memory.store import LearningsStore
 
-    store = LearningsStore(tmp_path / "learnings.jsonl")
-    store.write_learning(LearningType.ANTI_PATTERN, "Old content", LearningSource.USER, "s1")
+    bootstrap(tmp_home)
+    store = LearningsStore(tmp_home / "data")
 
-    all_items = store.read_all()
-    target_id = all_items[0]["id"]
-    store.update(target_id, content="Updated content")
+    valid_types = ["anti-pattern", "failed-approach", "root-cause", "config-correction"]
+    for t in valid_types:
+        store.write_learning(type=t, content=f"Content for {t}", source="user", source_session_id="S1")
 
-    updated = store.read_all()
-    assert updated[0]["content"] == "Updated content"
+
+def test_all_valid_sources_accepted(tmp_home):
+    """All four valid source values are accepted without error."""
+    from aede.config import bootstrap
+    from aede.memory.store import LearningsStore
+
+    bootstrap(tmp_home)
+    store = LearningsStore(tmp_home / "data")
+
+    valid_sources = ["user", "auto_learned", "test_failure", "tool_error"]
+    for s in valid_sources:
+        store.write_learning(type="anti-pattern", content=f"Content for {s}", source=s, source_session_id="S1")

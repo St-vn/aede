@@ -41,32 +41,178 @@ def build_header(model: str, session_id: str) -> str:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Parse CLI arguments. Accepts an optional first task as a positional arg."""
-    parser = argparse.ArgumentParser(prog="aede", description="Personal AI agent CLI")
-    parser.add_argument("task", nargs="?", default=None, help="Optional first message")
-    parser.add_argument("--version", action="version", version=f"aede {VERSION}")
-    parser.add_argument("--import", dest="import_action", choices=["claude-code", "opencode"],
-                        help="Import an agent from Claude Code or OpenCode")
-    parser.add_argument("--src", type=Path, help="Path to the source agent .md file")
-    parser.add_argument("--dest", type=Path, default=None, help="Output directory (default: ~/.aede/agents/)")
+    """Parse CLI arguments.
 
-    # Task 8: serve support
-    parser.add_argument("--serve", action="store_true", help="Start the FastAPI backend server")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind the server to")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to")
+    Supports:
+    1. ``aede [task]`` — launch the REPL (with optional first message).
+    2. ``aede memory <subcommand> [args]`` — synchronous memory management.
+    3. ``aede --import claude-code --src ...`` — import agents.
+    4. ``aede --serve`` — start the FastAPI backend server.
 
-    return parser.parse_args(argv)
+    Peek at the first argv token to handle ``memory`` subcommand vs positional task.
+    """
+    effective_argv: list[str] = sys.argv[1:] if argv is None else list(argv)
+    first = effective_argv[0] if effective_argv else None
+
+    if first == "memory":
+        parser = argparse.ArgumentParser(prog="aede", description="Personal AI agent CLI")
+        parser.add_argument("--version", action="version", version=f"aede {VERSION}")
+        subparsers = parser.add_subparsers(dest="command")
+        mem_parser = subparsers.add_parser("memory", help="Manage stored learnings")
+        mem_sub = mem_parser.add_subparsers(dest="memory_subcommand")
+        mem_sub.add_parser("list", help="List all learnings")
+        show_p = mem_sub.add_parser("show", help="Show one learning by id")
+        show_p.add_argument("id", help="Learning id")
+        del_p = mem_sub.add_parser("delete", help="Delete a learning by id")
+        del_p.add_argument("id", help="Learning id")
+        edit_p = mem_sub.add_parser("edit", help="Edit a learning in $EDITOR")
+        edit_p.add_argument("id", help="Learning id")
+        ns = parser.parse_args(effective_argv)
+        if not hasattr(ns, "task"):
+            ns.task = None
+        return ns
+    else:
+        parser = argparse.ArgumentParser(prog="aede", description="Personal AI agent CLI")
+        parser.add_argument("task", nargs="?", default=None, help="Optional first message")
+        parser.add_argument("--version", action="version", version=f"aede {VERSION}")
+        parser.add_argument("--import", dest="import_action", choices=["claude-code", "opencode"],
+                            help="Import an agent from Claude Code or OpenCode")
+        parser.add_argument("--src", type=Path, help="Path to the source agent .md file")
+        parser.add_argument("--dest", type=Path, default=None, help="Output directory (default: ~/.aede/agents/)")
+        parser.add_argument("--serve", action="store_true", help="Start the FastAPI backend server")
+        parser.add_argument("--host", default="127.0.0.1", help="Host to bind the server to")
+        parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to")
+        ns = parser.parse_args(effective_argv)
+        ns.command = None
+        return ns
+
+
+def run_memory_command(argv: list[str], home: Path) -> None:
+    """Execute a ``memory`` subcommand synchronously."""
+    import sys
+    from aede.config import bootstrap, load_config
+    from aede.memory.store import LearningsStore
+
+    bootstrap(home)
+    cfg = load_config(home=home, project_dir=Path.cwd())
+    store = LearningsStore(cfg.data_dir)
+
+    if not argv:
+        print("Usage: aede memory {list|show <id>|delete <id>|edit <id>}")
+        return
+
+    sub = argv[0]
+    if sub == "list":
+        _memory_list(store)
+    elif sub == "show":
+        if len(argv) < 2:
+            print("Usage: aede memory show <id>")
+            return
+        _memory_show(store, argv[1])
+    elif sub == "delete":
+        if len(argv) < 2:
+            print("Usage: aede memory delete <id>")
+            return
+        _memory_delete(store, argv[1])
+    elif sub == "edit":
+        if len(argv) < 2:
+            print("Usage: aede memory edit <id>")
+            return
+        _memory_edit(store, argv[1])
+    else:
+        print(f"Unknown memory subcommand: {sub!r}")
+
+
+def _memory_list(store: Any) -> None:
+    """Print all learnings in a compact tabular form."""
+    import json as _json
+    records = store.list_all()
+    if not records:
+        print("No learnings stored.")
+        return
+    for r in records:
+        short_content = r.get("content", "")[:60]
+        if len(r.get("content", "")) > 60:
+            short_content += "..."
+        print(f"{r['id']}  [{r['type']}]  {short_content}")
+
+
+def _memory_show(store: Any, learning_id: str) -> None:
+    """Print the full JSON of one learning."""
+    import json as _json
+    record = store.get(learning_id)
+    if record is None:
+        print(f"Error: learning {learning_id!r} not found.")
+        return
+    print(_json.dumps(record, indent=2, ensure_ascii=False))
+
+
+def _memory_delete(store: Any, learning_id: str) -> None:
+    """Delete one learning by id."""
+    removed = store.delete(learning_id)
+    if removed:
+        print(f"Deleted learning {learning_id!r}.")
+    else:
+        print(f"Learning {learning_id!r} not found — nothing deleted.")
+
+
+def _memory_edit(store: Any, learning_id: str) -> None:
+    """Open $EDITOR on a temp file containing the learning JSON; write back on save."""
+    import json as _json
+    import os
+    import subprocess
+    import tempfile
+
+    record = store.get(learning_id)
+    if record is None:
+        print(f"Error: learning {learning_id!r} not found.")
+        return
+
+    editor = os.environ.get("EDITOR")
+    if not editor:
+        import sys as _sys
+        editor = "notepad.exe" if _sys.platform == "win32" else "vi"
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(_json.dumps(record, indent=2, ensure_ascii=False))
+        tmp_path = Path(tmp.name)
+
+    try:
+        subprocess.run([editor, str(tmp_path)])
+        try:
+            updated = _json.loads(tmp_path.read_text(encoding="utf-8"))
+        except _json.JSONDecodeError as exc:
+            print(f"Error: edited file is not valid JSON — changes discarded. ({exc})")
+            return
+        store.update(learning_id, updated)
+        print(f"Learning {learning_id!r} updated.")
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
 
 
 def main() -> None:
     """Setuptools entry-point: parse args and hand off to the async run loop."""
     args = parse_args()
+    if args.command == "memory":
+        home = Path(os.environ.get("AEDE_HOME", str(Path.home() / ".aede")))
+        mem_argv = []
+        if args.memory_subcommand:
+            mem_argv.append(args.memory_subcommand)
+            if hasattr(args, "id") and args.id:
+                mem_argv.append(args.id)
+        run_memory_command(mem_argv, home)
+        return
+
     if args.import_action:
         _handle_import(args)
         return
 
-    # Support both 'aede serve' and 'aede --serve'
-    if args.serve or args.task == "serve":
+    if args.serve or (args.task and args.task == "serve"):
         _handle_serve_cmd(args)
         return
 
@@ -234,6 +380,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         _gate_store=gate_store,
         _agent_registry=agent_registry,
         _session_id=session.id,
+        data_dir=cfg.data_dir,
     )
     router.set_auto_approved(cfg.auto_approve)
 
@@ -264,6 +411,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         session_notes=session_notes,
         prior_messages=prior_messages,
         skills=list(skill_registry.values()) if skill_registry else None,
+        initial_task=initial_task,
     )
 
     console.print(build_header(model=cfg.model, session_id=session.id))

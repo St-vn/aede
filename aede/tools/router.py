@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from aede.db import DB
 
 
@@ -52,11 +53,13 @@ class ToolRouter:
         _gate_store: Any = None,
         _agent_registry: dict[str, Any] | None = None,
         _session_id: str | None = None,
+        data_dir: "Path | None" = None,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
         self._max_tokens = tool_output_max_tokens
         self._db = db
+        self._data_dir = data_dir
         self._session_auto_approve: set[str] = set()
         self._cfg = _cfg
         self._gate_store = _gate_store
@@ -87,12 +90,10 @@ class ToolRouter:
 
         from aede.tools.search import session_search
         _db = self._db
-        if _db:
-            reg["session_search"] = lambda args: session_search(args, db=_db)
-        else:
-            reg["session_search"] = lambda args: "[session_search: no database available]"
+        reg["session_search"] = lambda args: session_search(args, db=_db)
 
-        reg["write_learning"] = lambda args: "[write_learning: config must provide store]"
+        _data_dir = self._data_dir
+        reg["write_learning"] = lambda args: _write_learning_tool(args, data_dir=_data_dir)
 
         if self._cfg is not None and self._gate_store is not None:
             _agent_defs = self._agent_registry
@@ -128,8 +129,6 @@ class ToolRouter:
                 else:
                     return asyncio.run(coro)
             reg["spawn_subagent"] = _spawn
-        else:
-            reg["spawn_subagent"] = lambda args: "[spawn_subagent: not configured]"
 
         return reg
 
@@ -280,53 +279,41 @@ class ToolRouter:
         return schemas
 
 
-def session_search(db: Any = None, query: str = "", limit: int = 5) -> str:
-    """Search session history via FTS5 and return message context windows."""
-    if db is None:
-        return "[session_search: no database available]"
-    try:
-        rows = db.con.execute(
-            "SELECT m.id, m.session_id, m.role, m.content, m.created_at, s.title "
-            "FROM messages m JOIN sessions s ON m.session_id = s.id "
-            "WHERE m.rowid IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?) "
-            "ORDER BY m.created_at DESC LIMIT ?",
-            (query, limit),
-        ).fetchall()
-    except Exception:
-        rows = db.con.execute(
-            "SELECT m.id, m.session_id, m.role, m.content, m.created_at, s.title "
-            "FROM messages m JOIN sessions s ON m.session_id = s.id "
-            "WHERE m.content LIKE ? ORDER BY m.created_at DESC LIMIT ?",
-            (f"%{query}%", limit),
-        ).fetchall()
-
-    if not rows:
-        return f"No results found for: {query}"
-
-    parts = []
-    for r in rows:
-        parts.append(f"Session: {r['session_id']} ({r['title'] or 'untitled'})")
-        parts.append(f"Role: {r['role']}  |  {r['content'][:200]}")
-        parts.append("")
-    return "\n".join(parts)
+_CODE_LEARNING_TYPES = frozenset({"anti-pattern", "failed-approach"})
 
 
-def write_learning(type: str = "", content: str = "", source: str = "", source_session_id: str = "") -> str:
-    """Write a learning to the learnings store."""
-    try:
-        from aede.memory.store import LearningsStore
-        from aede.config import _aede_home
-        store_path = _aede_home() / "learnings.jsonl"
-        store = LearningsStore(store_path)
-        store.write_learning(
-            type=type,
-            content=content,
-            source=source,
-            source_session_id=source_session_id or "",
+def _write_learning_tool(args: dict[str, Any], data_dir: "Path | None") -> str:
+    """Tool implementation for write_learning with verifier integration."""
+    if data_dir is None:
+        raise RuntimeError(
+            "write_learning: no data_dir configured — ToolRouter was constructed without data_dir"
         )
-        return f"Learning saved: {content[:100]}..."
-    except Exception as e:
-        return f"[write_learning error: {e}]"
+
+    from pathlib import Path as _Path
+    from aede.memory.store import LearningsStore
+    from aede.memory.verifier import Verifier
+
+    store = LearningsStore(_Path(data_dir))
+    record = store.write_learning(
+        type=args["type"],
+        content=args["content"],
+        source=args["source"],
+        source_session_id=args.get("source_session_id", ""),
+    )
+
+    try:
+        learning_type: str = args["type"]
+        verifier = Verifier()
+        if learning_type in _CODE_LEARNING_TYPES:
+            verdict = verifier.run_code_verify(record)
+        else:
+            verdict = verifier.run_llm_verify(record)
+        updated_record = {**record, **verdict}
+        store.update(record["id"], updated_record)
+    except Exception:
+        pass
+
+    return f"Learning written: id={record['id']} type={record['type']!r} source={record['source']!r}"
 
 
 _TOOL_SCHEMAS: dict[str, dict] = {
@@ -425,7 +412,7 @@ _TOOL_SCHEMAS: dict[str, dict] = {
     },
     "spawn_subagent": {
         "name": "spawn_subagent",
-        "description": "Spawn a subagent to work on a task independently. Provide the agent_name (must match a loaded agent) and the task description.",
+        "description": "Spawn a subagent to work on a task independently.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -459,14 +446,35 @@ _TOOL_SCHEMAS: dict[str, dict] = {
     },
     "write_learning": {
         "name": "write_learning",
-        "description": "Persist a learning/insight to the learnings store for future sessions. Gate-required: always requires user approval.",
+        "description": (
+            "Persist a learning (an insight, anti-pattern, root-cause, or config correction) "
+            "to the long-term learnings store.  This is a memory write — it requires user approval."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "type": {"type": "string", "enum": ["anti-pattern", "failed-approach", "root-cause", "config-correction"]},
-                "content": {"type": "string", "description": "The learning content."},
-                "source": {"type": "string", "enum": ["user", "auto_learned", "test_failure", "tool_error"]},
-                "source_session_id": {"type": "string", "description": "Session ID where the learning was discovered."},
+                "type": {
+                    "type": "string",
+                    "description": (
+                        "Category of learning. "
+                        "'anti-pattern', 'failed-approach', 'root-cause', 'config-correction'."
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Free-text body of the learning.",
+                },
+                "source": {
+                    "type": "string",
+                    "description": (
+                        "Origin of the learning. "
+                        "'user', 'auto_learned', 'test_failure', 'tool_error'."
+                    ),
+                },
+                "source_session_id": {
+                    "type": "string",
+                    "description": "ID of the session that produced this learning (optional).",
+                },
             },
             "required": ["type", "content", "source"],
         },

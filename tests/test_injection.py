@@ -1,36 +1,145 @@
+"""
+Tests for build_learnings_suffix — T-14 injection (additional coverage).
+
+These supplement the injection tests in test_retrieval.py with edge cases.
+"""
+from __future__ import annotations
 import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch, MagicMock
 
 
-@pytest.mark.asyncio
-async def test_build_learnings_suffix_formats_markdown(tmp_path):
-    """build_learnings_suffix produces markdown with ## Lessons from Prior Runs."""
+def _make_db(tmp_home):
+    from aede.config import bootstrap
+    from aede.db import DB
+
+    bootstrap(tmp_home)
+    db_path = tmp_home / "data" / "aede.db"
+    return DB(db_path)
+
+
+def test_empty_store_returns_empty_string(tmp_home):
+    """build_learnings_suffix returns '' when there are no learnings."""
+    import aede.memory.retrieval as retrieval_mod
+    from aede.memory.embeddings import OllamaUnavailable
     from aede.memory.injection import build_learnings_suffix
-    from aede.memory.store import LearningsStore, LearningType, LearningSource
 
-    store = LearningsStore(tmp_path / "learnings.jsonl")
-    store.write_learning(LearningType.ANTI_PATTERN, "Avoid bare except", LearningSource.USER, "s1", trusted=True)
-    store.write_learning(LearningType.ROOT_CAUSE, "Use pathlib", LearningSource.AUTO_LEARNED, "s2", trusted=True)
+    db = _make_db(tmp_home)
+    retrieval_mod._ollama_warned = False
 
-    suffix = await build_learnings_suffix(store=store, task_description="bare except", max_tokens=2000)
+    with patch("aede.memory.retrieval._get_ollama_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.embed_text.side_effect = OllamaUnavailable("down")
+        mock_get_client.return_value = mock_client
 
-    assert "## Lessons from Prior Runs" in suffix
-    assert "Avoid bare except" in suffix
+        suffix = build_learnings_suffix("some task", db=db, max_tokens=2000)
+
+    assert suffix == "", f"Expected empty string, got: {suffix!r}"
+    db.close()
 
 
-@pytest.mark.asyncio
-async def test_token_cap_respected(tmp_path):
-    """build_learnings_suffix truncates when over token budget."""
+def test_untrusted_learnings_excluded(tmp_home):
+    """build_learnings_suffix never includes untrusted learnings."""
+    import aede.memory.retrieval as retrieval_mod
+    from aede.memory.embeddings import OllamaUnavailable
     from aede.memory.injection import build_learnings_suffix
-    from aede.memory.store import LearningsStore, LearningType, LearningSource
 
-    store = LearningsStore(tmp_path / "learnings.jsonl")
-    for i in range(20):
-        store.write_learning(LearningType.ANTI_PATTERN, f"Long learning content item number {i} " * 20, LearningSource.USER, "s1", trusted=True)
+    db = _make_db(tmp_home)
 
-    suffix = await build_learnings_suffix(store=store, task_description="Long learning content", max_tokens=500)
+    db.insert_learning(
+        id="01INJTRUST000000000000001",
+        type="anti-pattern",
+        content="trusted learning about widgets",
+        source="user",
+        trusted=True,
+        lower_trust=False,
+        verifier_outcome=None,
+        embedding=None,
+    )
+    db.insert_learning(
+        id="01INJUNTRUST00000000000001",
+        type="root-cause",
+        content="untrusted learning about widgets should be hidden",
+        source="auto_learned",
+        trusted=False,
+        lower_trust=False,
+        verifier_outcome=None,
+        embedding=None,
+    )
 
-    assert "Lessons from Prior Runs" in suffix
-    rough_tokens = len(suffix) // 4
-    assert rough_tokens <= 600  # allow some slack
+    retrieval_mod._ollama_warned = False
+
+    with patch("aede.memory.retrieval._get_ollama_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.embed_text.side_effect = OllamaUnavailable("down")
+        mock_get_client.return_value = mock_client
+
+        suffix = build_learnings_suffix("widgets", db=db, max_tokens=2000)
+
+    assert "untrusted" not in suffix.lower() or "hidden" not in suffix, (
+        "Untrusted learning content appeared in suffix"
+    )
+    db.close()
+
+
+def test_lower_trust_provenance_note(tmp_home):
+    """lower_trust=True learning gets 'may be imperfect' note."""
+    import aede.memory.retrieval as retrieval_mod
+    from aede.memory.embeddings import OllamaUnavailable
+    from aede.memory.injection import build_learnings_suffix
+
+    db = _make_db(tmp_home)
+
+    db.insert_learning(
+        id="01INJLOWTR00000000000001",
+        type="anti-pattern",
+        content="lower trust content pattern mention",
+        source="user",
+        trusted=True,
+        lower_trust=True,
+        verifier_outcome=None,
+        embedding=None,
+    )
+
+    retrieval_mod._ollama_warned = False
+
+    with patch("aede.memory.retrieval._get_ollama_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.embed_text.side_effect = OllamaUnavailable("down")
+        mock_get_client.return_value = mock_client
+
+        suffix = build_learnings_suffix("pattern mention", db=db, max_tokens=2000)
+
+    assert "may be imperfect" in suffix, f"Expected 'may be imperfect' note, got: {suffix!r}"
+    db.close()
+
+
+def test_normal_trust_provenance_note(tmp_home):
+    """lower_trust=False learning gets 'verified by test' note."""
+    import aede.memory.retrieval as retrieval_mod
+    from aede.memory.embeddings import OllamaUnavailable
+    from aede.memory.injection import build_learnings_suffix
+
+    db = _make_db(tmp_home)
+
+    db.insert_learning(
+        id="01INJNORMTR0000000000001",
+        type="anti-pattern",
+        content="normal trust content pattern mention",
+        source="user",
+        trusted=True,
+        lower_trust=False,
+        verifier_outcome=None,
+        embedding=None,
+    )
+
+    retrieval_mod._ollama_warned = False
+
+    with patch("aede.memory.retrieval._get_ollama_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.embed_text.side_effect = OllamaUnavailable("down")
+        mock_get_client.return_value = mock_client
+
+        suffix = build_learnings_suffix("pattern mention", db=db, max_tokens=2000)
+
+    assert "verified by test" in suffix, f"Expected 'verified by test' note, got: {suffix!r}"
+    db.close()

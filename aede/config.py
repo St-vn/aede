@@ -24,14 +24,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "model_prices": {},
     "api_base_url": None,  # None = Anthropic direct; set to OpenAI-compatible base URL (e.g. https://openrouter.ai/api/v1) for non-Anthropic models via OpenAI SDK
     # Basic Correctness — Phase 2
-    "grounding_enabled": True,   # Append grounding instruction to system prompt suffix
-    "critic_enabled": False,     # Run a critic LLM pass before gated writes (opt-in; costs an extra call)
-    "critic_model": None,        # str | None — None → same-model persona fallback
-    "critic_api_base_url": None, # str | None — None → use main provider routing
-    # Memory System — Phase 2
+    "grounding_enabled": True,
+    "critic_enabled": False,
+    "critic_model": None,
+    "critic_api_base_url": None,
+    # Ollama embedding settings (Phase 2 Memory)
     "ollama_base_url": "http://localhost:11434",
     "ollama_embed_model": "nomic-embed-text",
-    "ollama_timeout_s": 5.0,
+    "ollama_timeout_s": 5,
+    # Learnings retrieval settings (Phase 2 Memory)
     "learnings_top_k": 5,
     "learnings_max_tokens": 2000,
 }
@@ -114,12 +115,13 @@ class AedeConfig:
         self.critic_enabled: bool = data.get("critic_enabled", False)
         self.critic_model: str | None = data.get("critic_model") or None
         self.critic_api_base_url: str | None = data.get("critic_api_base_url") or None
-        # Memory System — Phase 2
-        self.ollama_base_url: str = data.get("ollama_base_url", "http://localhost:11434")
-        self.ollama_embed_model: str = data.get("ollama_embed_model", "nomic-embed-text")
-        self.ollama_timeout_s: float = float(data.get("ollama_timeout_s", 5.0))
-        self.learnings_top_k: int = int(data.get("learnings_top_k", 5))
-        self.learnings_max_tokens: int = int(data.get("learnings_max_tokens", 2000))
+        # Ollama embedding settings
+        self.ollama_base_url: str = data.get("ollama_base_url", DEFAULT_CONFIG["ollama_base_url"])
+        self.ollama_embed_model: str = data.get("ollama_embed_model", DEFAULT_CONFIG["ollama_embed_model"])
+        self.ollama_timeout_s: int = data.get("ollama_timeout_s", DEFAULT_CONFIG["ollama_timeout_s"])
+        # Learnings retrieval settings
+        self.learnings_top_k: int = data.get("learnings_top_k", DEFAULT_CONFIG["learnings_top_k"])
+        self.learnings_max_tokens: int = data.get("learnings_max_tokens", DEFAULT_CONFIG["learnings_max_tokens"])
         raw_data_dir = data.get("data_dir")
         if raw_data_dir:
             self.data_dir = Path(raw_data_dir).expanduser()

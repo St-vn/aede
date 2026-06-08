@@ -91,6 +91,10 @@ def build_system_prompt(
         is_resume: Whether this session was loaded from a prior run.
         session_notes: Free-text notes persisted across compaction boundaries.
         compaction_summary: LLM-generated summary from the most recent compaction.
+        learnings_suffix: Optional markdown block from build_learnings_suffix.
+            When present and non-empty, appended to dynamic_parts AFTER the
+            ## Session block (and after session notes/compaction summary).
+            Kept in .dynamic, NOT .stable — cache breakpoint stays put.
 
     Returns:
         SystemPrompt with .stable and .dynamic fields.
@@ -136,7 +140,7 @@ def build_system_prompt(
             dynamic_parts += ["", f"### {s.name}", "", s.description]
 
     if learnings_suffix:
-        dynamic_parts += [learnings_suffix]
+        dynamic_parts += ["", learnings_suffix]
 
     return SystemPrompt(
         stable=STABLE_SYSTEM_PROMPT,
@@ -239,12 +243,27 @@ class AgentLoop:
         prior_messages: list[dict] | None = None,
         skills: list[Any] | None = None,
         learnings_suffix: str | None = None,
+        initial_task: str | None = None,
     ) -> None:
         """Build the system prompt and optionally restore prior message history.
+
+        When ``initial_task`` is provided, ``build_learnings_suffix`` is called
+        to retrieve relevant learnings and append them to the dynamic part of
+        the system prompt.  Errors in retrieval are swallowed — a suffix failure
+        must never prevent the session from starting.
 
         Must be called once before the first ``run_turn``.
         """
         self._skills = skills
+        if learnings_suffix is None and initial_task:
+            try:
+                from aede.memory.injection import build_learnings_suffix
+                learnings_suffix = build_learnings_suffix(
+                    initial_task,
+                    db=self._db,
+                ) or None
+            except Exception:
+                learnings_suffix = None
         self._learnings_suffix = learnings_suffix
         self._system_prompt = build_system_prompt(
             cfg=self._cfg,
@@ -254,6 +273,7 @@ class AgentLoop:
             is_resume=is_resume,
             session_notes=session_notes,
             compaction_summary=compaction_summary,
+            learnings_suffix=learnings_suffix,
         )
         if prior_messages:
             self._messages = list(prior_messages)
@@ -264,6 +284,13 @@ class AgentLoop:
             from aede.provider import get_provider
             self._provider = get_provider(self._cfg)
         return self._provider
+
+    def _get_trace_logger(self) -> Any:
+        """Lazily instantiate and cache the TraceLogger for this session."""
+        if self._trace_logger is None:
+            from aede.trace.logger import TraceLogger  # lazy
+            self._trace_logger = TraceLogger(self._cfg.data_dir / "traces")
+        return self._trace_logger
 
     async def run_turn(self, user_input: str) -> None:
         """Process one user turn end-to-end.
@@ -297,6 +324,14 @@ class AgentLoop:
         # be retried ONCE after injecting the ToolParamError back as a result.
         validation_retry: dict[str, int] = {}
 
+        # T-13x — GEPA trace accumulators (reset per turn)
+        _trace_input_tokens: int = 0
+        _trace_output_tokens: int = 0
+        _trace_cached_tokens: int = 0
+        _trace_tool_calls: list[dict] = []
+        _trace_reasoning_text: str = ""
+        _trace_outcome: str = "completed"
+
         while True:
             resp = await self._stream_response()
             if resp is None:
@@ -309,10 +344,16 @@ class AgentLoop:
                 cached_tokens=resp.cached_tokens,
             )
 
+            # T-13x — accumulate token totals across all iterations of this turn
+            _trace_input_tokens += resp.input_tokens
+            _trace_output_tokens += resp.output_tokens
+            _trace_cached_tokens += resp.cached_tokens
+
             text_response = resp.text
             tool_calls = resp.tool_calls  # list of {"id", "name", "input"}
 
             if text_response:
+                _trace_reasoning_text = text_response
                 assist_id = str(ULID())
                 self._db.insert_message(
                     id=assist_id,
@@ -428,6 +469,8 @@ class AgentLoop:
                     validation_retry[val_key] = validation_retry.get(val_key, 0) + 1
                     if validation_retry[val_key] > 1:
                         self._console.print("[yellow]⚠ Agent is stuck on an invalid tool call. Intervene or /clear to start over.[/yellow]")
+                        _trace_outcome = "stuck"
+                        self._write_turn_trace(_trace_input_tokens, _trace_output_tokens, _trace_cached_tokens, _trace_tool_calls, _trace_reasoning_text, _trace_outcome)
                         return
                     self._console.print(f"[yellow]⚠ Param validation failed for {tool_name!r}: {ve}[/yellow]")
                     tool_results.append({
@@ -451,11 +494,21 @@ class AgentLoop:
                     "duration_ms": result.duration_ms,
                 })
 
+                # T-13x — record tool call for trace
+                _trace_tool_calls.append({
+                    "name": tool_name,
+                    "args": tool_input,
+                    "result": result.output[:200],
+                    "duration_ms": result.duration_ms,
+                })
+
                 call_key = f"{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
                 if result.status == "error":
                     retry_count[call_key] = retry_count.get(call_key, 0) + 1
                     if retry_count[call_key] >= 3:
                         self._console.print("[yellow]⚠ Agent is stuck on a failing tool call. Intervene or /clear to start over.[/yellow]")
+                        _trace_outcome = "stuck"
+                        self._write_turn_trace(_trace_input_tokens, _trace_output_tokens, _trace_cached_tokens, _trace_tool_calls, _trace_reasoning_text, _trace_outcome)
                         return
                 else:
                     retry_count.pop(call_key, None)
@@ -469,6 +522,41 @@ class AgentLoop:
 
             if tool_results:
                 self._messages.append({"role": "user", "content": tool_results})
+
+        # T-13x — write one trace record for the completed turn
+        self._write_turn_trace(
+            _trace_input_tokens,
+            _trace_output_tokens,
+            _trace_cached_tokens,
+            _trace_tool_calls,
+            _trace_reasoning_text,
+            _trace_outcome,
+        )
+
+    def _write_turn_trace(
+        self,
+        input_tokens: int,
+        output_tokens: int,
+        cached_tokens: int,
+        tool_calls: list,
+        reasoning_text: str,
+        outcome: str,
+    ) -> None:
+        """Write one GEPA trace record for the current turn.  Defensive — never crashes run_turn."""
+        try:
+            logger = self._get_trace_logger()
+            logger.write_turn_trace(
+                session_id=self._session.id,
+                turn_number=self._turn,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                tool_calls=tool_calls,
+                reasoning_text=reasoning_text,
+                outcome=outcome,
+            )
+        except Exception:
+            self._console.print("[dim]⚠ trace write failed[/dim]")
 
     # Transient HTTP status codes that warrant a retry.
     _TRANSIENT_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503})

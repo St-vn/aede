@@ -1,38 +1,72 @@
+"""
+Learnings injection for aede system prompt — Phase 2 Memory Phase C.
+
+Provides build_learnings_suffix() which retrieves relevant learnings and
+formats them as a markdown block for appending to the system prompt.
+"""
 from __future__ import annotations
-from typing import Any
+
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from aede.db import DB
+
+_CHARS_PER_TOKEN = 4  # consistent with router._truncate estimate
+_HEADER = "## Lessons from Prior Runs\n"
 
 
-async def build_learnings_suffix(
-    store: Any,
+def build_learnings_suffix(
     task_description: str,
+    db: "DB",
     max_tokens: int = 2000,
 ) -> str:
-    """Build a markdown suffix of relevant learnings within token budget."""
-    from aede.memory.retrieval import hybrid_retrieve
+    """Build a markdown block of relevant learnings for the system prompt.
 
-    results = await hybrid_retrieve(store=store, query=task_description, k=10, trusted_only=True)
+    Calls ``hybrid_retrieve`` to find the most relevant trusted learnings for
+    *task_description*, formats them under a standard header, and truncates
+    from the least-relevant end if the result would exceed *max_tokens*.
+
+    Args:
+        task_description: The current task — used as the retrieval query.
+        db: DB instance.
+        max_tokens: Token budget (estimated at ~4 chars/token).
+
+    Returns:
+        A markdown string starting with ``## Lessons from Prior Runs``, or an
+        empty string if no relevant learnings are found.
+    """
+    from aede.memory.retrieval import hybrid_retrieve  # lazy
+
+    results = hybrid_retrieve(task_description, db=db, trusted_only=True)
 
     if not results:
         return ""
 
-    parts = ["", "## Lessons from Prior Runs", ""]
-    budget_chars = max_tokens * 4
+    char_budget = max_tokens * _CHARS_PER_TOKEN
+    lines: list[str] = [_HEADER]
+    used_chars = len(_HEADER)
 
-    for r in results:
-        learning = r["learning"]
-        provenance = ""
-        if learning.get("verifier_outcome") == "pass":
-            provenance = " *(verified by test)*"
-        elif learning.get("lower_trust"):
-            provenance = " *(verified by LLM coherence)*"
+    for row in results:
+        content: str = row.get("content", "")
+        lower_trust: bool = bool(row.get("lower_trust"))
 
-        line = f"- [{learning['type']}] {learning['content']}{provenance}"
-        line_chars = len(line) + 1
+        if lower_trust:
+            provenance = "verified by LLM coherence (may be imperfect)"
+        else:
+            provenance = "verified by test"
 
-        current_total = sum(len(p) for p in parts)
-        if current_total + line_chars > budget_chars:
+        entry = f"- {content} *({provenance})*\n"
+
+        if used_chars + len(entry) > char_budget:
+            # Truncate this entry to fit remaining budget
+            remaining = char_budget - used_chars
+            if remaining > 20:
+                entry = entry[: remaining - 3] + "...\n"
+                lines.append(entry)
             break
 
-        parts.append(line)
+        lines.append(entry)
+        used_chars += len(entry)
 
-    return "\n".join(parts)
+    result = "".join(lines)
+    return result
