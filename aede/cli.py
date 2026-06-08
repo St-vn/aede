@@ -207,7 +207,6 @@ def main() -> None:
                 mem_argv.append(args.id)
         run_memory_command(mem_argv, home)
         return
-
     if args.import_action:
         _handle_import(args)
         return
@@ -384,6 +383,23 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     )
     router.set_auto_approved(cfg.auto_approve)
 
+    # MCP server bridge
+    mcp_bridge: Any = None
+    mcp_servers = getattr(cfg, "mcp_servers", {})
+    if mcp_servers:
+        try:
+            from aede.mcp.client import MCPBridge
+            mcp_bridge = MCPBridge(servers=mcp_servers)
+            failed = await mcp_bridge.spawn_all()
+            if failed:
+                console.print(f"[yellow]⚠ MCP servers failed to start: {', '.join(failed)}[/yellow]")
+            discovered = mcp_bridge.discovered_tools()
+            if discovered:
+                router._mcp_bridge = mcp_bridge
+                router.register_mcp_tools(discovered)
+                console.print(f"[dim]MCP: {len(discovered)} tools from {len(mcp_servers)} servers[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]⚠ MCP bridge error: {e}[/yellow]")
     tracker = TokenTracker(session_id=session.id, db=db)
 
     price_cache = PriceCache(home / "cache" / "model_prices.json")
@@ -423,6 +439,11 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         nonlocal stop_reason
         stop_reason = "ctrl_c"
         console.print("\n[dim]Interrupted.[/dim]")
+        if mcp_bridge is not None:
+            try:
+                mcp_bridge.shutdown_all()
+            except Exception:
+                pass
         _shutdown(session, db, rollout, stop_reason)
         sys.exit(0)
 
@@ -492,6 +513,12 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
 
         _maybe_set_title(session, db, user_input)
         await _run_turn_safe(agent, user_input, console)
+
+    if mcp_bridge is not None:
+        try:
+            mcp_bridge.shutdown_all()
+        except Exception:
+            pass
 
     _shutdown(session, db, rollout, stop_reason)
 

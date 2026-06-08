@@ -35,6 +35,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Learnings retrieval settings (Phase 2 Memory)
     "learnings_top_k": 5,
     "learnings_max_tokens": 2000,
+    # MCP server configurations
+    "mcp_servers": {},
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -122,6 +124,10 @@ class AedeConfig:
         # Learnings retrieval settings
         self.learnings_top_k: int = data.get("learnings_top_k", DEFAULT_CONFIG["learnings_top_k"])
         self.learnings_max_tokens: int = data.get("learnings_max_tokens", DEFAULT_CONFIG["learnings_max_tokens"])
+        # MCP server configurations
+        raw_mcp = data.get("mcp_servers") or {}
+        from aede.mcp.client import _parse_mcp_servers
+        self.mcp_servers = _parse_mcp_servers(raw_mcp)
         raw_data_dir = data.get("data_dir")
         if raw_data_dir:
             self.data_dir = Path(raw_data_dir).expanduser()
