@@ -12,7 +12,7 @@ export function useWebSocket(
 
   useEffect(() => {
     if (!sessionId) return
-    const socket = new WebSocket(`${WS_BASE}/ws/turn`)
+    const socket = new WebSocket(`${WS_BASE}/ws/sessions/${sessionId}`)
     ws.current = socket
     socket.onmessage = (e) => onEvent(JSON.parse(e.data) as WSEvent)
     return () => { socket.close(); ws.current = null }
