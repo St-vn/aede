@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react'
 import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent } from '@/components/ui/popover'
-import { Terminal, Cog, Compass, HelpCircle, Ban, FlaskConical, Puzzle } from 'lucide-react'
+import { Terminal, Cog, Compass, FlaskConical, Puzzle } from 'lucide-react'
 
 interface SlashCommand {
   trigger: string
@@ -32,22 +32,6 @@ interface Props {
   onSelect: (command: string) => void
   searchQuery: string
   triggerRef: React.RefObject<HTMLElement | null>
-}
-
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  session: <Terminal className="w-3.5 h-3.5" />,
-  discovery: <Compass className="w-3.5 h-3.5" />,
-  config: <Cog className="w-3.5 h-3.5" />,
-  skills: <FlaskConical className="w-3.5 h-3.5" />,
-  mcp: <Puzzle className="w-3.5 h-3.5" />,
-}
-
-const CATEGORY_LABELS: Record<string, string> = {
-  session: 'Session',
-  discovery: 'Discovery',
-  config: 'Config',
-  skills: 'Skills',
-  mcp: 'MCP Tools',
 }
 
 export function SlashCommandPicker({ open, onOpenChange, onSelect, searchQuery, triggerRef }: Props) {
@@ -80,20 +64,15 @@ export function SlashCommandPicker({ open, onOpenChange, onSelect, searchQuery, 
         initialFocus={false}
         anchor={triggerRef}
       >
-        {searchQuery && (
-          <div className="px-3 py-1.5 text-[11px] text-muted-foreground/50 border-b border-border font-mono">
-            /{searchQuery}
+        {!hasResults ? (
+          <div className="py-6 px-4 text-center text-xs text-muted-foreground">
+            No matching commands
           </div>
-        )}
-        <Command className="bg-transparent" shouldFilter={false}>
-          <CommandList className="max-h-[260px] overflow-y-scroll p-1 [scrollbar-width:thin]">
-            {!hasResults ? (
-              <div className="py-6 px-4 text-center text-xs text-muted-foreground">
-                No matching commands
-              </div>
-            ) : (
-              Object.entries(grouped).map(([category, cmds]) => (
-                <CommandGroup key={category} heading={CATEGORY_LABELS[category] ?? category}>
+        ) : (
+          <Command className="bg-transparent">
+            <CommandList className="max-h-[220px] overflow-y-auto p-1">
+              {Object.entries(grouped).map(([category, cmds]) => (
+                <CommandGroup key={category} heading={category === 'skills' ? 'Skills' : category === 'mcp' ? 'MCP Tools' : category === 'session' ? 'Session' : category === 'discovery' ? 'Discovery' : 'Config'}>
                   {cmds.map(cmd => (
                     <CommandItem
                       key={cmd.trigger}
@@ -105,9 +84,17 @@ export function SlashCommandPicker({ open, onOpenChange, onSelect, searchQuery, 
                       className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-sm
                         ${cmd.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-accent hover:text-accent-foreground'}`}
                     >
-                      <span className="text-muted-foreground shrink-0">
-                        {CATEGORY_ICONS[category]}
-                      </span>
+                      {category === 'session' ? (
+                        <Terminal className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      ) : category === 'discovery' ? (
+                        <Compass className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      ) : category === 'config' ? (
+                        <Cog className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      ) : category === 'skills' ? (
+                        <FlaskConical className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      ) : (
+                        <Puzzle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      )}
                       <span className="font-mono">{cmd.trigger}</span>
                       <span className="flex-1 truncate text-muted-foreground">{cmd.description}</span>
                       {cmd.disabled && (
@@ -118,10 +105,10 @@ export function SlashCommandPicker({ open, onOpenChange, onSelect, searchQuery, 
                     </CommandItem>
                   ))}
                 </CommandGroup>
-              ))
-            )}
-          </CommandList>
-        </Command>
+              ))}
+            </CommandList>
+          </Command>
+        )}
       </PopoverContent>
     </Popover>
   )
