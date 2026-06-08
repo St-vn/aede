@@ -14,7 +14,7 @@ test('useWebSocket connects to /ws/turn', () => {
 
   renderHook(() => useWebSocket('s_test', vi.fn()))
   expect(sockets).toHaveLength(1)
-  expect(sockets[0].url).toContain('/ws/turn')
+  expect(sockets[0].url).toContain('/ws/sessions/s_test')
 })
 
 test('useWebSocket skips connection when sessionId is null', () => {
