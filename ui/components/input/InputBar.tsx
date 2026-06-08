@@ -238,17 +238,10 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
     // Slash command trigger: "/" at position 0 with empty or whitespace-only input
     if (e.key === '/' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       if (ref.current && ref.current.selectionStart === 0 && !text.trim()) {
-        e.preventDefault()
         setSlashOpen(true)
         setSlashQuery('')
         return
       }
-    }
-
-    // Update slash query as user types after /
-    if (slashOpen && text.startsWith('/')) {
-      const query = text.slice(1)
-      setSlashQuery(query)
     }
 
     // Submit on Enter (not Shift+Enter, not when slash picker is open)
