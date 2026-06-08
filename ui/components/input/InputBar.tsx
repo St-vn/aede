@@ -232,6 +232,12 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
       }
     }
     setMentionOpen(false)
+
+    // Slash picker: close if text no longer starts with /
+    if (slashOpen && !val.startsWith('/')) {
+      setSlashOpen(false)
+      setSlashQuery('')
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -276,10 +282,6 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
   useEffect(() => {
     if (slashOpen && text.startsWith('/')) {
       setSlashQuery(text.slice(1))
-    }
-    if (slashOpen && !text.startsWith('/')) {
-      setSlashOpen(false)
-      setSlashQuery('')
     }
   }, [text, slashOpen])
 
