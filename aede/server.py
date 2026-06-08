@@ -161,8 +161,13 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 ]
                 agent.initialize(is_resume=True, prior_messages=prior_messages)
 
+                # Resolve @[filename] mentions before passing to the agent
+                resolved_content = _resolve_file_mentions(content)
+                if resolved_content != content:
+                    await websocket.send_json({"type": "console_message", "content": "Resolved @ file references"})
+
                 # Run the turn in the background so we can still receive gate responses
-                turn_task = asyncio.create_task(agent.run_turn(content))
+                turn_task = asyncio.create_task(agent.run_turn(resolved_content))
                 
                 def on_turn_done(fut):
                     try:
@@ -336,13 +341,92 @@ async def get_token_usage(request: Request, session_id: str | None = None):
     }
 
 
+def _resolve_project_root() -> Path:
+    """Walk up from CWD to find the git root."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True, timeout=5
+        )
+        return Path(result.stdout.strip())
+    except Exception:
+        return Path.cwd()
+
+
+def _has_project_files(path: Path) -> bool:
+    """Check if a directory has recognizable source files."""
+    source_exts = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".c", ".cpp", ".h", ".json", ".yml", ".yaml", ".toml", ".md"}
+    try:
+        for p in path.iterdir():
+            if p.is_file() and p.suffix in source_exts:
+                return True
+            if p.is_dir() and p.name not in (".git", "node_modules", ".venv", "__pycache__"):
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def _project_name() -> str | None:
+    """Derive a human-readable project name from the current context."""
+    root = _resolve_project_root()
+    if root:
+        return root.name
+    cwd = Path.cwd()
+    return cwd.name if cwd.name not in ("", "/") else None
+
+
+import re
+
+_MENTION_RE = re.compile(r"@\[([^\]]+)\]")
+
+
+def _resolve_file_mentions(content: str) -> str:
+    """Replace @[filename] markers with actual file content."""
+    if not _MENTION_RE.search(content):
+        return content
+    root = _resolve_project_root()
+
+    def _replace(m: re.Match) -> str:
+        filename = m.group(1)
+        filepath = root / filename
+        if filepath.is_file() and filepath.stat().st_size < 100_000:
+            try:
+                text = filepath.read_text(encoding="utf-8", errors="replace")
+                return f"\n```\n# {filename}\n{text}\n```\n"
+            except Exception:
+                pass
+        return m.group(0)
+
+    return _MENTION_RE.sub(_replace, content)
+
+
+@app.get("/api/workspace/info")
+async def get_workspace_info():
+    """Return metadata about the current workspace/project context."""
+    cwd = Path.cwd()
+    git_root = _resolve_project_root()
+    project_name = _project_name()
+    if git_root:
+        has_project = git_root != cwd or _has_project_files(cwd)
+    else:
+        has_project = _has_project_files(cwd)
+    return {
+        "cwd": str(cwd),
+        "git_root": str(git_root) if git_root else None,
+        "project_name": project_name,
+        "has_project": has_project,
+    }
+
+
 @app.get("/api/workspace/files")
 async def get_workspace_files():
     """List all tracked and untracked files in the workspace using git with basic walk fallback."""
     import subprocess
     from pathlib import Path
 
-    repo_dir = Path.cwd()
+    repo_dir = _resolve_project_root()
 
     try:
         # Check if .git exists. If not, fallback to directory walk.
