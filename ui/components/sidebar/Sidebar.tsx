@@ -28,7 +28,7 @@ interface SidebarProps {
   onNewSession: () => void
   onDeleteSession?: (id: string) => void
   onResumeBranch?: (id: string) => void
-  onOpenProject?: (dir: string) => void
+  onOpenProject?: (dir: string | null) => void
 }
 
 export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectSession, onNewSession, onDeleteSession, onResumeBranch, onOpenProject }: SidebarProps) {
@@ -206,9 +206,9 @@ export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectS
           onOpenChange={() => setRemovingProject(null)}
           projectDir={removingProject.project_dir}
           projectName={removingProject.display_name}
-          onRemove={() => removeProject.mutate(removingProject.id)}
-          onDeleteFolder={() => deleteFolder.mutate(removingProject.id)}
-          onRemoveGit={() => removeGit.mutate(removingProject.id)}
+          onRemove={() => { removeProject.mutate(removingProject.id); if (activeProjectDir === removingProject.project_dir) onOpenProject?.(null) }}
+          onDeleteFolder={() => { deleteFolder.mutate(removingProject.id); if (activeProjectDir === removingProject.project_dir) onOpenProject?.(null) }}
+          onRemoveGit={() => { removeGit.mutate(removingProject.id); if (activeProjectDir === removingProject.project_dir) onOpenProject?.(null) }}
         />
       )}
     </TooltipProvider>

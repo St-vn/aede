@@ -523,7 +523,11 @@ def _resolve_file_mentions(content: str, workspace: Path | None = None) -> str:
 
     def _replace(m: re.Match) -> str:
         filename = m.group(1)
-        filepath = root / filename
+        filepath = (workspace / filename).resolve()
+        try:
+            filepath.relative_to(workspace.resolve())
+        except ValueError:
+            return m.group(0)
         if filepath.is_file() and filepath.stat().st_size < 100_000:
             try:
                 text = filepath.read_text(encoding="utf-8", errors="replace")
