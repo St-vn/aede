@@ -82,15 +82,14 @@ async def health():
     return {"status": "ok"}
 
 
-@app.websocket("/ws/turn")
-async def websocket_turn(websocket: WebSocket):
-    """Handle interactive agent turns over WebSocket."""
+@app.websocket("/ws/sessions/{session_id}")
+async def websocket_turn(websocket: WebSocket, session_id: str):
+    """Handle interactive agent turns for a specific session over WebSocket."""
     await websocket.accept()
     
     db = app.state.db
     cfg = app.state.cfg
     
-    # Per-connection state
     gate_futures: dict[str, asyncio.Future] = {}
     gate_backend = WebSocketGateBackend(websocket, gate_futures)
     ws_console = WebSocketConsole(websocket)
@@ -101,7 +100,6 @@ async def websocket_turn(websocket: WebSocket):
             msg_type = data.get("type")
 
             if msg_type == "user_message":
-                session_id = data.get("session_id")
                 content = data.get("content")
                 if not session_id or not content:
                     await websocket.send_json({"type": "error", "message": "Missing session_id or content"})
@@ -207,46 +205,42 @@ async def create_session(request: Request, payload: dict):
         model=model,
         parent_id=payload.get("parent_id"),
     )
-    return session.__dict__
+    return session.to_dict()
 
 
-@app.get("/sessions")
+@app.get("/api/sessions")
 async def list_sessions(request: Request):
-    """List all sessions from the database."""
     db = request.app.state.db
     return db.list_sessions()
 
 
-@app.get("/sessions/{session_id}")
+@app.get("/api/sessions/{session_id}")
 async def get_session(request: Request, session_id: str):
-    """Get a specific session by ID."""
     db = request.app.state.db
     from aede.session import Session
     try:
-        return Session.load(db, session_id).__dict__
+        return Session.load(db, session_id).to_dict()
     except KeyError:
         raise HTTPException(status_code=404, detail="Session not found")
 
 
-@app.patch("/sessions/{session_id}")
+@app.patch("/api/sessions/{session_id}")
 async def update_session(request: Request, session_id: str, payload: dict):
-    """Update session attributes (e.g. title)."""
     db = request.app.state.db
     from aede.session import Session
     try:
         session = Session.load(db, session_id)
         if "title" in payload:
             session.set_title(db, payload["title"])
-        return Session.load(db, session_id).__dict__
+        return Session.load(db, session_id).to_dict()
     except KeyError:
         raise HTTPException(status_code=404, detail="Session not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/sessions/{session_id}")
+@app.delete("/api/sessions/{session_id}")
 async def delete_session(request: Request, session_id: str):
-    """Delete a session from the DB and filesystem."""
     db = request.app.state.db
     cfg = request.app.state.cfg
     from aede.session import Session
@@ -254,13 +248,11 @@ async def delete_session(request: Request, session_id: str):
         session = Session.load(db, session_id)
         session.delete(db)
 
-        # Cleanup rollout logs
         from aede.rollout import Rollout
         rollout = Rollout(cfg.data_dir / "sessions", session_id)
         if rollout._path.exists():
             rollout._path.unlink()
 
-        # Cleanup notes if they exist
         notes_path = cfg.data_dir / "sessions" / f"{session_id}-notes.md"
         if notes_path.exists():
             notes_path.unlink()
@@ -287,7 +279,7 @@ def _walk_parent_messages(db, session_id: str) -> list[dict]:
     return ancestor_msgs
 
 
-@app.get("/sessions/{session_id}/messages")
+@app.get("/api/sessions/{session_id}/messages")
 async def get_messages(request: Request, session_id: str):
     """Get message history for a session, including inherited parent messages."""
     db = request.app.state.db

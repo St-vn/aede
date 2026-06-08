@@ -18,7 +18,7 @@ def client(db, tmp_path):
     return TestClient(app)
 
 def test_get_sessions_empty(client):
-    response = client.get("/sessions")
+    response = client.get("/api/sessions")
     assert response.status_code == 200
     assert response.json() == []
 
@@ -26,7 +26,7 @@ def test_get_sessions_with_data(client, db):
     s1 = Session.create(db, "model1", parent_id=None, title="Title 1")
     s2 = Session.create(db, "model2", parent_id=None)
     
-    response = client.get("/sessions")
+    response = client.get("/api/sessions")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
@@ -34,19 +34,19 @@ def test_get_sessions_with_data(client, db):
 
 def test_get_session_by_id(client, db):
     s1 = Session.create(db, "model1", parent_id=None)
-    response = client.get(f"/sessions/{s1.id}")
+    response = client.get(f"/api/sessions/{s1.id}")
     assert response.status_code == 200
     assert response.json()["id"] == s1.id
 
 def test_get_session_not_found(client):
-    response = client.get("/sessions/NONEXISTENT")
+    response = client.get("/api/sessions/NONEXISTENT")
     assert response.status_code == 404
 
 def test_get_messages(client, db):
     s1 = Session.create(db, "model1", parent_id=None)
     db.insert_message(id="m1", session_id=s1.id, role="user", content="hello", token_count=10)
     
-    response = client.get(f"/sessions/{s1.id}/messages")
+    response = client.get(f"/api/sessions/{s1.id}/messages")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
@@ -54,7 +54,7 @@ def test_get_messages(client, db):
 
 def test_patch_session_title(client, db):
     s1 = Session.create(db, "model1", parent_id=None, title="Old Title")
-    response = client.patch(f"/sessions/{s1.id}", json={"title": "New Title"})
+    response = client.patch(f"/api/sessions/{s1.id}", json={"title": "New Title"})
     assert response.status_code == 200
     assert response.json()["title"] == "New Title"
     
