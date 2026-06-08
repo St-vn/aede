@@ -10,8 +10,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { FolderOpen, Plus, X, BookOpen, Check } from 'lucide-react'
+import { FolderOpen, Plus, X, BookOpen, MoreHorizontal, Trash2 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { FolderPicker } from '@/components/workspace/FolderPicker'
 import { RemoveProjectDialog } from '@/components/workspace/RemoveProjectDialog'
@@ -33,13 +32,11 @@ export function EmptyState({ onOpenProject, projectName, activeProjectDir }: Pro
   const deleteFolder = useDeleteProjectFolder()
   const removeGit = useRemoveProjectRepo()
 
-  const activeProject = recentProjects.find(p => p.project_dir === activeProjectDir)
-
   const loadProjects = async () => {
     try {
       const projects = await apiFetch<Project[]>('/api/projects')
       setRecentProjects(projects)
-    } catch {}
+    } catch { }
   }
 
   useEffect(() => { loadProjects() }, [])
@@ -51,34 +48,30 @@ export function EmptyState({ onOpenProject, projectName, activeProjectDir }: Pro
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: dir }),
       })
-    } catch {}
+    } catch { }
     onOpenProject?.(dir)
   }
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-6 px-4">
       {cfg.image && <img src={cfg.image} alt="" className="max-h-32 opacity-80" />}
-      {projectName ? (
-        <h1 className="text-2xl font-semibold text-center text-foreground">{projectName}</h1>
-      ) : (
-        <HeadlineRotator headlines={cfg.headlines} intervalMs={cfg.headlineIntervalMs} />
-      )}
+      <HeadlineRotator headlines={cfg.headlines} intervalMs={cfg.headlineIntervalMs} />
       {cfg.subtitleVisible && (
         <p className="text-sm text-muted-foreground">{cfg.subtitle}</p>
       )}
 
       {/* Project selector context menu */}
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="outline" size="lg" className="gap-2">
-          <FolderOpen className="w-4 h-4" />
-          {projectName ? 'Switch project' : 'Open a project'}
-          <span className="text-xs text-muted-foreground">▼</span>
+        <DropdownMenuTrigger render={<Button variant="outline" size="lg" className="gap-2 max-w-[280px]">
+          <FolderOpen className="w-4 h-4 shrink-0" />
+          <span className="truncate">{projectName || 'Select Project'}</span>
+          <span className="text-xs text-muted-foreground shrink-0">▼</span>
         </Button>} />
         <DropdownMenuContent align="center" className="w-64">
-          <ScrollArea className="max-h-60">
+          <div className="max-h-60 overflow-y-auto overflow-x-hidden">
             <DropdownMenuItem onClick={() => onOpenProject?.(null)}>
               <X className="w-4 h-4 mr-2" />
-              <span>No project (chat only)</span>
+              <span>No Project</span>
             </DropdownMenuItem>
 
             {recentProjects.length > 0 && <DropdownMenuSeparator />}
@@ -86,16 +79,37 @@ export function EmptyState({ onOpenProject, projectName, activeProjectDir }: Pro
             {recentProjects.map(p => {
               const isCurrent = p.project_dir === activeProjectDir
               return (
-                <DropdownMenuItem key={p.id} onClick={() => handleOpenProject(p.project_dir)}>
-                  {isCurrent ? <Check className="w-4 h-4 mr-2 text-primary" /> : <BookOpen className="w-4 h-4 mr-2" />}
-                  <div className="flex flex-col flex-1 min-w-0">
-                    <span className="text-sm">{p.display_name} {isCurrent && <span className="text-[10px] text-primary">(active)</span>}</span>
-                    <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">{p.project_dir}</span>
-                  </div>
-                </DropdownMenuItem>
+                <div key={p.id} className={`flex items-center gap-1 rounded-md px-1.5 py-1 group ${isCurrent ? 'bg-accent' : ''}`}>
+                  <button
+                    onClick={() => handleOpenProject(p.project_dir)}
+                    className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+                  >
+                    <BookOpen className="w-4 h-4 shrink-0 text-muted-foreground" />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm truncate">{p.display_name}</span>
+                      <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">{p.project_dir}</span>
+                    </div>
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={
+                      <button
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-muted rounded shrink-0"
+                        aria-label="Project actions"
+                      >
+                        <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
+                      </button>
+                    } />
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem variant="destructive" onClick={() => setRemovingProject(p)}>
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        <span>Delete</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               )
             })}
-          </ScrollArea>
+          </div>
 
           <DropdownMenuSeparator />
 
@@ -103,15 +117,6 @@ export function EmptyState({ onOpenProject, projectName, activeProjectDir }: Pro
             <Plus className="w-4 h-4 mr-2" />
             <span>Add project folder...</span>
           </DropdownMenuItem>
-
-          {activeProject && <DropdownMenuSeparator />}
-
-          {activeProject && (
-            <DropdownMenuItem onClick={() => setRemovingProject(activeProject)}>
-              <X className="w-4 h-4 mr-2 text-destructive" />
-              <span className="text-destructive">Remove "{activeProject.display_name}"</span>
-            </DropdownMenuItem>
-          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

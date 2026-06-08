@@ -536,18 +536,18 @@ def _resolve_file_mentions(content: str, workspace: Path | None = None) -> str:
 
 
 @app.get("/api/workspace/info")
-async def get_workspace_info(request: Request, session_id: str | None = None):
+async def get_workspace_info(request: Request, session_id: str | None = None, project_dir: str | None = None):
     """Return metadata about the current workspace/project context.
 
-    If ``session_id`` is provided, the endpoint first checks whether that
-    session has an explicit ``project_dir`` set.  If it does, that directory
-    is used as the workspace root instead of the server's CWD.
+    Accepts either ``session_id`` (to look up the session's project_dir) or
+    a direct ``project_dir`` parameter.  Falls back to the server's CWD.
     """
     from aede.session import Session
 
-    # Start with the session's project_dir if available
     workspace = None
-    if session_id:
+    if project_dir:
+        workspace = Path(project_dir).expanduser().resolve()
+    elif session_id:
         try:
             session = Session.load(request.app.state.db, session_id)
             if session.project_dir:
@@ -570,14 +570,16 @@ async def get_workspace_info(request: Request, session_id: str | None = None):
 
 
 @app.get("/api/workspace/files")
-async def get_workspace_files(request: Request, session_id: str | None = None):
+async def get_workspace_files(request: Request, session_id: str | None = None, project_dir: str | None = None):
     """List all tracked and untracked files in the workspace using git with basic walk fallback."""
     from aede.session import Session
     import subprocess
     from pathlib import Path
 
     workspace = None
-    if session_id:
+    if project_dir:
+        workspace = Path(project_dir).expanduser().resolve()
+    elif session_id:
         try:
             session = Session.load(request.app.state.db, session_id)
             if session.project_dir:

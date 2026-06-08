@@ -8,13 +8,16 @@ export interface WorkspaceInfo {
   has_project: boolean
 }
 
-export const useWorkspaceInfo = (sessionId?: string | null) =>
+export const useWorkspaceInfo = (sessionId?: string | null, projectDir?: string | null) =>
   useQuery<WorkspaceInfo>({
-    queryKey: ['workspaceInfo', sessionId],
+    queryKey: ['workspaceInfo', sessionId, projectDir],
     queryFn: () => {
-      const params = sessionId ? `?session_id=${sessionId}` : ''
-      return apiFetch<WorkspaceInfo>(`/api/workspace/info${params}`)
+      const params = new URLSearchParams()
+      if (sessionId) params.set('session_id', sessionId)
+      if (projectDir) params.set('project_dir', projectDir)
+      const qs = params.toString()
+      return apiFetch<WorkspaceInfo>(`/api/workspace/info${qs ? `?${qs}` : ''}`)
     },
     staleTime: 60_000,
-    enabled: !!sessionId,
+    enabled: !!sessionId || !!projectDir,
   })

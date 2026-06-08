@@ -1,10 +1,16 @@
 'use client'
 import React, { useState, useMemo } from 'react'
-import { Menu, Plus, User, Settings, FolderOpen, BookOpen, MoreHorizontal } from 'lucide-react'
+import { Menu, Plus, User, Settings, FolderOpen, BookOpen, MoreHorizontal, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { SessionSearch } from './SessionSearch'
 import { FolderPicker } from '@/components/workspace/FolderPicker'
 import { RemoveProjectDialog } from '@/components/workspace/RemoveProjectDialog'
@@ -107,16 +113,33 @@ export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectS
               return (
                 <Collapsible key={project.id} defaultOpen className="mb-1 group/project">
                   <div className={`flex items-center gap-1 rounded-md ${isActive ? 'bg-muted' : ''}`}>
-                    <CollapsibleTrigger onClick={() => onOpenProject?.(project.project_dir)} className={`flex items-center gap-2 flex-1 min-w-0 px-1 py-1.5 text-xs font-medium transition-colors rounded-md [--anchor-gap:4px] ${isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}>
+                    <CollapsibleTrigger className={`flex items-center gap-2 flex-1 min-w-0 px-1 py-1.5 text-xs font-medium transition-colors rounded-md ${isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}>
                       <FolderOpen className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate">{project.display_name}</span>
                       <span className="ml-auto text-[10px] text-muted-foreground/60">{projectSessions.length}</span>
                     </CollapsibleTrigger>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={
+                        <Button variant="ghost" size="icon-sm"
+                          className="opacity-0 group-hover/project:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                          aria-label="Project actions"
+                        >
+                          <MoreHorizontal className="w-3.5 h-3.5" />
+                        </Button>
+                      } />
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem variant="destructive" onClick={() => setRemovingProject(project)}>
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          <span>Delete</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <button
-                      onClick={() => setRemovingProject(project)}
-                      className="opacity-0 group-hover/project:opacity-100 transition-opacity p-1 hover:bg-muted rounded"
+                      onClick={() => onOpenProject?.(project.project_dir)}
+                      className="opacity-0 group-hover/project:opacity-100 transition-opacity p-1 hover:bg-muted rounded shrink-0"
+                      aria-label="New session in project"
                     >
-                      <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
+                      <Plus className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
                   </div>
                   <CollapsibleContent>
@@ -142,7 +165,7 @@ export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectS
             {/* No-project sessions */}
             {groupedByProject.noProject.length > 0 && (
               <Collapsible defaultOpen className="mb-1 mt-2">
-                <CollapsibleTrigger className="flex items-center gap-2 w-full px-1 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors [--anchor-gap:4px]">
+                <CollapsibleTrigger className="flex items-center gap-2 w-full px-1 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
                   <BookOpen className="w-3.5 h-3.5 shrink-0" />
                   <span>Chats</span>
                   <span className="ml-auto text-[10px] text-muted-foreground/60">{groupedByProject.noProject.length}</span>

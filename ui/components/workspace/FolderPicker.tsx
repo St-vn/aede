@@ -27,8 +27,8 @@ export function FolderPicker({ open, onOpenChange, onSelect }: Props) {
         onSelect(path)
         onOpenChange(false)
       }
-    } catch (e: any) {
-      console.error('Folder picker failed:', e)
+    } catch {
+      console.error('Folder picker failed')
     }
   }
 

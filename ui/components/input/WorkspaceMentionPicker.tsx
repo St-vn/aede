@@ -13,13 +13,14 @@ interface Props {
   searchQuery: string
   triggerRef: React.RefObject<HTMLElement | null>
   sessionId?: string | null
+  projectDir?: string | null
 }
 
 const EMPTY_FILES: string[] = []
 
-export function WorkspaceMentionPicker({ open, onOpenChange, onSelect, searchQuery, triggerRef, sessionId }: Props) {
-  const { data: files = EMPTY_FILES } = useWorkspaceFiles(sessionId)
-  const { data: info } = useWorkspaceInfo(sessionId)
+export function WorkspaceMentionPicker({ open, onOpenChange, onSelect, searchQuery, triggerRef, sessionId, projectDir }: Props) {
+  const { data: files = EMPTY_FILES } = useWorkspaceFiles(sessionId, projectDir)
+  const { data: info } = useWorkspaceInfo(sessionId, projectDir)
 
   const filtered = useMemo(() => {
     if (!searchQuery) {
@@ -41,8 +42,9 @@ export function WorkspaceMentionPicker({ open, onOpenChange, onSelect, searchQue
         side="top"
         sideOffset={8}
         initialFocus={false}
+        anchor={triggerRef}
       >
-        {!sessionId ? (
+        {!sessionId && !projectDir ? (
           <div className="flex flex-col items-center gap-2 py-6 px-4 text-center">
             <FolderX className="w-8 h-8 text-muted-foreground/50" />
             <p className="text-xs text-muted-foreground">No session selected</p>

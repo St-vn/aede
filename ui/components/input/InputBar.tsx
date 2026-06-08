@@ -11,9 +11,10 @@ interface Props {
   disabled: boolean
   defaultModel?: string
   sessionId?: string | null
+  projectDir?: string | null
 }
 
-export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', sessionId }: Props) {
+export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', sessionId, projectDir }: Props) {
   const [text, setText] = useState('')
   const [model, setModel] = useState(defaultModel)
   const [mentionOpen, setMentionOpen] = useState(false)
@@ -86,6 +87,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
         searchQuery={mentionQuery}
         triggerRef={ref}
         sessionId={sessionId}
+        projectDir={projectDir}
       />
       <div className="rounded-2xl border border-border bg-muted px-4 py-3 flex flex-col gap-2">
         <textarea

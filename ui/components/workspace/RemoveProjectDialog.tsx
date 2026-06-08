@@ -31,14 +31,14 @@ const WARNINGS: Record<Action, string | null> = {
 
 const LABELS: Record<Action, string> = {
   'remove': 'Remove from list',
-  'delete-folder': 'Delete project folder',
   'remove-git': 'Remove git repository',
+  'delete-folder': 'Delete project folder',
 }
 
 const BUTTONS: Record<Action, { label: string; variant: 'default' | 'destructive' }> = {
   'remove': { label: 'Remove', variant: 'default' },
-  'delete-folder': { label: 'Delete Folder', variant: 'destructive' },
   'remove-git': { label: 'Remove .git', variant: 'destructive' },
+  'delete-folder': { label: 'Delete Folder', variant: 'destructive' },
 }
 
 export function RemoveProjectDialog({ open, onOpenChange, projectDir, projectName, onRemove, onDeleteFolder, onRemoveGit }: Props) {
@@ -58,22 +58,26 @@ export function RemoveProjectDialog({ open, onOpenChange, projectDir, projectNam
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Remove "{projectName}"</DialogTitle>
+          <DialogTitle>Remove &ldquo;{projectName}&rdquo;</DialogTitle>
           <DialogDescription>
             Choose what to do with this project.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <select
-            value={action}
-            onChange={(e) => setAction(e.target.value as Action)}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="remove">{LABELS['remove']}</option>
-            <option value="delete-folder">{LABELS['delete-folder']}</option>
-            <option value="remove-git">{LABELS['remove-git']}</option>
-          </select>
+        <div className="space-y-1">
+          {(Object.keys(LABELS) as Action[]).map(a => (
+            <button
+              key={a}
+              type="button"
+              onClick={() => setAction(a)}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors text-left ${action === a
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
+            >
+              {LABELS[a]}
+            </button>
+          ))}
 
           {warning && (
             <div className="flex gap-2 items-start text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">

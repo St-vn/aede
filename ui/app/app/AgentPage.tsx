@@ -60,7 +60,7 @@ export function AgentPage() {
     }
   }
 
-  const handleOpenProject = (dir: string) => {
+  const handleOpenProject = (dir: string | null) => {
     setActiveId(null)
     setInitialMessage('')
     setActiveProjectDir(dir)
@@ -106,7 +106,7 @@ export function AgentPage() {
             <EmptyState onOpenProject={handleOpenProject} projectName={activeProjectDir ? activeProjectDir.split(/[\\/]/).pop() || activeProjectDir : undefined} activeProjectDir={activeProjectDir} />
           </div>
           <div className="max-w-[760px] mx-auto w-full">
-            <InputBar onSend={handleSendNewSession} disabled={createSession.isPending} sessionId={activeId} />
+            <InputBar onSend={handleSendNewSession} disabled={createSession.isPending} sessionId={activeId} projectDir={activeProjectDir} />
           </div>
         </div>
       )}
