@@ -18,8 +18,8 @@ export const EMPTY_STATE: EmptyStateConfig = {
   headlines: [
     "What do you want to build?",
     "What should we research today?",
-    "What's next on the list?",
     "Let's get to work.",
+    "Time to cook!"
   ],
   headlineIntervalMs: 3500,
   subtitle: "aede, your building room",

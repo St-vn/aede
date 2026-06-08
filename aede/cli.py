@@ -229,6 +229,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         shell=cfg.shell,
         wsl_distro=cfg.wsl_distro,
         tool_output_max_tokens=cfg.tool_output_max_tokens,
+        db=db,
         _cfg=cfg,
         _gate_store=gate_store,
         _agent_registry=agent_registry,

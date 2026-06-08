@@ -1,8 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api'
 
-export const useWorkspaceFiles = () =>
+export const useWorkspaceFiles = (sessionId?: string | null) =>
   useQuery<string[]>({
-    queryKey: ['workspaceFiles'],
-    queryFn: () => apiFetch<string[]>('/api/workspace/files'),
+    queryKey: ['workspaceFiles', sessionId],
+    queryFn: () => {
+      const params = sessionId ? `?session_id=${sessionId}` : ''
+      return apiFetch<string[]>(`/api/workspace/files${params}`)
+    },
+    enabled: !!sessionId,
   })

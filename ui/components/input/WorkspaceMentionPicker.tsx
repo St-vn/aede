@@ -12,13 +12,14 @@ interface Props {
   onSelect: (filename: string) => void
   searchQuery: string
   triggerRef: React.RefObject<HTMLElement | null>
+  sessionId?: string | null
 }
 
 const EMPTY_FILES: string[] = []
 
-export function WorkspaceMentionPicker({ open, onOpenChange, onSelect, searchQuery, triggerRef }: Props) {
-  const { data: files = EMPTY_FILES } = useWorkspaceFiles()
-  const { data: info } = useWorkspaceInfo()
+export function WorkspaceMentionPicker({ open, onOpenChange, onSelect, searchQuery, triggerRef, sessionId }: Props) {
+  const { data: files = EMPTY_FILES } = useWorkspaceFiles(sessionId)
+  const { data: info } = useWorkspaceInfo(sessionId)
 
   const filtered = useMemo(() => {
     if (!searchQuery) {
@@ -41,11 +42,17 @@ export function WorkspaceMentionPicker({ open, onOpenChange, onSelect, searchQue
         sideOffset={8}
         initialFocus={false}
       >
-        {info && !info.has_project ? (
+        {!sessionId ? (
           <div className="flex flex-col items-center gap-2 py-6 px-4 text-center">
             <FolderX className="w-8 h-8 text-muted-foreground/50" />
-            <p className="text-xs text-muted-foreground">No workspace files available</p>
-            <p className="text-[11px] text-muted-foreground/60">Open a project or run <code className="text-[10px] bg-muted px-1 rounded">aede</code> from a directory with source files</p>
+            <p className="text-xs text-muted-foreground">No session selected</p>
+            <p className="text-[11px] text-muted-foreground/60">Select or create a session to mention files</p>
+          </div>
+        ) : info && !info.has_project ? (
+          <div className="flex flex-col items-center gap-2 py-6 px-4 text-center">
+            <FolderX className="w-8 h-8 text-muted-foreground/50" />
+            <p className="text-xs text-muted-foreground">No project selected</p>
+            <p className="text-[11px] text-muted-foreground/60">Open a project from the sidebar to enable file mentions</p>
           </div>
         ) : !hasFiles ? (
           <div className="flex flex-col items-center gap-2 py-6 px-4 text-center">

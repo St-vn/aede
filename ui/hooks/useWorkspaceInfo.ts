@@ -8,9 +8,13 @@ export interface WorkspaceInfo {
   has_project: boolean
 }
 
-export const useWorkspaceInfo = () =>
+export const useWorkspaceInfo = (sessionId?: string | null) =>
   useQuery<WorkspaceInfo>({
-    queryKey: ['workspaceInfo'],
-    queryFn: () => apiFetch<WorkspaceInfo>('/api/workspace/info'),
+    queryKey: ['workspaceInfo', sessionId],
+    queryFn: () => {
+      const params = sessionId ? `?session_id=${sessionId}` : ''
+      return apiFetch<WorkspaceInfo>(`/api/workspace/info${params}`)
+    },
     staleTime: 60_000,
+    enabled: !!sessionId,
   })

@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL,
     model       TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'active'
+    status      TEXT NOT NULL DEFAULT 'active',
+    project_dir TEXT
 );
 CREATE TABLE IF NOT EXISTS messages (
     id           TEXT PRIMARY KEY,
@@ -51,6 +52,13 @@ CREATE TABLE IF NOT EXISTS token_usage (
     cached_tokens   INTEGER NOT NULL DEFAULT 0,
     created_at      INTEGER NOT NULL,
     role            TEXT NOT NULL DEFAULT 'agent'
+);
+CREATE TABLE IF NOT EXISTS projects (
+    id           TEXT PRIMARY KEY,
+    project_dir  TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
     content,
@@ -111,6 +119,26 @@ class DB:
             self.con.commit()
         except Exception:
             pass  # Column already exists — idempotent
+        # WS-01 migration: add project_dir column to sessions if missing.
+        try:
+            self.con.execute("ALTER TABLE sessions ADD COLUMN project_dir TEXT")
+            self.con.commit()
+        except Exception:
+            pass
+        # PJ-01 migration: create projects table if missing (DB created before DDL had it).
+        try:
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    id           TEXT PRIMARY KEY,
+                    project_dir  TEXT NOT NULL UNIQUE,
+                    display_name TEXT NOT NULL,
+                    created_at   INTEGER NOT NULL,
+                    updated_at   INTEGER NOT NULL
+                )
+            """)
+            self.con.commit()
+        except Exception:
+            pass
         # Set row_factory after schema is created
         self.con.row_factory = _row_factory
 
@@ -120,12 +148,13 @@ class DB:
         parent_id: str | None,
         title: str,
         model: str,
+        project_dir: str | None = None,
     ) -> None:
         """Insert a new session row with ``status='active'`` and timestamps set to now."""
         now = _now_ms()
         self.con.execute(
-            "INSERT INTO sessions (id, parent_id, title, created_at, updated_at, model) VALUES (?,?,?,?,?,?)",
-            (id, parent_id, title, now, now, model),
+            "INSERT INTO sessions (id, parent_id, title, created_at, updated_at, model, project_dir) VALUES (?,?,?,?,?,?,?)",
+            (id, parent_id, title, now, now, model, project_dir),
         )
         self.con.commit()
 
@@ -172,6 +201,51 @@ class DB:
         return self.con.execute(
             "SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ?", (limit,)
         ).fetchall()
+
+    def set_session_project_dir(self, id: str, project_dir: str) -> None:
+        """Update the project directory for a session."""
+        self.con.execute(
+            "UPDATE sessions SET project_dir = ?, updated_at = ? WHERE id = ?",
+            (project_dir, _now_ms(), id),
+        )
+        self.con.commit()
+
+    def insert_project(
+        self,
+        id: str,
+        project_dir: str,
+        display_name: str,
+    ) -> None:
+        """Insert a new project row."""
+        now = _now_ms()
+        self.con.execute(
+            "INSERT OR IGNORE INTO projects (id, project_dir, display_name, created_at, updated_at) VALUES (?,?,?,?,?)",
+            (id, project_dir, display_name, now, now),
+        )
+        self.con.commit()
+
+    def list_projects(self) -> list[dict[str, Any]]:
+        """Return all projects ordered by most recently updated."""
+        return self.con.execute(
+            "SELECT * FROM projects ORDER BY updated_at DESC"
+        ).fetchall()
+
+    def get_project(self, id: str) -> dict[str, Any] | None:
+        """Return a project by its ID."""
+        return self.con.execute(
+            "SELECT * FROM projects WHERE id = ?", (id,)
+        ).fetchone()
+
+    def get_project_by_dir(self, project_dir: str) -> dict[str, Any] | None:
+        """Return a project by its directory path."""
+        return self.con.execute(
+            "SELECT * FROM projects WHERE project_dir = ?", (project_dir,)
+        ).fetchone()
+
+    def delete_project(self, id: str) -> None:
+        """Delete a project (does not touch files on disk)."""
+        self.con.execute("DELETE FROM projects WHERE id = ?", (id,))
+        self.con.commit()
 
     def insert_message(
         self,
@@ -272,6 +346,102 @@ class DB:
             "output_tokens": row["output_tokens"] or 0,
             "cached_tokens": row["cached_tokens"] or 0,
         }
+
+    def search_messages(
+        self, query: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Full-text search over message history using FTS5.
+
+        For each hit, gathers a ±5 message context window (by insertion order
+        within the session), plus session bookends (first and last message of
+        the session), plus session metadata.  Overlapping context windows for
+        hits in the same session are deduplicated.
+
+        Args:
+            query: FTS5 MATCH expression (e.g. a keyword or phrase).
+            limit: Maximum number of hit messages to process.
+
+        Returns:
+            A list of result-group dicts, one per hit, each containing:
+            ``session_id``, ``session_title``, ``session_created_at``,
+            ``hit`` (the matching message dict), ``context`` (list of message
+            dicts in the ±5 window, ordered by created_at), and ``bookends``
+            (list containing the first and last message of the session,
+            deduplicated with context).
+        """
+        # Find matching rows via FTS5, joined back to the messages table.
+        hits = self.con.execute(
+            """
+            SELECT m.*
+            FROM messages m
+            JOIN messages_fts f ON m.rowid = f.rowid
+            WHERE messages_fts MATCH ?
+            ORDER BY m.created_at DESC
+            LIMIT ?
+            """,
+            (query, limit),
+        ).fetchall()
+
+        if not hits:
+            return []
+
+        results: list[dict[str, Any]] = []
+        for hit in hits:
+            session_id: str = hit["session_id"]
+
+            # Fetch session metadata.
+            session_row = self.con.execute(
+                "SELECT id, title, created_at FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+
+            # Fetch all messages for this session ordered by created_at.
+            all_msgs = self.con.execute(
+                "SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC",
+                (session_id,),
+            ).fetchall()
+
+            # Locate the hit position in the ordered list.
+            hit_idx = next(
+                (i for i, m in enumerate(all_msgs) if m["id"] == hit["id"]),
+                None,
+            )
+            if hit_idx is None:
+                # Should not happen, but skip gracefully.
+                continue
+
+            # ±5 window.
+            window_start = max(0, hit_idx - 5)
+            window_end = min(len(all_msgs) - 1, hit_idx + 5)
+            context_msgs = all_msgs[window_start : window_end + 1]
+
+            # Bookends: first and last message of the session.
+            bookend_ids = {all_msgs[0]["id"], all_msgs[-1]["id"]}
+            context_ids = {m["id"] for m in context_msgs}
+            bookends = [
+                m for m in [all_msgs[0], all_msgs[-1]]
+                if m["id"] not in context_ids
+            ]
+            # Deduplicate when first == last (single-message session).
+            seen: set[str] = set()
+            deduped_bookends: list[dict[str, Any]] = []
+            for m in bookends:
+                if m["id"] not in seen:
+                    seen.add(m["id"])
+                    deduped_bookends.append(m)
+
+            results.append(
+                {
+                    "session_id": session_id,
+                    "session_title": session_row["title"] if session_row else None,
+                    "session_created_at": session_row["created_at"] if session_row else None,
+                    "hit": hit,
+                    "context": context_msgs,
+                    "bookends": deduped_bookends,
+                }
+            )
+
+        return results
 
     def close(self) -> None:
         """Close the underlying SQLite connection."""
