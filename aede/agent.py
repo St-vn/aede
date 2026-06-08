@@ -273,7 +273,6 @@ class AgentLoop:
             is_resume=is_resume,
             session_notes=session_notes,
             compaction_summary=compaction_summary,
-            learnings_suffix=learnings_suffix,
         )
         if prior_messages:
             self._messages = list(prior_messages)

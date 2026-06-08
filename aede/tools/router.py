@@ -129,6 +129,8 @@ class ToolRouter:
                 else:
                     return asyncio.run(coro)
             reg["spawn_subagent"] = _spawn
+        else:
+            reg["spawn_subagent"] = lambda args: "[spawn_subagent: not configured]"
 
         return reg
 
