@@ -74,7 +74,9 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   }
 
   const handleGateDecision = ({ gateId, decision, message }: { gateId: string; decision: string; message?: string }) => {
-    send({ type: 'gate_response', gate_id: gateId, decision, message })
+    const payload: Record<string, unknown> = { type: 'gate_response', gate_id: gateId, decision }
+    if (message) payload.redirect_msg = message
+    send(payload)
     setGate(null)
   }
 

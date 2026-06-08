@@ -21,7 +21,6 @@ export function useWebSocket(
   const send = useCallback((msg: any) => {
     const payload = msg.type === 'user_turn' ? {
       type: 'user_message',
-      session_id: sessionId,
       content: msg.content,
     } : msg
 
