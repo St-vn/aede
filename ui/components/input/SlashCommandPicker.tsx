@@ -73,7 +73,7 @@ export function SlashCommandPicker({ open, onOpenChange, onSelect, searchQuery, 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverContent
-        className="w-[300px] p-0 bg-popover text-popover-foreground border border-border shadow-md rounded-lg z-50"
+        className="w-[320px] p-0 bg-popover text-popover-foreground border border-border shadow-md rounded-lg z-50"
         align="start"
         side="top"
         sideOffset={8}
@@ -86,7 +86,7 @@ export function SlashCommandPicker({ open, onOpenChange, onSelect, searchQuery, 
           </div>
         )}
         <Command className="bg-transparent" shouldFilter={false}>
-          <CommandList className="max-h-[280px] overflow-y-auto p-1">
+          <CommandList className="max-h-[260px] overflow-y-scroll p-1 [scrollbar-width:thin]">
             {!hasResults ? (
               <div className="py-6 px-4 text-center text-xs text-muted-foreground">
                 No matching commands
