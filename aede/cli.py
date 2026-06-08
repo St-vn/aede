@@ -45,13 +45,77 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="aede", description="Personal AI agent CLI")
     parser.add_argument("task", nargs="?", default=None, help="Optional first message")
     parser.add_argument("--version", action="version", version=f"aede {VERSION}")
+    parser.add_argument("--import", dest="import_action", choices=["claude-code", "opencode"],
+                        help="Import an agent from Claude Code or OpenCode")
+    parser.add_argument("--src", type=Path, help="Path to the source agent .md file")
+    parser.add_argument("--dest", type=Path, default=None, help="Output directory (default: ~/.aede/agents/)")
+
+    # Task 8: serve support
+    parser.add_argument("--serve", action="store_true", help="Start the FastAPI backend server")
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind the server to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to")
+
     return parser.parse_args(argv)
 
 
 def main() -> None:
     """Setuptools entry-point: parse args and hand off to the async run loop."""
     args = parse_args()
+    if args.import_action:
+        _handle_import(args)
+        return
+
+    # Support both 'aede serve' and 'aede --serve'
+    if args.serve or args.task == "serve":
+        _handle_serve_cmd(args)
+        return
+
     asyncio.run(_run(initial_task=args.task))
+
+
+def _handle_serve_cmd(args: argparse.Namespace) -> None:
+    """Handle the ``serve`` command: bootstrap and launch the server."""
+    from rich.console import Console
+    from aede.config import load_config, bootstrap
+    from aede.db import DB
+    from aede.commands import handle_serve
+
+    console = Console()
+    home = Path(os.environ.get("AEDE_HOME", str(Path.home() / ".aede")))
+    bootstrap(home)
+
+    cfg = load_config(home=home, project_dir=Path.cwd())
+    db = DB(cfg.data_dir / "aede.db")
+
+    handle_serve(cfg, db, console, host=args.host, port=args.port)
+
+
+def _handle_import(args: argparse.Namespace) -> None:
+    """Handle the ``import`` subcommand synchronously."""
+    from rich.console import Console
+    console = Console()
+
+    dest_dir = args.dest or (Path.home() / ".aede" / "agents")
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    if not args.src:
+        console.print("[red]Error: --src is required for import[/red]")
+        return
+
+    if args.import_action == "claude-code":
+        from aede.import_.claude_code import import_claude_code_agent
+        report = import_claude_code_agent(src_path=args.src, dest_dir=dest_dir)
+    elif args.import_action == "opencode":
+        from aede.import_.opencode import import_opencode_agent
+        report = import_opencode_agent(src_path=args.src, dest_dir=dest_dir)
+    else:
+        console.print("[red]Error: unknown import type[/red]")
+        return
+
+    if report.was_skipped:
+        console.print(f"[yellow]Skipped {report.name} (already exists)[/yellow]")
+    else:
+        console.print(f"[green]Imported {report.name} → {report.dest_path}[/green]")
 
 
 async def _run(initial_task: str | None = None, resume_session_id: str | None = None) -> None:
@@ -71,10 +135,10 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     from aede.rollout import Rollout
     from aede.session import Session
     from aede.tools.router import ToolRouter
-    from aede.gate import PermissionStore
+    from aede.gate import PermissionStore, TerminalGateBackend
     from aede.tokens import TokenTracker, PriceCache
     from aede.agent import AgentLoop
-    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, _load_session_notes
+    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_agents, _load_session_notes, handle_delete_session
 
     console = Console()
 
@@ -138,15 +202,40 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     rollout = Rollout(cfg.data_dir / "sessions", session.id)
     rollout.write({"type": "session_start", "session_id": session.id, "parent_id": rollout_parent_id, "model": cfg.model})
 
+    gate_store = PermissionStore()
+    gate_store.load_from_config(cfg.auto_approve)
+
+    from aede.skills.loader import load_skills
+    skill_registry = load_skills(global_dir=home, project_dir=Path.cwd())
+    if skill_registry:
+        console.print(f"[dim]Loaded {len(skill_registry)} skills[/dim]")
+
+    from aede.agents.loader import load_agents
+    try:
+        agent_registry = load_agents(
+            global_dir=home,
+            project_dir=Path.cwd(),
+            skill_registry=skill_registry,
+            all_tool_names=["powershell", "read_file", "write_file", "create_file",
+                           "list_dir", "search_files", "fetch_url", "web_search"],
+        )
+        if agent_registry:
+            console.print(f"[dim]Loaded {len(agent_registry)} agents[/dim]")
+    except Exception as e:
+        agent_registry = {}
+        console.print(f"[yellow]⚠ Agent load error: {e}[/yellow]")
+
     router = ToolRouter(
         shell=cfg.shell,
         wsl_distro=cfg.wsl_distro,
         tool_output_max_tokens=cfg.tool_output_max_tokens,
+        _cfg=cfg,
+        _gate_store=gate_store,
+        _agent_registry=agent_registry,
+        _session_id=session.id,
     )
     router.set_auto_approved(cfg.auto_approve)
 
-    gate_store = PermissionStore()
-    gate_store.load_from_config(cfg.auto_approve)
     tracker = TokenTracker(session_id=session.id, db=db)
 
     price_cache = PriceCache(home / "cache" / "model_prices.json")
@@ -162,11 +251,18 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         tracker=tracker,
         console=console,
         project_dir=Path.cwd(),
+        gate_backend=TerminalGateBackend(
+            store=gate_store,
+            project_dir=Path.cwd(),
+            global_config_path=cfg.home / "config.yml",
+            console=console,
+        ),
     )
     agent.initialize(
         is_resume=is_resume,
         session_notes=session_notes,
         prior_messages=prior_messages,
+        skills=list(skill_registry.values()) if skill_registry else None,
     )
 
     console.print(build_header(model=cfg.model, session_id=session.id))
@@ -231,6 +327,12 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
                     f"[dim]Compaction done · method: {result['method']} · "
                     f"{result.get('messages_compacted', 0)} messages compacted[/dim]"
                 )
+            elif cmd.name == "skills":
+                handle_skills(skill_registry, console)
+            elif cmd.name == "agents":
+                handle_agents(agent_registry, console)
+            elif cmd.name in ("delete-session", "rm"):
+                handle_delete_session(cmd.args, db, console, cfg.data_dir)
             elif cmd.name == "resume":
                 target_id = handle_resume(cmd.args, db, console)
                 if target_id is not None:
@@ -261,9 +363,26 @@ def _shutdown(session: Any, db: Any, rollout: Any, reason: str) -> None:
 
     Sessions that exit via /exit or EOF are archived; Ctrl-C leaves them active
     so they can be resumed.
+
+    If a session has no messages, it is deleted entirely from the DB and rollout
+    logs to avoid cluttering history with empty runs.
     """
-    status = "active" if reason == "ctrl_c" else "archived"
     try:
+        # Check if the session is empty
+        messages = db.get_messages(session.id, include_compacted=True)
+        if not messages:
+            # Delete empty session
+            session.delete(db)
+            # Try to delete the rollout file if it exists
+            try:
+                if rollout._path.exists():
+                    rollout._path.unlink()
+            except Exception:
+                pass
+            db.close()
+            return
+
+        status = "active" if reason == "ctrl_c" else "archived"
         if status == "archived":
             session.archive(db)
         else:

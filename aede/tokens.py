@@ -74,13 +74,20 @@ class TokenTracker:
         input_tokens: int,
         output_tokens: int,
         cached_tokens: int,
+        role: str = "agent",
     ) -> None:
-        """Record token usage for one completed LLM turn and persist it to the DB."""
+        """Record token usage for one completed LLM turn and persist it to the DB.
+
+        Args:
+            role: Either ``"agent"`` (default, main proposer turns) or ``"critic"``
+                  (critic LLM invocations).
+        """
         self._records.append({
             "turn": turn,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cached_tokens": cached_tokens,
+            "role": role,
         })
         if self._db is not None:
             from ulid import ULID
@@ -91,6 +98,7 @@ class TokenTracker:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cached_tokens=cached_tokens,
+                role=role,
             )
 
     def totals(self) -> dict[str, int]:
@@ -100,6 +108,21 @@ class TokenTracker:
             "output_tokens": sum(r["output_tokens"] for r in self._records),
             "cached_tokens": sum(r["cached_tokens"] for r in self._records),
         }
+
+    def totals_by_role(self) -> dict[str, dict[str, int]]:
+        """Return per-role ``{input_tokens, output_tokens, cached_tokens}`` sums.
+
+        Returns a dict keyed by role string (e.g. ``"agent"``, ``"critic"``).
+        """
+        result: dict[str, dict[str, int]] = {}
+        for r in self._records:
+            role = r.get("role", "agent")
+            if role not in result:
+                result[role] = {"input_tokens": 0, "output_tokens": 0, "cached_tokens": 0}
+            result[role]["input_tokens"] += r["input_tokens"]
+            result[role]["output_tokens"] += r["output_tokens"]
+            result[role]["cached_tokens"] += r["cached_tokens"]
+        return result
 
     def cache_hit_rate(self) -> float:
         """Return the fraction of input tokens served from the prompt cache (0.0–1.0)."""

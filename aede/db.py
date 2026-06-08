@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS token_usage (
     input_tokens    INTEGER NOT NULL,
     output_tokens   INTEGER NOT NULL,
     cached_tokens   INTEGER NOT NULL DEFAULT 0,
-    created_at      INTEGER NOT NULL
+    created_at      INTEGER NOT NULL,
+    role            TEXT NOT NULL DEFAULT 'agent'
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
     content,
@@ -101,6 +102,15 @@ class DB:
         # (cheap at personal scale; external-content FTS5 requires explicit sync)
         self.con.execute("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
         self.con.commit()
+        # BC-06 migration: add role column to token_usage if it is missing.
+        # SQLite does not support IF NOT EXISTS on ADD COLUMN — use try/except.
+        try:
+            self.con.execute(
+                "ALTER TABLE token_usage ADD COLUMN role TEXT NOT NULL DEFAULT 'agent'"
+            )
+            self.con.commit()
+        except Exception:
+            pass  # Column already exists — idempotent
         # Set row_factory after schema is created
         self.con.row_factory = _row_factory
 
@@ -131,6 +141,30 @@ class DB:
             "UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?",
             (status, _now_ms(), id),
         )
+        self.con.commit()
+
+    def delete_session(self, id: str) -> None:
+        """Delete a session and all its associated messages, tool calls, and tokens.
+
+        Relies on ON DELETE CASCADE if available, but for safety and because
+        SQLite requires PRAGMA foreign_keys=ON (which we set), we handle it.
+        Actually, we just delete the session and let FKs handle the rest if configured.
+        """
+        # Delete messages first to ensure triggers etc. are handled if necessary,
+        # although with CASCADE it should be fine.
+        # token_usage and messages both have REFERENCES sessions(id)
+        # tool_calls references messages(id)
+        
+        # We don't have ON DELETE CASCADE in the DDL currently.
+        # Let's check the DDL.
+        self.con.execute("DELETE FROM token_usage WHERE session_id = ?", (id,))
+        # tool_calls references messages, so delete them first
+        self.con.execute(
+            "DELETE FROM tool_calls WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)",
+            (id,),
+        )
+        self.con.execute("DELETE FROM messages WHERE session_id = ?", (id,))
+        self.con.execute("DELETE FROM sessions WHERE id = ?", (id,))
         self.con.commit()
 
     def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
@@ -218,11 +252,12 @@ class DB:
         input_tokens: int,
         output_tokens: int,
         cached_tokens: int,
+        role: str = "agent",
     ) -> None:
         """Append one token-usage row for a completed LLM turn."""
         self.con.execute(
-            "INSERT INTO token_usage (id, session_id, turn_number, input_tokens, output_tokens, cached_tokens, created_at) VALUES (?,?,?,?,?,?,?)",
-            (id, session_id, turn_number, input_tokens, output_tokens, cached_tokens, _now_ms()),
+            "INSERT INTO token_usage (id, session_id, turn_number, input_tokens, output_tokens, cached_tokens, created_at, role) VALUES (?,?,?,?,?,?,?,?)",
+            (id, session_id, turn_number, input_tokens, output_tokens, cached_tokens, _now_ms(), role),
         )
         self.con.commit()
 

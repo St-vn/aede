@@ -134,6 +134,41 @@ def test_write_config_value_auto_approve_list(tmp_home, tmp_path):
     assert cfg.auto_approve == ["write_file"]
 
 
+# ---------------------------------------------------------------------------
+# BC-01 — grounding_enabled / critic_enabled / critic_model / critic_api_base_url
+# ---------------------------------------------------------------------------
+
+def test_default_grounding_and_critic_flags(tmp_home):
+    """DEFAULT_CONFIG must include correct defaults for the four new BC keys."""
+    from aede.config import DEFAULT_CONFIG
+    assert DEFAULT_CONFIG["grounding_enabled"] is True
+    assert DEFAULT_CONFIG["critic_enabled"] is False
+    assert DEFAULT_CONFIG["critic_model"] is None
+    assert DEFAULT_CONFIG["critic_api_base_url"] is None
+
+
+def test_config_round_trip_critic(tmp_home, tmp_path):
+    """Write critic keys to a project config file, reload, and verify they round-trip."""
+    import yaml
+    from aede.config import load_config
+
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    (project_dir / "aede.yml").write_text(
+        yaml.dump({
+            "critic_enabled": True,
+            "critic_model": "claude-haiku-4-20250514",
+            "critic_api_base_url": "https://openrouter.ai/api/v1",
+            "grounding_enabled": False,
+        })
+    )
+    cfg = load_config(home=tmp_home, project_dir=project_dir)
+    assert cfg.critic_enabled is True
+    assert cfg.critic_model == "claude-haiku-4-20250514"
+    assert cfg.critic_api_base_url == "https://openrouter.ai/api/v1"
+    assert cfg.grounding_enabled is False
+
+
 def test_edit_config_file_spawns_editor(tmp_home, tmp_path):
     from unittest.mock import patch
     from aede.config import edit_config_file

@@ -46,6 +46,17 @@ class Session:
         self.created_at: int = data["created_at"]
         self.updated_at: int = data["updated_at"]
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "parent_id": self.parent_id,
+            "title": self.title,
+            "model": self.model,
+            "status": self.status,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
     @classmethod
     def create(
         cls,
@@ -90,6 +101,10 @@ class Session:
         """Mark the session as archived in the DB and update local state."""
         db.update_session_status(self.id, "archived")
         self.status = "archived"
+
+    def delete(self, db: Any) -> None:
+        """Permanently delete this session and all its data from the DB."""
+        db.delete_session(self.id)
 
     def set_active(self, db: Any) -> None:
         """Mark the session as active in the DB and update local state."""

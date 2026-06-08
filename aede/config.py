@@ -23,6 +23,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "auto_approve": [],
     "model_prices": {},
     "api_base_url": None,  # None = Anthropic direct; set to OpenAI-compatible base URL (e.g. https://openrouter.ai/api/v1) for non-Anthropic models via OpenAI SDK
+    # Basic Correctness — Phase 2
+    "grounding_enabled": True,   # Append grounding instruction to system prompt suffix
+    "critic_enabled": False,     # Run a critic LLM pass before gated writes (opt-in; costs an extra call)
+    "critic_model": None,        # str | None — None → same-model persona fallback
+    "critic_api_base_url": None, # str | None — None → use main provider routing
+    # Memory System — Phase 2
+    "ollama_base_url": "http://localhost:11434",
+    "ollama_embed_model": "nomic-embed-text",
+    "ollama_timeout_s": 5.0,
+    "learnings_top_k": 5,
+    "learnings_max_tokens": 2000,
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -46,6 +57,12 @@ batch_approval_max: 20
 #     input: 3.00
 #     output: 15.00
 #     cache_read: 0.30
+
+# Basic Correctness (Phase 2)
+# grounding_enabled: true   # Append grounding instruction to system prompt (default true)
+# critic_enabled: false      # Run a critic LLM pass before gated writes (default false; costs extra call)
+# critic_model:              # Optional separate model for critic; null = same model, critic persona
+# critic_api_base_url:       # Optional base URL for critic model (e.g. https://openrouter.ai/api/v1)
 """
 
 
@@ -67,6 +84,8 @@ def bootstrap(home: Path | None = None) -> None:
     home.mkdir(parents=True, exist_ok=True)
     (home / "data").mkdir(exist_ok=True)
     (home / "data" / "sessions").mkdir(exist_ok=True)
+    (home / "skills").mkdir(exist_ok=True)
+    (home / "agents").mkdir(exist_ok=True)
     cfg_path = home / "config.yml"
     if not cfg_path.exists():
         cfg_path.write_text(DEFAULT_CONFIG_YAML)
@@ -90,6 +109,17 @@ class AedeConfig:
         self.auto_approve: list[str] = data.get("auto_approve") or []
         self.model_prices: dict[str, Any] = data.get("model_prices") or {}
         self.api_base_url: str | None = data.get("api_base_url") or None
+        # Basic Correctness — Phase 2
+        self.grounding_enabled: bool = data.get("grounding_enabled", True)
+        self.critic_enabled: bool = data.get("critic_enabled", False)
+        self.critic_model: str | None = data.get("critic_model") or None
+        self.critic_api_base_url: str | None = data.get("critic_api_base_url") or None
+        # Memory System — Phase 2
+        self.ollama_base_url: str = data.get("ollama_base_url", "http://localhost:11434")
+        self.ollama_embed_model: str = data.get("ollama_embed_model", "nomic-embed-text")
+        self.ollama_timeout_s: float = float(data.get("ollama_timeout_s", 5.0))
+        self.learnings_top_k: int = int(data.get("learnings_top_k", 5))
+        self.learnings_max_tokens: int = int(data.get("learnings_max_tokens", 2000))
         raw_data_dir = data.get("data_dir")
         if raw_data_dir:
             self.data_dir = Path(raw_data_dir).expanduser()

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 
-GATE_TOOLS = {"powershell", "write_file", "create_file"}
+GATE_TOOLS = {"powershell", "write_file", "create_file", "write_learning"}
 
 
 class UnknownToolError(Exception):
@@ -44,12 +44,21 @@ class ToolRouter:
         shell: str,
         wsl_distro: str,
         tool_output_max_tokens: int,
+        _cfg: Any = None,
+        _gate_store: Any = None,
+        _agent_registry: dict[str, Any] | None = None,
+        _session_id: str | None = None,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
         self._max_tokens = tool_output_max_tokens
         self._session_auto_approve: set[str] = set()
+        self._cfg = _cfg
+        self._gate_store = _gate_store
+        self._agent_registry = _agent_registry or {}
+        self._session_id = _session_id
         self._registry = self._build_registry()
+        self._trusted_servers: dict[str, bool] = {}
 
     def _build_registry(self) -> dict[str, Callable]:
         from aede.tools.files import read_file, write_file, create_file, list_dir
@@ -71,7 +80,90 @@ class ToolRouter:
         from aede.tools.web import web_search
         reg["web_search"] = web_search
 
+        reg["session_search"] = lambda args: "[session_search: config must provide db]"
+        reg["write_learning"] = lambda args: "[write_learning: config must provide store]"
+
+        if self._cfg is not None and self._gate_store is not None:
+            _agent_defs = self._agent_registry
+            _o_cfg = self._cfg
+            _o_gate = self._gate_store
+            _o_sid = self._session_id
+            def _spawn(args: dict) -> str:
+                agent_name = args.get("agent_name", "")
+                task = args.get("task", "")
+                agent_def = _agent_defs.get(agent_name)
+                if agent_def is None:
+                    return f"[error: unknown agent {agent_name!r}]"
+                from aede.agents.orchestration import run_subagent
+                import asyncio
+                coro = run_subagent(
+                    agent_def=agent_def,
+                    task=task,
+                    orchestrator_cfg=_o_cfg,
+                    orchestrator_gate_store=_o_gate,
+                    orchestrator_session_id=_o_sid,
+                )
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop is not None:
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(coro)
+                    finally:
+                        new_loop.close()
+                else:
+                    return asyncio.run(coro)
+            reg["spawn_subagent"] = _spawn
+        else:
+            reg["spawn_subagent"] = lambda args: "[spawn_subagent: not configured]"
+
         return reg
+
+    @classmethod
+    def from_allowlist(
+        cls,
+        names: list[str] | None = None,
+        disallowed_tools: list[str] | None = None,
+        shell: str = "powershell",
+        wsl_distro: str = "",
+        tool_output_max_tokens: int = 8000,
+    ) -> ToolRouter:
+        """Construct a ToolRouter with only the named tools registered.
+
+        Args:
+            names: List of tool names to include. If None, start with all tools.
+            disallowed_tools: List of tool names to exclude (applied after allowlist).
+            shell, wsl_distro, tool_output_max_tokens: Passed to constructor.
+
+        Returns:
+            New ToolRouter with filtered registry.
+
+        Raises:
+            UnknownToolError: If any name in ``names`` is not in the full registry.
+        """
+        from aede.tools.router import ToolRouter as _TR, UnknownToolError as _UTE
+
+        # Create a temporary router to get the full tool list
+        temp = _TR(shell=shell, wsl_distro=wsl_distro, tool_output_max_tokens=tool_output_max_tokens)
+        all_tools = temp.tool_names()
+
+        if names is not None:
+            for n in names:
+                if n not in all_tools:
+                    raise _UTE(f"Unknown tool: {n!r}. Valid tools: {all_tools}")
+
+        allowed = list(names) if names is not None else list(all_tools)
+        disallowed = set(disallowed_tools or [])
+        final_names = [n for n in allowed if n not in disallowed]
+
+        # Build the new router and replace its registry
+        router = _TR(shell=shell, wsl_distro=wsl_distro, tool_output_max_tokens=tool_output_max_tokens)
+        full_registry = router._registry
+        router._registry = {n: full_registry[n] for n in final_names}
+        return router
 
     def tool_names(self) -> list[str]:
         """Return the list of registered tool names."""
@@ -177,6 +269,55 @@ class ToolRouter:
         return schemas
 
 
+def session_search(db: Any = None, query: str = "", limit: int = 5) -> str:
+    """Search session history via FTS5 and return message context windows."""
+    if db is None:
+        return "[session_search: no database available]"
+    try:
+        rows = db.con.execute(
+            "SELECT m.id, m.session_id, m.role, m.content, m.created_at, s.title "
+            "FROM messages m JOIN sessions s ON m.session_id = s.id "
+            "WHERE m.rowid IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?) "
+            "ORDER BY m.created_at DESC LIMIT ?",
+            (query, limit),
+        ).fetchall()
+    except Exception:
+        rows = db.con.execute(
+            "SELECT m.id, m.session_id, m.role, m.content, m.created_at, s.title "
+            "FROM messages m JOIN sessions s ON m.session_id = s.id "
+            "WHERE m.content LIKE ? ORDER BY m.created_at DESC LIMIT ?",
+            (f"%{query}%", limit),
+        ).fetchall()
+
+    if not rows:
+        return f"No results found for: {query}"
+
+    parts = []
+    for r in rows:
+        parts.append(f"Session: {r['session_id']} ({r['title'] or 'untitled'})")
+        parts.append(f"Role: {r['role']}  |  {r['content'][:200]}")
+        parts.append("")
+    return "\n".join(parts)
+
+
+def write_learning(type: str = "", content: str = "", source: str = "", source_session_id: str = "") -> str:
+    """Write a learning to the learnings store."""
+    try:
+        from aede.memory.store import LearningsStore
+        from aede.config import _aede_home
+        store_path = _aede_home() / "learnings.jsonl"
+        store = LearningsStore(store_path)
+        store.write_learning(
+            type=type,
+            content=content,
+            source=source,
+            source_session_id=source_session_id or "",
+        )
+        return f"Learning saved: {content[:100]}..."
+    except Exception as e:
+        return f"[write_learning error: {e}]"
+
+
 _TOOL_SCHEMAS: dict[str, dict] = {
     "powershell": {
         "name": "powershell",
@@ -269,6 +410,44 @@ _TOOL_SCHEMAS: dict[str, dict] = {
                 "count": {"type": "integer", "default": 5},
             },
             "required": ["query"],
+        },
+    },
+    "spawn_subagent": {
+        "name": "spawn_subagent",
+        "description": "Spawn a subagent to work on a task independently. Provide the agent_name (must match a loaded agent) and the task description.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "agent_name": {"type": "string", "description": "Name of the agent to spawn."},
+                "task": {"type": "string", "description": "Task description for the subagent."},
+            },
+            "required": ["agent_name", "task"],
+        },
+    },
+    "session_search": {
+        "name": "session_search",
+        "description": "Search past session history using FTS5 full-text search. Returns message excerpts with surrounding context. Use this to recall prior solutions, error patterns, or configuration decisions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query (FTS5 syntax)."},
+                "limit": {"type": "integer", "description": "Max results (default 5).", "default": 5},
+            },
+            "required": ["query"],
+        },
+    },
+    "write_learning": {
+        "name": "write_learning",
+        "description": "Persist a learning/insight to the learnings store for future sessions. Gate-required: always requires user approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "enum": ["anti-pattern", "failed-approach", "root-cause", "config-correction"]},
+                "content": {"type": "string", "description": "The learning content."},
+                "source": {"type": "string", "enum": ["user", "auto_learned", "test_failure", "tool_error"]},
+                "source_session_id": {"type": "string", "description": "Session ID where the learning was discovered."},
+            },
+            "required": ["type", "content", "source"],
         },
     },
 }

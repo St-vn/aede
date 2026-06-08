@@ -39,3 +39,17 @@ def test_permission_store_global_allow(tmp_path):
 def test_gate_decision_enum():
     assert GateDecision.ALLOW_ONCE.value == "allow_once"
     assert GateDecision.DENY.value == "deny"
+
+
+def test_render_gate_mcp_tool_attribution():
+    """render_gate includes server attribution for mcp__* tools."""
+    from aede.gate import render_gate
+    output = render_gate("mcp__playwright__navigate", {"url": "https://example.com"})
+    assert "[server: playwright]" in output
+
+
+def test_render_gate_mcp_server_label():
+    """render_gate with non-MCP tool does not show server attribution."""
+    from aede.gate import render_gate
+    output = render_gate("read_file", {"path": "x.txt"})
+    assert "server:" not in output
