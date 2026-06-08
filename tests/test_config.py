@@ -169,68 +169,6 @@ def test_config_round_trip_critic(tmp_home, tmp_path):
     assert cfg.grounding_enabled is False
 
 
-def test_load_config_mcp_servers(tmp_home, tmp_path):
-    """load_config from YAML with mcpServers block yields AedeConfig.mcp_servers."""
-    config_yaml = """
-model: claude-sonnet-4-20250514
-mcpServers:
-  playwright:
-    command: npx
-    args: ["-y", "@playwright/mcp"]
-    trusted: true
-"""
-    tmp_home.mkdir(parents=True, exist_ok=True)
-    global_path = tmp_home / "config.yml"
-    global_path.write_text(config_yaml)
-    project_dir = tmp_path / "project"
-    project_dir.mkdir(parents=True)
-    cfg = load_config(home=tmp_home, project_dir=project_dir)
-    assert hasattr(cfg, "mcp_servers")
-    assert "playwright" in cfg.mcp_servers
-    assert cfg.mcp_servers["playwright"].command == "npx"
-    assert cfg.mcp_servers["playwright"].trusted is True
-
-
-def test_mcp_servers_round_trip(tmp_home, tmp_path):
-    """mcpServers in config round-trip correctly."""
-    project_dir = tmp_path / "project"
-    project_dir.mkdir(parents=True)
-    project_yaml = """
-mcpServers:
-  server_b:
-    command: npx
-    args: ["b.js"]
-    trusted: true
-"""
-    (project_dir / "aede.yml").write_text(project_yaml)
-    cfg = load_config(home=tmp_home, project_dir=project_dir)
-    assert "server_b" in cfg.mcp_servers
-
-
-def test_mcp_servers_project_override(tmp_home, tmp_path):
-    """Project mcpServers overrides global mcpServers."""
-    global_yaml = """
-mcpServers:
-  global_server:
-    command: node
-    args: ["g.js"]
-"""
-    tmp_home.mkdir(parents=True, exist_ok=True)
-    (tmp_home / "config.yml").write_text(global_yaml)
-    project_dir = tmp_path / "project"
-    project_dir.mkdir(parents=True)
-    project_yaml = """
-mcpServers:
-  project_server:
-    command: npx
-    args: ["p.js"]
-    trusted: true
-"""
-    (project_dir / "aede.yml").write_text(project_yaml)
-    cfg = load_config(home=tmp_home, project_dir=project_dir)
-    assert "project_server" in cfg.mcp_servers
-
-
 def test_edit_config_file_spawns_editor(tmp_home, tmp_path):
     from unittest.mock import patch
     from aede.config import edit_config_file

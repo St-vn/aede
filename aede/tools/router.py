@@ -58,8 +58,6 @@ class ToolRouter:
         self._agent_registry = _agent_registry or {}
         self._session_id = _session_id
         self._registry = self._build_registry()
-        # MCP integration
-        self._mcp_bridge: Any = None
         self._trusted_servers: dict[str, bool] = {}
 
     def _build_registry(self) -> dict[str, Callable]:
@@ -167,30 +165,6 @@ class ToolRouter:
         router._registry = {n: full_registry[n] for n in final_names}
         return router
 
-    def register_mcp_tools(
-        self,
-        discovered: list[tuple[str, str, Any, dict]],
-    ) -> None:
-        """Register MCP-discovered tools into the router.
-
-        Args:
-            discovered: List of ``(full_name, server_name, cfg, schema)`` tuples
-                from ``MCPBridge.discovered_tools()``.
-        """
-        for full_name, server_name, cfg, schema in discovered:
-            self._registry[full_name] = self._make_mcp_handler(server_name, full_name)
-            _TOOL_SCHEMAS[full_name] = schema
-            self._trusted_servers[server_name] = getattr(cfg, "trusted", False)
-
-    def _make_mcp_handler(self, server_name: str, full_name: str) -> Any:
-        """Create a callable that routes MCP tool calls to the bridge."""
-        def handler(args: dict) -> str:
-            if self._mcp_bridge is None:
-                return "[error: MCP bridge not initialized]"
-            tool_short = full_name.split("__", 2)[2] if "__" in full_name else full_name
-            return self._mcp_bridge.call_sync(server_name, tool_short, args)
-        return handler
-
     def tool_names(self) -> list[str]:
         """Return the list of registered tool names."""
         return list(self._registry.keys())
@@ -245,15 +219,9 @@ class ToolRouter:
         """Return True if the tool must pass through the user approval gate.
 
         Session-level auto-approvals bypass the gate.
-        MCP tools (mcp__ prefix) check the trusted_servers map.
         """
         if name in self._session_auto_approve:
             return False
-        if name.startswith("mcp__"):
-            parts = name.split("__", 2)
-            if len(parts) >= 2:
-                server_name = parts[1]
-                return not self._trusted_servers.get(server_name, False)
         return name in GATE_TOOLS
 
     def set_auto_approved(self, tools: list[str]) -> None:

@@ -109,12 +109,6 @@ class AedeConfig:
         self.auto_approve: list[str] = data.get("auto_approve") or []
         self.model_prices: dict[str, Any] = data.get("model_prices") or {}
         self.api_base_url: str | None = data.get("api_base_url") or None
-        raw_mcp = data.get("mcpServers")
-        if raw_mcp:
-            from aede.mcp.client import _parse_mcp_servers
-            self.mcp_servers: dict[str, Any] = _parse_mcp_servers(raw_mcp)
-        else:
-            self.mcp_servers: dict[str, Any] = {}
         # Basic Correctness — Phase 2
         self.grounding_enabled: bool = data.get("grounding_enabled", True)
         self.critic_enabled: bool = data.get("critic_enabled", False)
