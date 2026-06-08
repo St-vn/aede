@@ -14,6 +14,7 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   created_at: string
+  is_branch_point?: boolean
 }
 
 export const useSessions = () =>
@@ -29,11 +30,11 @@ export const useSessionMessages = (sessionId: string | null) =>
 export const useCreateSession = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (model: string) =>
+    mutationFn: ({ model, parentId }: { model: string; parentId?: string }) =>
       apiFetch<Session>('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model }),
+        body: JSON.stringify({ model, parent_id: parentId }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
   })

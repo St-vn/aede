@@ -38,10 +38,19 @@ export function AgentPage() {
     }
   }
 
+  const handleResumeBranch = async (parentId: string) => {
+    try {
+      const session = await createSession.mutateAsync({ model: 'claude-sonnet-4', parentId })
+      setActiveId(session.id)
+    } catch (err) {
+      console.error('Failed to create branch:', err)
+    }
+  }
+
   const handleSendNewSession = async (content: string, model?: string) => {
     try {
       const selectedModel = model || 'claude-sonnet-4'
-      const session = await createSession.mutateAsync(selectedModel)
+      const session = await createSession.mutateAsync({ model: selectedModel })
       setInitialMessage(content)
       setActiveId(session.id)
     } catch (err) {
@@ -58,7 +67,7 @@ export function AgentPage() {
       sidebar={
         <Sidebar sessions={sessions} activeSessionId={activeId}
           onSelectSession={setActiveId} onNewSession={handleNewSession}
-          onDeleteSession={handleDeleteSession} />
+          onDeleteSession={handleDeleteSession} onResumeBranch={handleResumeBranch} />
       }
       centerPane={activeId ? (
         <ChatView

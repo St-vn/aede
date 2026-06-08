@@ -1,7 +1,7 @@
 import React from 'react'
 import { formatDistanceToNow } from 'date-fns'
 
-import { MoreVertical, Trash2, Pencil } from 'lucide-react'
+import { MoreVertical, Trash2, Pencil, GitBranch } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -19,9 +19,10 @@ interface Props {
   isActive: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  onResumeBranch?: (id: string) => void;
 }
 
-export function SessionRow({ session, isActive, onSelect, onDelete }: Props) {
+export function SessionRow({ session, isActive, onSelect, onDelete, onResumeBranch }: Props) {
   const [mounted, setMounted] = React.useState(false)
   const [isEditing, setIsEditing] = React.useState(false)
   const [editTitle, setEditTitle] = React.useState(session.title)
@@ -127,6 +128,17 @@ export function SessionRow({ session, isActive, onSelect, onDelete }: Props) {
               <Pencil className="w-4 h-4 mr-2" />
               <span>Rename</span>
             </DropdownMenuItem>
+            {onResumeBranch && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onResumeBranch(session.id)
+                }}
+              >
+                <GitBranch className="w-4 h-4 mr-2" />
+                <span>Resume in new branch</span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem 
               variant="destructive"
               onClick={(e) => {

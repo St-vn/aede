@@ -15,9 +15,10 @@ interface SidebarProps {
   onSelectSession: (id: string) => void
   onNewSession: () => void
   onDeleteSession?: (id: string) => void
+  onResumeBranch?: (id: string) => void
 }
 
-export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onDeleteSession }: SidebarProps) {
+export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onDeleteSession, onResumeBranch }: SidebarProps) {
   const [open, setOpen] = useState(true)
 
   const handleDelete = async (id: string) => {
@@ -64,7 +65,7 @@ export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSessi
             {sessions.length > 0 && (
               <p className="text-xs text-muted-foreground uppercase tracking-wider px-1 py-1">Recent</p>
             )}
-            <SessionSearch sessions={sessions} activeId={activeSessionId} onSelect={onSelectSession} onDelete={handleDelete} />
+            <SessionSearch sessions={sessions} activeId={activeSessionId} onSelect={onSelectSession} onDelete={handleDelete} onResumeBranch={onResumeBranch} />
           </ScrollArea>
         )}
         {!open && <div className="flex-1" />}

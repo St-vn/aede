@@ -194,6 +194,22 @@ async def websocket_turn(websocket: WebSocket):
             pass
 
 
+@app.post("/api/sessions")
+async def create_session(request: Request, payload: dict):
+    """Create a new session (optionally as a branch of a parent session)."""
+    db = request.app.state.db
+    from aede.session import Session
+    model = payload.get("model")
+    if not model:
+        raise HTTPException(status_code=400, detail="model is required")
+    session = Session.create(
+        db=db,
+        model=model,
+        parent_id=payload.get("parent_id"),
+    )
+    return session.__dict__
+
+
 @app.get("/sessions")
 async def list_sessions(request: Request):
     """List all sessions from the database."""
@@ -256,11 +272,37 @@ async def delete_session(request: Request, session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _walk_parent_messages(db, session_id: str) -> list[dict]:
+    """Recursively collect messages from all ancestor sessions, root-first."""
+    from aede.session import Session
+    try:
+        session = Session.load(db, session_id)
+    except KeyError:
+        return []
+    if not session.parent_id:
+        return []
+    ancestor_msgs = _walk_parent_messages(db, session.parent_id)
+    own = list(db.get_messages(session.parent_id))
+    ancestor_msgs.extend(own)
+    return ancestor_msgs
+
+
 @app.get("/sessions/{session_id}/messages")
 async def get_messages(request: Request, session_id: str):
-    """Get message history for a specific session."""
+    """Get message history for a session, including inherited parent messages."""
     db = request.app.state.db
-    return db.get_messages(session_id)
+    from aede.session import Session
+    try:
+        session = Session.load(db, session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    parent_msgs = _walk_parent_messages(db, session_id)
+    if parent_msgs:
+        parent_msgs[-1]["is_branch_point"] = True
+    own = list(db.get_messages(session_id))
+    parent_msgs.extend(own)
+    return parent_msgs
 
 
 @app.get("/config")
@@ -300,3 +342,68 @@ async def get_token_usage(request: Request, session_id: str | None = None):
         "total_output_tokens": row["output_tokens"] or 0,
         "total_cached_tokens": row["cached_tokens"] or 0,
     }
+
+
+@app.get("/api/workspace/files")
+async def get_workspace_files():
+    """List all tracked and untracked files in the workspace using git with basic walk fallback."""
+    import subprocess
+    from pathlib import Path
+
+    repo_dir = Path.cwd()
+
+    try:
+        # Check if .git exists. If not, fallback to directory walk.
+        if not (repo_dir / ".git").exists():
+            files = []
+            ignore_dirs = {".git", "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", "build", "dist"}
+            for p in repo_dir.rglob("*"):
+                if p.is_file() and not any(part in ignore_dirs for part in p.parts):
+                    try:
+                        rel = p.relative_to(repo_dir)
+                        files.append(str(rel).replace("\\", "/"))
+                    except ValueError:
+                        continue
+            return sorted(files)
+
+        # Run git ls-files to get tracked files
+        result_tracked = subprocess.run(
+            ["git", "ls-files"],
+            cwd=str(repo_dir),
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        tracked = [line.strip() for line in result_tracked.stdout.splitlines() if line.strip()]
+
+        # Run git status --porcelain to get untracked files
+        result_untracked = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(repo_dir),
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        untracked = []
+        for line in result_untracked.stdout.splitlines():
+            if line.startswith("?? "):
+                file_path = line[3:].strip()
+                if (repo_dir / file_path).is_file():
+                    untracked.append(file_path)
+
+        all_files = list(set(tracked + untracked))
+        return sorted([f.replace("\\", "/") for f in all_files])
+
+    except Exception:
+        # Fallback basic walk if anything fails
+        files = []
+        ignore_dirs = {".git", "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", "build", "dist"}
+        for p in repo_dir.rglob("*"):
+            if p.is_file() and not any(part in ignore_dirs for part in p.parts):
+                try:
+                    rel = p.relative_to(repo_dir)
+                    files.append(str(rel).replace("\\", "/"))
+                except ValueError:
+                    continue
+        return sorted(files)
+

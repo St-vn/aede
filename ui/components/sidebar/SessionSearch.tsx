@@ -5,9 +5,9 @@ import { Input } from '@/components/ui/input'
 import { SessionRow } from './SessionRow'
 
 interface Session { id: string; title: string; model: string; parent_id: string | null; created_at: string }
-interface Props { sessions: Session[]; onSelect: (id: string) => void; onDelete: (id: string) => void; activeId?: string | null }
+interface Props { sessions: Session[]; onSelect: (id: string) => void; onDelete: (id: string) => void; onResumeBranch?: (id: string) => void; activeId?: string | null }
 
-export function SessionSearch({ sessions, onSelect, onDelete, activeId }: Props) {
+export function SessionSearch({ sessions, onSelect, onDelete, onResumeBranch, activeId }: Props) {
   const [query, setQuery] = useState('')
   const filtered = query
     ? sessions.filter(s => (s.title || 'Untitled').toLowerCase().includes(query.toLowerCase()))
@@ -29,7 +29,7 @@ export function SessionSearch({ sessions, onSelect, onDelete, activeId }: Props)
       </div>
       <div className="space-y-0.5 px-2">
         {filtered.map(s => (
-          <SessionRow key={s.id} session={s} isActive={s.id === activeId} onSelect={onSelect} onDelete={onDelete} />
+          <SessionRow key={s.id} session={s} isActive={s.id === activeId} onSelect={onSelect} onDelete={onDelete} onResumeBranch={onResumeBranch} />
         ))}
       </div>
     </div>

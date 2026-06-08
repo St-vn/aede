@@ -9,7 +9,7 @@ import { InputBar } from '@/components/input/InputBar'
 import { useWebSocket, type WSEvent } from '@/hooks/useWebSocket'
 import { useQueryClient } from '@tanstack/react-query'
 
-interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string }
+interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean }
 interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number }
 interface GateRequest { gateId: string; toolName: string; args: Record<string, unknown> }
 
@@ -85,9 +85,15 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       <ScrollArea className="flex-1 min-h-0 px-4">
         <div className="max-w-[760px] mx-auto py-4 space-y-1">
           {messages.map(m =>
-            m.role === 'user'
-              ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} />
-              : <AssistantMessage key={m.id} content={m.content} isStreaming={false} />
+            m.is_branch_point
+              ? <div key={m.id} className="flex items-center gap-3 py-4 px-4 select-none">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-xs text-muted-foreground shrink-0">Branch point</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+              : m.role === 'user'
+                ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} />
+                : <AssistantMessage key={m.id} content={m.content} isStreaming={false} />
           )}
           {toolCalls.map(tc => (
             <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
