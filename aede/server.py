@@ -7,7 +7,8 @@ session management, message history, token usage, and tool-approval gates.
 import asyncio
 from pathlib import Path
 from typing import Any
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+import sys
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="aede backend")
@@ -161,8 +162,14 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 ]
                 agent.initialize(is_resume=True, prior_messages=prior_messages)
 
+                # Resolve @[filename] mentions from the session's project dir
+                ws_workspace = Path(session.project_dir).expanduser().resolve() if session.project_dir else None
+                resolved_content = _resolve_file_mentions(content, ws_workspace)
+                if resolved_content != content:
+                    await websocket.send_json({"type": "console_message", "content": "Resolved @ file references"})
+
                 # Run the turn in the background so we can still receive gate responses
-                turn_task = asyncio.create_task(agent.run_turn(content))
+                turn_task = asyncio.create_task(agent.run_turn(resolved_content))
                 
                 def on_turn_done(fut):
                     try:
@@ -204,6 +211,7 @@ async def create_session(request: Request, payload: dict):
         db=db,
         model=model,
         parent_id=payload.get("parent_id"),
+        project_dir=payload.get("project_dir"),
     )
     return session.to_dict()
 
@@ -212,6 +220,81 @@ async def create_session(request: Request, payload: dict):
 async def list_sessions(request: Request):
     db = request.app.state.db
     return db.list_sessions()
+
+
+# ── Project endpoints ──────────────────────────────────────────────
+
+
+@app.post("/api/projects")
+async def create_project(request: Request, payload: dict):
+    """Register a project directory. Idempotent — returns existing project if path already registered."""
+    from aede.project import Project
+    db = request.app.state.db
+    project_dir = payload.get("project_dir") or payload.get("path")
+    if not project_dir:
+        raise HTTPException(status_code=400, detail="project_dir is required")
+    existing = db.get_project_by_dir(project_dir)
+    if existing:
+        return Project(existing).to_dict()
+    project = Project.create(db=db, project_dir=project_dir)
+    return project.to_dict()
+
+
+@app.get("/api/projects")
+async def list_projects(request: Request):
+    from aede.project import Project
+    db = request.app.state.db
+    return [p.to_dict() for p in Project.list_all(db)]
+
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(request: Request, project_id: str):
+    """Remove a project from the list (does NOT touch files on disk)."""
+    db = request.app.state.db
+    from aede.project import Project
+    try:
+        project = Project.load(db, project_id)
+        project.delete(db)
+        return {"status": "ok"}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+
+@app.post("/api/projects/{project_id}/delete-folder")
+async def delete_project_folder(request: Request, project_id: str):
+    """Remove project from list AND delete the project directory from disk."""
+    import shutil
+    db = request.app.state.db
+    from aede.project import Project
+    try:
+        project = Project.load(db, project_id)
+        path = Path(project.project_dir).expanduser().resolve()
+        if path.exists():
+            shutil.rmtree(str(path))
+        project.delete(db)
+        return {"status": "ok"}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+
+@app.post("/api/projects/{project_id}/remove-git")
+async def remove_project_git(request: Request, project_id: str):
+    """Remove project from list AND delete the .git subdirectory."""
+    import shutil
+    db = request.app.state.db
+    from aede.project import Project
+    try:
+        project = Project.load(db, project_id)
+        git_path = Path(project.project_dir).expanduser().resolve() / ".git"
+        if git_path.exists():
+            if git_path.is_dir():
+                shutil.rmtree(str(git_path))
+            else:
+                git_path.unlink()
+        project.delete(db)
+        return {"status": "ok"}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Project not found")
 
 
 @app.get("/api/sessions/{session_id}")
@@ -232,6 +315,8 @@ async def update_session(request: Request, session_id: str, payload: dict):
         session = Session.load(db, session_id)
         if "title" in payload:
             session.set_title(db, payload["title"])
+        if "project_dir" in payload:
+            session.set_project_dir(db, payload["project_dir"])
         return Session.load(db, session_id).to_dict()
     except KeyError:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -336,13 +421,177 @@ async def get_token_usage(request: Request, session_id: str | None = None):
     }
 
 
+def _resolve_project_root(path: Path | None = None) -> Path | None:
+    """Walk up from ``path`` (defaults to CWD) to find the git root."""
+    if path is None:
+        path = Path.cwd()
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(path),
+            capture_output=True, text=True, check=True, timeout=5
+        )
+        return Path(result.stdout.strip())
+    except Exception:
+        return None
+
+
+
+
+
+_PICKER_SCRIPT = r"""
+import tkinter, sys
+from tkinter import filedialog
+root = tkinter.Tk()
+root.withdraw()
+root.attributes("-topmost", True)
+try:
+    path = filedialog.askdirectory()
+    if path:
+        sys.stdout.write(path)
+except Exception:
+    pass
+finally:
+    root.destroy()
+"""
+
+
+@app.post("/api/workspace/pick-directory")
+async def pick_directory():
+    """Open a native OS directory picker on the server. Returns the selected path."""
+    import subprocess
+    result = subprocess.run(
+        [sys.executable, "-c", _PICKER_SCRIPT],
+        capture_output=True, text=True, timeout=120,
+    )
+    path = result.stdout.strip()
+    return {"path": path or None}
+
+
+@app.post("/api/workspace/browse")
+async def browse_workspace(payload: dict = Body(default={"path": ""})):
+    """List subdirectories inside a given path for the folder picker."""
+    root = Path(payload.get("path", "")).expanduser().resolve()
+    if not root.is_dir():
+        raise HTTPException(status_code=400, detail="Not a valid directory")
+    hide_dirs = {".git", "node_modules", ".venv", "__pycache__", ".aede", "build", "dist", ".next", "out"}
+    entries = []
+    try:
+        for p in sorted(root.iterdir()):
+            if p.name.startswith(".") or p.name in hide_dirs:
+                continue
+            if p.is_dir():
+                has_git = (p / ".git").is_dir()
+                entries.append({
+                    "name": p.name,
+                    "path": str(p),
+                    "has_git": has_git,
+                })
+    except PermissionError:
+        pass
+    return {"parent": str(root.parent), "entries": entries}
+
+
+def _has_project_files(path: Path) -> bool:
+    """Check if a directory has recognizable source files."""
+    source_exts = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".c", ".cpp", ".h", ".json", ".yml", ".yaml", ".toml", ".md"}
+    try:
+        for p in path.iterdir():
+            if p.is_file() and p.suffix in source_exts:
+                return True
+            if p.is_dir() and p.name not in (".git", "node_modules", ".venv", "__pycache__"):
+                return True
+        return False
+    except Exception:
+        return False
+
+
+import re
+
+_MENTION_RE = re.compile(r"@\[([^\]]+)\]")
+
+
+def _resolve_file_mentions(content: str, workspace: Path | None = None) -> str:
+    """Replace @[filename] markers with actual file content.
+
+    Only resolves mentions when an explicit workspace path is provided.
+    Without one (no project selected), @[filename] markers pass through unchanged.
+    """
+    if not workspace or not _MENTION_RE.search(content):
+        return content
+
+    def _replace(m: re.Match) -> str:
+        filename = m.group(1)
+        filepath = (workspace / filename).resolve()
+        try:
+            filepath.relative_to(workspace.resolve())
+        except ValueError:
+            return m.group(0)
+        if filepath.is_file() and filepath.stat().st_size < 100_000:
+            try:
+                text = filepath.read_text(encoding="utf-8", errors="replace")
+                return f"\n```\n# {filename}\n{text}\n```\n"
+            except Exception:
+                pass
+        return m.group(0)
+
+    return _MENTION_RE.sub(_replace, content)
+
+
+@app.get("/api/workspace/info")
+async def get_workspace_info(request: Request, session_id: str | None = None, project_dir: str | None = None):
+    """Return metadata about the current workspace/project context.
+
+    Accepts either ``session_id`` (to look up the session's project_dir) or
+    a direct ``project_dir`` parameter.  Falls back to the server's CWD.
+    """
+    from aede.session import Session
+
+    workspace = None
+    if project_dir:
+        workspace = Path(project_dir).expanduser().resolve()
+    elif session_id:
+        try:
+            session = Session.load(request.app.state.db, session_id)
+            if session.project_dir:
+                workspace = Path(session.project_dir).expanduser().resolve()
+        except (KeyError, Exception):
+            pass
+
+    if workspace is None:
+        workspace = Path.cwd()
+
+    git_root = _resolve_project_root(workspace)
+    project_name = workspace.name if workspace.name not in ("", "/") else None
+    has_project = git_root is not None or _has_project_files(workspace)
+    return {
+        "cwd": str(workspace),
+        "git_root": str(git_root) if git_root else None,
+        "project_name": project_name,
+        "has_project": has_project,
+    }
+
+
 @app.get("/api/workspace/files")
-async def get_workspace_files():
+async def get_workspace_files(request: Request, session_id: str | None = None, project_dir: str | None = None):
     """List all tracked and untracked files in the workspace using git with basic walk fallback."""
+    from aede.session import Session
     import subprocess
     from pathlib import Path
 
-    repo_dir = Path.cwd()
+    workspace = None
+    if project_dir:
+        workspace = Path(project_dir).expanduser().resolve()
+    elif session_id:
+        try:
+            session = Session.load(request.app.state.db, session_id)
+            if session.project_dir:
+                workspace = Path(session.project_dir).expanduser().resolve()
+        except (KeyError, Exception):
+            pass
+
+    repo_dir = _resolve_project_root(workspace) or (workspace or Path.cwd())
 
     try:
         # Check if .git exists. If not, fallback to directory walk.

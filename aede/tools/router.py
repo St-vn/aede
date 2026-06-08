@@ -8,7 +8,10 @@ exposes Anthropic-format JSON schemas for each registered tool.
 """
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from aede.db import DB
 
 
 GATE_TOOLS = {"powershell", "write_file", "create_file", "write_learning"}
@@ -44,6 +47,7 @@ class ToolRouter:
         shell: str,
         wsl_distro: str,
         tool_output_max_tokens: int,
+        db: "DB | None" = None,
         _cfg: Any = None,
         _gate_store: Any = None,
         _agent_registry: dict[str, Any] | None = None,
@@ -52,6 +56,7 @@ class ToolRouter:
         self._shell = shell
         self._wsl_distro = wsl_distro
         self._max_tokens = tool_output_max_tokens
+        self._db = db
         self._session_auto_approve: set[str] = set()
         self._cfg = _cfg
         self._gate_store = _gate_store
@@ -80,7 +85,13 @@ class ToolRouter:
         from aede.tools.web import web_search
         reg["web_search"] = web_search
 
-        reg["session_search"] = lambda args: "[session_search: config must provide db]"
+        from aede.tools.search import session_search
+        _db = self._db
+        if _db:
+            reg["session_search"] = lambda args: session_search(args, db=_db)
+        else:
+            reg["session_search"] = lambda args: "[session_search: no database available]"
+
         reg["write_learning"] = lambda args: "[write_learning: config must provide store]"
 
         if self._cfg is not None and self._gate_store is not None:
@@ -426,12 +437,22 @@ _TOOL_SCHEMAS: dict[str, dict] = {
     },
     "session_search": {
         "name": "session_search",
-        "description": "Search past session history using FTS5 full-text search. Returns message excerpts with surrounding context. Use this to recall prior solutions, error patterns, or configuration decisions.",
+        "description": (
+            "Search past session message history by keyword using full-text search. "
+            "Returns matching messages with ±5 message context window and session bookends."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Search query (FTS5 syntax)."},
-                "limit": {"type": "integer", "description": "Max results (default 5).", "default": 5},
+                "query": {
+                    "type": "string",
+                    "description": "Keyword or phrase to search for in past messages.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of hit messages to return (default: 10).",
+                    "default": 10,
+                },
             },
             "required": ["query"],
         },

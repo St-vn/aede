@@ -7,6 +7,7 @@ export interface Session {
   model: string
   parent_id: string | null
   created_at: string
+  project_dir?: string | null
 }
 
 export interface Message {
@@ -30,11 +31,11 @@ export const useSessionMessages = (sessionId: string | null) =>
 export const useCreateSession = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ model, parentId }: { model: string; parentId?: string }) =>
+    mutationFn: ({ model, parentId, projectDir }: { model: string; parentId?: string; projectDir?: string }) =>
       apiFetch<Session>('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, parent_id: parentId }),
+        body: JSON.stringify({ model, parent_id: parentId, project_dir: projectDir }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
   })

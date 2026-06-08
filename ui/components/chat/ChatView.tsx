@@ -111,7 +111,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
         </div>
       </ScrollArea>
       <div className="max-w-[760px] mx-auto w-full">
-        <InputBar onSend={handleSend} disabled={inputDisabled} />
+        <InputBar onSend={handleSend} disabled={inputDisabled} sessionId={sessionId} />
       </div>
     </div>
   )

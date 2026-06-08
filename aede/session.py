@@ -45,6 +45,7 @@ class Session:
         self.status: str = data["status"]
         self.created_at: int = data["created_at"]
         self.updated_at: int = data["updated_at"]
+        self.project_dir: str | None = data.get("project_dir")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -55,6 +56,7 @@ class Session:
             "status": self.status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "project_dir": self.project_dir,
         }
 
     @classmethod
@@ -64,11 +66,17 @@ class Session:
         model: str,
         parent_id: str | None,
         title: str | None = None,
+        project_dir: str | None = None,
     ) -> "Session":
         """Insert a new session row and return the loaded ``Session`` object."""
         sid = generate_session_id()
-        db.insert_session(id=sid, parent_id=parent_id, title=title or "", model=model)
+        db.insert_session(id=sid, parent_id=parent_id, title=title or "", model=model, project_dir=project_dir)
         return cls.load(db=db, session_id=sid)
+
+    def set_project_dir(self, db: Any, project_dir: str) -> None:
+        """Update the session's project directory."""
+        db.set_session_project_dir(self.id, project_dir)
+        self.project_dir = project_dir
 
     @classmethod
     def load(cls, db: Any, session_id: str) -> "Session":
