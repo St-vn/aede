@@ -15,8 +15,9 @@ def _scan_dir(skills_dir: Path) -> dict[str, SkillDef]:
             try:
                 sd = SkillDef.from_file(md_path)
                 registry[sd.name] = sd
-            except SkillLoadError:
-                pass
+            except SkillLoadError as e:
+                import sys
+                print(f"[yellow]⚠ Skill load error in {md_path.name}: {e}[/yellow]", file=sys.stderr)
     return registry
 
 

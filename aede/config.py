@@ -125,7 +125,7 @@ class AedeConfig:
         self.learnings_top_k: int = data.get("learnings_top_k", DEFAULT_CONFIG["learnings_top_k"])
         self.learnings_max_tokens: int = data.get("learnings_max_tokens", DEFAULT_CONFIG["learnings_max_tokens"])
         # MCP server configurations
-        raw_mcp = data.get("mcp_servers") or {}
+        raw_mcp = data.get("mcp_servers") or data.get("mcpServers") or {}
         from aede.mcp.client import _parse_mcp_servers
         self.mcp_servers = _parse_mcp_servers(raw_mcp)
         raw_data_dir = data.get("data_dir")

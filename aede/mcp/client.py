@@ -7,6 +7,7 @@ are surfaced to ToolRouter for the LLM to call.
 """
 from __future__ import annotations
 import asyncio
+import os
 import concurrent.futures
 import threading
 import time
@@ -48,7 +49,7 @@ def _parse_mcp_servers(raw: dict[str, Any] | None) -> dict[str, MCPServerConfig]
         result[name] = MCPServerConfig(
             command=conf.get("command", ""),
             args=conf.get("args", []),
-            env=conf.get("env", {}),
+            env=conf.get("env") if "env" in conf else None,
             trusted=bool(conf.get("trusted", False)),
         )
     return result
@@ -96,12 +97,22 @@ class MCPBridge:
         server_params = mcp.StdioServerParameters(
             command=cfg.command,
             args=cfg.args,
-            env={**cfg.env} if cfg.env else None,
+            env={**os.environ, **cfg.env} if cfg.env is not None else None,
         )
 
         transport_cm = stdio_client(server_params)
         transport = await transport_cm.__aenter__()
         read, write = transport
+
+        # Attempt to extract the subprocess handle for force-kill fallback.
+        try:
+            proc = getattr(write, "_transport", None)
+            if proc is not None:
+                proc_info = getattr(proc, "_proc", None) or proc
+                self._processes[name] = proc_info
+        except Exception:
+            pass
+
         session_cm = mcp.ClientSession(read, write)
         session = await session_cm.__aenter__()
         await session.initialize()
@@ -120,30 +131,37 @@ class MCPBridge:
         self._transport_cms[name] = transport_cm
         return raw_schemas
 
-    async def spawn_all(self) -> list[str]:
-        """Spawn all configured MCP servers concurrently.
+    def spawn_all(self) -> list[str]:
+        """Spawn all configured MCP servers concurrently on the bridge loop.
 
         Returns a list of server names that failed to spawn.
         """
-        failed: list[str] = []
-        tool_schemas: dict[str, list[dict]] = {}
+        if self._loop is None:
+            raise RuntimeError("Bridge event loop not available")
 
-        async def _spawn_with_timeout(name: str, cfg: MCPServerConfig) -> None:
-            try:
-                schemas = await asyncio.wait_for(
-                    self._spawn_one(name, cfg), timeout=MCP_TIMEOUT
-                )
-                if schemas:
-                    tool_schemas[name] = schemas
-            except Exception:
-                failed.append(name)
+        async def _spawn_all() -> list[str]:
+            failed: list[str] = []
+            tool_schemas: dict[str, list[dict]] = {}
 
-        tasks = [_spawn_with_timeout(n, c) for n, c in self._servers.items()]
-        if tasks:
-            await asyncio.gather(*tasks)
+            async def _spawn_with_timeout(name: str, cfg: MCPServerConfig) -> None:
+                try:
+                    schemas = await asyncio.wait_for(
+                        self._spawn_one(name, cfg), timeout=MCP_TIMEOUT
+                    )
+                    if schemas:
+                        tool_schemas[name] = schemas
+                except Exception:
+                    failed.append(name)
 
-        self._tool_schemas.update(tool_schemas)
-        return failed
+            tasks = [_spawn_with_timeout(n, c) for n, c in self._servers.items()]
+            if tasks:
+                await asyncio.gather(*tasks)
+
+            self._tool_schemas.update(tool_schemas)
+            return failed
+
+        future = asyncio.run_coroutine_threadsafe(_spawn_all(), self._loop)
+        return future.result(timeout=MCP_TIMEOUT + 2)
 
     def discovered_tools(self) -> list[tuple[str, str, MCPServerConfig, dict]]:
         """Return discovered tools as ``(full_name, server_name, cfg, schema)`` tuples.

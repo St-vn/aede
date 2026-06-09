@@ -115,6 +115,7 @@ class ToolRouter:
                     orchestrator_cfg=_o_cfg,
                     orchestrator_gate_store=_o_gate,
                     orchestrator_session_id=_o_sid,
+                    orchestrator_spawn_depth=1,
                 )
                 try:
                     loop = asyncio.get_running_loop()

@@ -77,3 +77,22 @@ def test_skills_search_path_skips_non_md(tmp_path):
 
     registry = load_skills(global_dir=global_dir, project_dir=tmp_path / "project")
     assert registry == {}
+
+
+def test_skills_loader_warns_on_bad_skill(tmp_path, capsys):
+    """load_skills should print a warning when a SKILL.md fails to load."""
+    from aede.skills.loader import load_skills
+
+    bad_skill = tmp_path / "global" / "skills" / "broken.md"
+    bad_skill.parent.mkdir(parents=True)
+    bad_skill.write_text("not valid frontmatter")
+
+    registry = load_skills(
+        global_dir=tmp_path / "global",
+        project_dir=tmp_path / "project",
+    )
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "broken" in combined, (
+        f"Expected a warning about the bad skill file. Got stderr: {captured.err!r}, stdout: {captured.out!r}"
+    )

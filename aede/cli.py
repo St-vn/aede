@@ -390,7 +390,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         try:
             from aede.mcp.client import MCPBridge
             mcp_bridge = MCPBridge(servers=mcp_servers)
-            failed = await mcp_bridge.spawn_all()
+            failed = mcp_bridge.spawn_all()
             if failed:
                 console.print(f"[yellow]⚠ MCP servers failed to start: {', '.join(failed)}[/yellow]")
             discovered = mcp_bridge.discovered_tools()
@@ -433,19 +433,13 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     console.print(build_header(model=cfg.model, session_id=session.id))
 
     stop_reason = "ctrl_c"
+    stop_requested = False
     resume_target: str | None = None
 
     def _handle_sigint(sig, frame):
-        nonlocal stop_reason
-        stop_reason = "ctrl_c"
-        console.print("\n[dim]Interrupted.[/dim]")
-        if mcp_bridge is not None:
-            try:
-                mcp_bridge.shutdown_all()
-            except Exception:
-                pass
-        _shutdown(session, db, rollout, stop_reason)
-        sys.exit(0)
+        nonlocal stop_requested
+        stop_requested = True
+        console.print("\n[dim]Interrupted (will stop after current turn).[/dim]")
 
     signal.signal(signal.SIGINT, _handle_sigint)
 
@@ -453,7 +447,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         _maybe_set_title(session, db, initial_task)
         await _run_turn_safe(agent, initial_task, console)
 
-    while True:
+    while not stop_requested:
         try:
             user_input = console.input("> ")
         except EOFError:

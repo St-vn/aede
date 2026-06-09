@@ -181,3 +181,21 @@ def test_edit_config_file_spawns_editor(tmp_home, tmp_path):
         assert path == project_dir / "aede.yml"
         mock_run.assert_called_once_with(["dummy-editor", str(path)])
 
+
+def test_mcp_config_accepts_camelCase(tmp_home):
+    """AedeConfig accepts mcpServers (camelCase) as alias for mcp_servers."""
+    from aede.config import AedeConfig
+    from pathlib import Path
+
+    data = {
+        "mcpServers": {
+            "playwright": {
+                "command": "npx",
+                "args": ["-y", "@playwright/mcp"],
+            },
+        },
+    }
+    cfg = AedeConfig(data=data, home=tmp_home)
+    assert "playwright" in cfg.mcp_servers
+    assert cfg.mcp_servers["playwright"].command == "npx"
+

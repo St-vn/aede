@@ -128,7 +128,7 @@ async def test_spawn_one_timeout(server_configs):
     bridge._spawn_one = AsyncMock(side_effect=slow_spawn)
 
     with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
-        failures = await bridge.spawn_all()
+        failures = bridge.spawn_all()
 
     assert "playwright" in failures
 
@@ -145,7 +145,7 @@ async def test_spawn_all_concurrent(server_configs):
         return [{"name": f"{name}_tool", "description": "", "input_schema": {}}]
 
     bridge._spawn_one = AsyncMock(side_effect=fake_spawn)
-    failures = await bridge.spawn_all()
+    failures = bridge.spawn_all()
 
     assert failures == []
     assert bridge._spawn_one.call_count == 2
@@ -164,7 +164,7 @@ async def test_spawn_all_partial_failure(server_configs):
         raise RuntimeError("Failed to spawn")
 
     bridge._spawn_one = AsyncMock(side_effect=fake_spawn)
-    failures = await bridge.spawn_all()
+    failures = bridge.spawn_all()
 
     assert failures == ["filesystem"]
 
@@ -182,7 +182,7 @@ async def test_spawn_all_timeout_enforcement(server_configs):
     bridge._spawn_one = AsyncMock(side_effect=slow_spawn)
 
     with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
-        failures = await bridge.spawn_all()
+        failures = bridge.spawn_all()
 
     assert len(failures) == 2
 
@@ -337,3 +337,145 @@ def test_shutdown_all_noop_if_no_servers(server_configs):
 
     bridge = MCPBridge(servers=server_configs)
     bridge.shutdown_all()  # should not raise
+
+
+@pytest.mark.asyncio
+async def test_spawn_all_runs_on_bridge_loop(server_configs):
+    """_spawn_one should create sessions on the bridge loop, not the caller's loop."""
+    from aede.mcp.client import MCPBridge
+
+    bridge = MCPBridge(servers=server_configs)
+    main_loop = asyncio.get_running_loop()
+
+    spawn_loop = None
+
+    original_spawn = bridge._spawn_one
+    async def tracking_spawn(name, cfg):
+        nonlocal spawn_loop
+        spawn_loop = asyncio.get_running_loop()
+
+        mock_session = AsyncMock()
+        mock_session.list_tools = AsyncMock()
+        mock_tool = MagicMock()
+        mock_tool.name = "tracked_tool"
+        mock_tool.description = ""
+        mock_tool.inputSchema = {"type": "object"}
+        mock_session.list_tools.return_value = MagicMock(tools=[mock_tool])
+
+        with (
+            patch("mcp.ClientSession", return_value=mock_session),
+            patch("mcp.StdioServerParameters"),
+            patch("mcp.client.stdio.stdio_client") as mock_stdio,
+        ):
+            mock_transport = MagicMock()
+            mock_transport.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+            mock_transport.__aexit__ = AsyncMock()
+            mock_stdio.return_value = mock_transport
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock()
+
+            return await original_spawn(name, cfg)
+
+    bridge._spawn_one = tracking_spawn
+    bridge.spawn_all()
+
+    assert spawn_loop is not None, "_spawn_one was never called"
+    assert spawn_loop is not main_loop, (
+        f"_spawn_one ran on main loop ({id(main_loop)}) instead of bridge loop ({id(spawn_loop)})"
+    )
+
+
+@pytest.mark.asyncio
+async def test_spawn_one_env_inherits_parent(server_configs):
+    """_spawn_one merges cfg.env over os.environ, not replacing it entirely."""
+    import os
+    from aede.mcp.client import MCPBridge
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    bridge = MCPBridge(servers=server_configs)
+
+    mock_session = AsyncMock()
+    mock_session.list_tools = AsyncMock()
+    mock_tool = MagicMock()
+    mock_tool.name = "t"
+    mock_tool.description = ""
+    mock_tool.inputSchema = {"type": "object"}
+    mock_session.list_tools.return_value = MagicMock(tools=[mock_tool])
+
+    captured_env = None
+
+    with (
+        patch("mcp.ClientSession", return_value=mock_session),
+        patch("mcp.client.stdio.stdio_client") as mock_stdio,
+    ):
+        mock_transport = MagicMock()
+        mock_transport.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_transport.__aexit__ = AsyncMock()
+        mock_stdio.return_value = mock_transport
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+        mock_session.initialize = AsyncMock()
+        mock_session.list_tools.return_value = MagicMock(tools=[mock_tool])
+
+        # Monkey-patch StdioServerParameters to capture env
+        real_params = __import__("mcp").StdioServerParameters
+        def capturing_params(*args, **kwargs):
+            nonlocal captured_env
+            captured_env = kwargs.get("env") or (args[0].env if args else None)
+            return real_params(*args, **kwargs) if args else MagicMock()
+
+        with patch("mcp.StdioServerParameters", side_effect=capturing_params):
+            # Set a test env var so we can verify inheritance
+            os.environ["TEST_AEDE_MAGIC"] = "present"
+            try:
+                await bridge._spawn_one("test_server", server_configs["playwright"])
+            finally:
+                os.environ.pop("TEST_AEDE_MAGIC", None)
+
+    assert captured_env is not None, "StdioServerParameters never created"
+    assert captured_env.get("TEST_AEDE_MAGIC") == "present", (
+        f"cfg.env should override but not replace parent env. Got env keys: {list(captured_env.keys())[:10]}..."
+    )
+
+
+@pytest.mark.asyncio
+async def test_spawn_one_stores_process_handle(server_configs):
+    """_spawn_one should extract and store the subprocess handle in _processes."""
+    from aede.mcp.client import MCPBridge
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    bridge = MCPBridge(servers=server_configs)
+
+    mock_session = AsyncMock()
+    mock_session.list_tools = AsyncMock()
+    mock_tool = MagicMock()
+    mock_tool.name = "t"
+    mock_tool.description = ""
+    mock_tool.inputSchema = {"type": "object"}
+    mock_session.list_tools.return_value = MagicMock(tools=[mock_tool])
+
+    with (
+        patch("mcp.ClientSession", return_value=mock_session),
+        patch("mcp.StdioServerParameters"),
+        patch("mcp.client.stdio.stdio_client") as mock_stdio,
+    ):
+        mock_write = MagicMock()
+        mock_proc = MagicMock()
+        mock_proc.pid = 12345
+        # Simulate anyio stream transport with _proc
+        mock_write._transport = MagicMock()
+        mock_write._transport._proc = mock_proc
+
+        mock_read = MagicMock()
+        mock_transport = MagicMock()
+        mock_transport.__aenter__ = AsyncMock(return_value=(mock_read, mock_write))
+        mock_transport.__aexit__ = AsyncMock()
+        mock_stdio.return_value = mock_transport
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        await bridge._spawn_one("test_server", server_configs["playwright"])
+
+    assert "test_server" in bridge._processes, (
+        "_processes should have entry after spawn"
+    )
