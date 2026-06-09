@@ -40,7 +40,7 @@ class AcpManager:
 
         client = AcpClient(config)
         try:
-            client.initialize()
+            client.initialize(credential_provider=self._credential_provider)
         except FileNotFoundError:
             raise AcpConnectionError(
                 f"Agent '{agent_name}' not found: "

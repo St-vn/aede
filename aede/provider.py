@@ -42,6 +42,8 @@ class Provider(Protocol):
         messages: list[dict],
         max_tokens: int,
         console: Any,
+        reasoning_effort: str = "auto",
+        thinking_budget: int = 0,
     ) -> NormalizedResponse:
         ...
 
@@ -71,13 +73,23 @@ class AnthropicProvider:
         self,
         *,
         model: str,
-        system: Any,  # SystemPrompt dataclass or str
+        system: Any,
         tools: list[dict],
         messages: list[dict],
         max_tokens: int,
         console: Any,
+        reasoning_effort: str = "auto",
+        thinking_budget: int = 0,
     ) -> NormalizedResponse:
         client = self._get_client()
+
+        # Build thinking/effort params for Anthropic SDK
+        stream_kwargs: dict[str, Any] = {}
+        if reasoning_effort not in ("auto", "none"):
+            stream_kwargs["thinking"] = {"type": "adaptive"}
+            stream_kwargs["output_config"] = {"output_type": "text", "effort": reasoning_effort}
+        elif thinking_budget > 0:
+            stream_kwargs["thinking"] = {"type": "enabled", "budget_tokens": max(1024, thinking_budget)}
 
         # Build two-block system param with cache_control on the stable prefix.
         # This lets Anthropic KV-cache the stable part across all turns.
@@ -125,6 +137,7 @@ class AnthropicProvider:
             system=system_param,
             tools=tools,
             messages=api_messages,
+            **stream_kwargs,
         ) as stream:
             async for text in stream.text_stream:
                 console.print(text, end="", highlight=False)
@@ -318,13 +331,46 @@ class OpenAIProvider:
         self,
         *,
         model: str,
-        system: Any,  # SystemPrompt dataclass or str
+        system: Any,
         tools: list[dict],
         messages: list[dict],
         max_tokens: int,
         console: Any,
+        reasoning_effort: str = "auto",
+        thinking_budget: int = 0,
     ) -> NormalizedResponse:
         client = self._get_client()
+
+        # Build provider-aware reasoning/thinking params
+        stream_kwargs: dict[str, Any] = {}
+        is_deepseek_inner = model.startswith("deepseek-")
+        is_gemini = self._base_url and "googleapis.com" in self._base_url
+
+        if reasoning_effort != "auto":
+            if is_deepseek_inner:
+                # DeepSeek only accepts "high" and "max"
+                deepseek_map: dict[str, str] = {
+                    "low": "high", "medium": "high", "high": "high",
+                    "xhigh": "max", "max": "max",
+                }
+                if reasoning_effort == "none":
+                    stream_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+                else:
+                    mapped = deepseek_map.get(reasoning_effort, "high")
+                    stream_kwargs["reasoning_effort"] = mapped
+                    stream_kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
+            elif is_gemini:
+                # Gemini via Google AI OpenAI-compatible endpoint
+                level_map: dict[str, str] = {
+                    "none": "minimal", "low": "low", "medium": "medium",
+                    "high": "high", "xhigh": "high", "max": "high",
+                }
+                level = level_map.get(reasoning_effort, "medium")
+                stream_kwargs["extra_body"] = {"thinking_config": {"thinking_level": level}}
+            else:
+                # OpenAI / OpenRouter — pass through
+                stream_kwargs["reasoning_effort"] = reasoning_effort
+
         # Flatten SystemPrompt to a plain string — OpenAI does not support cache_control.
         if hasattr(system, "stable") and hasattr(system, "dynamic"):
             system_str = system.stable + system.dynamic
@@ -346,6 +392,7 @@ class OpenAIProvider:
             tools=oai_tools if oai_tools else None,
             stream=True,
             stream_options={"include_usage": True},
+            **stream_kwargs,
         )
 
         async for chunk in stream:
@@ -456,6 +503,15 @@ def get_provider(cfg: Any) -> AnthropicProvider | OpenAIProvider:
     is_anthropic_model = (
         model.startswith("claude-") or model.startswith("anthropic/")
     )
+    is_deepseek_model = model.startswith("deepseek-")
+
+    if is_deepseek_model:
+        api_key = os.environ.get("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "DEEPSEEK_API_KEY is not set. Use /setkey DEEPSEEK_API_KEY <key> first."
+            )
+        return OpenAIProvider(api_key=api_key, base_url=base_url or "https://api.deepseek.com")
 
     if base_url and not is_anthropic_model:
         api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")

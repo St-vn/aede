@@ -5,10 +5,11 @@ Provides REST and WebSocket endpoints for the browser-based UI, including
 session management, message history, token usage, and tool-approval gates.
 """
 import asyncio
+import os
 from pathlib import Path
 from typing import Any
 import sys
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="aede backend")
@@ -175,6 +176,28 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     try:
                         fut.result()
                         asyncio.create_task(websocket.send_json({"type": "turn_completed"}))
+                        # Emit context usage info
+                        try:
+                            if hasattr(agent, 'count_context_tokens'):
+                                ctx = agent.count_context_tokens()
+                                asyncio.create_task(websocket.send_json({
+                                    "type": "context_usage",
+                                    "used": ctx.get("total_tokens", 0),
+                                    "total": cfg.context_window,
+                                }))
+                        except Exception:
+                            pass
+                        # Emit learnings count
+                        try:
+                            from aede.memory.store import LearningsStore
+                            store = LearningsStore(data_dir=cfg.data_dir, db=db)
+                            all_l = store.list_all()
+                            asyncio.create_task(websocket.send_json({
+                                "type": "learnings_injected",
+                                "count": len(all_l),
+                            }))
+                        except Exception:
+                            pass
                     except Exception as e:
                         asyncio.create_task(websocket.send_json({"type": "error", "message": str(e)}))
 
@@ -418,6 +441,794 @@ async def get_token_usage(request: Request, session_id: str | None = None):
         "total_input_tokens": row["input_tokens"] or 0,
         "total_output_tokens": row["output_tokens"] or 0,
         "total_cached_tokens": row["cached_tokens"] or 0,
+    }
+
+
+# ── Config endpoints ──────────────────────────────────────────
+
+
+@app.get("/api/config")
+async def get_config(request: Request):
+    """Return the current merged config as a dict."""
+    cfg = request.app.state.cfg
+    import dataclasses
+    d = {}
+    for key in ("model", "context_window", "compaction_threshold", "tool_output_max_tokens",
+                 "shell", "wsl_distro", "batch_approval_max", "auto_approve",
+                 "api_base_url", "grounding_enabled", "critic_enabled", "critic_model",
+                 "critic_api_base_url", "ollama_base_url", "ollama_embed_model",
+                 "ollama_timeout_s", "learnings_top_k", "learnings_max_tokens",
+                 "reasoning_effort", "thinking_budget"):
+        val = getattr(cfg, key, None)
+        if val is not None:
+            d[key] = val
+    d["model_prices"] = cfg.model_prices
+    d["mcp_servers"] = cfg.mcp_servers
+    return d
+
+
+@app.get("/api/config/sources")
+async def get_config_sources(request: Request):
+    """Return the config sources dict showing origin of each key."""
+    cfg = request.app.state.cfg
+    return cfg.sources
+
+
+@app.post("/api/config/open")
+async def open_config_file(request: Request, payload: dict = {}):
+    """Open the config file in the default OS editor."""
+    cfg = request.app.state.cfg
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+
+    if scope == "global":
+        file_path = cfg.home / "config.yml"
+    elif scope == "project":
+        pdir = Path(project_dir) if project_dir else Path.cwd()
+        file_path = pdir / "aede.yml"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid scope")
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Config file not found")
+
+    os.startfile(str(file_path))
+    return {"status": "ok"}
+
+
+@app.get("/api/mcp/servers")
+async def list_mcp_servers(request: Request):
+    """Return configured MCP servers with real status."""
+    cfg = request.app.state.cfg
+    bridge = getattr(request.app.state, "mcp_bridge", None)
+    servers = {}
+    if cfg.mcp_servers:
+        for name, srv in cfg.mcp_servers.items():
+            running = bridge is not None and hasattr(bridge, "_sessions") and name in bridge._sessions
+            tools = []
+            if bridge is not None and hasattr(bridge, "_tool_schemas"):
+                tools = list(bridge._tool_schemas.get(name, []))
+            servers[name] = {
+                "command": srv.command,
+                "args": srv.args,
+                "env": srv.env,
+                "trusted": srv.trusted,
+                "url": srv.url,
+                "enabled": srv.enabled,
+                "disabled_tools": srv.disabled_tools,
+                "status": "running" if running else "stopped",
+                "tools": tools,
+            }
+    return servers
+
+
+@app.post("/api/mcp/servers/restart")
+async def restart_mcp_servers(request: Request):
+    """Restart all MCP servers."""
+    _restart_mcp_bridge(request)
+    cfg = request.app.state.cfg
+    mcp_servers = getattr(cfg, "mcp_servers", {})
+    return {"status": "ok", "servers": list(mcp_servers.keys()) if mcp_servers else []}
+
+
+@app.post("/api/mcp/servers")
+async def create_mcp_server(request: Request, payload: dict):
+    """Add or update an MCP server in config.yml and restart the bridge."""
+    name = payload.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    cfg = request.app.state.cfg
+    home = cfg.home
+    # Read current config
+    import yaml
+    cfg_path = home / "config.yml"
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    mcp_data = data.setdefault("mcp_servers", {})
+    mcp_data[name] = {
+        "command": payload.get("command", ""),
+        "args": payload.get("args", []),
+        "env": payload.get("env") or None,
+        "url": payload.get("url", ""),
+        "trusted": payload.get("trusted", False),
+    }
+    cfg_path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
+    # Reload config
+    from aede.config import Config
+    request.app.state.cfg = Config.load()
+    # Restart bridge
+    _restart_mcp_bridge(request)
+    return {"status": "ok", "name": name}
+
+
+@app.delete("/api/mcp/servers/{name}")
+async def delete_mcp_server(name: str, request: Request):
+    """Remove an MCP server from config.yml and restart the bridge."""
+    cfg = request.app.state.cfg
+    home = cfg.home
+    import yaml
+    cfg_path = home / "config.yml"
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    mcp_data = data.setdefault("mcp_servers", {})
+    if name not in mcp_data:
+        raise HTTPException(status_code=404, detail=f"MCP server {name!r} not found")
+    del mcp_data[name]
+    cfg_path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
+    from aede.config import Config
+    request.app.state.cfg = Config.load()
+    _restart_mcp_bridge(request)
+    return {"status": "ok", "name": name}
+
+
+def _restart_mcp_bridge(request: Request) -> None:
+    """Helper: reload config, shut down existing bridge, restart with current config."""
+    from aede.config import load_config
+    request.app.state.cfg = load_config()
+    cfg = request.app.state.cfg
+    bridge = getattr(request.app.state, "mcp_bridge", None)
+    if bridge is not None:
+        try:
+            bridge.shutdown_all()
+        except Exception:
+            pass
+    mcp_servers = getattr(cfg, "mcp_servers", {})
+    if mcp_servers:
+        try:
+            from aede.mcp.client import MCPBridge
+            new_bridge = MCPBridge(servers=mcp_servers)
+            new_bridge.spawn_all()
+            request.app.state.mcp_bridge = new_bridge
+        except Exception:
+            request.app.state.mcp_bridge = None
+    else:
+        request.app.state.mcp_bridge = None
+
+
+@app.put("/api/config")
+async def update_config(request: Request, payload: dict):
+    """Update a config value. Payload: {key, value, scope, project_dir?}"""
+    key = payload.get("key")
+    value = payload.get("value")
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+
+    if not key:
+        raise HTTPException(status_code=400, detail="key is required")
+
+    if scope == "project" and not project_dir:
+        raise HTTPException(status_code=400, detail="project_dir required for project scope")
+    from aede.config import write_config_value
+    write_config_value(scope=scope, key=key, value=value, project_dir=Path(project_dir) if project_dir else None)
+
+    return {"status": "ok", "key": key, "scope": scope}
+
+
+# ── Credential endpoints ──────────────────────────────────────
+
+
+@app.get("/api/credentials")
+async def list_credentials(request: Request):
+    """Return all credential names and providers (without values).
+
+    Reads from ``~/.aede/credentials.json`` via ``aede.credentials``.
+    """
+    cfg = request.app.state.cfg
+    from aede.credentials import list_credentials as _list
+    return _list(cfg.home)
+
+
+ACP_COMMANDS = {
+    "codex": ("codex-acp", []),
+    "claude-code": ("claude-agent-acp", []),
+    "gemini": ("gemini", ["--experimental-acp"]),
+    "agy": ("agy", ["--acp"]),
+}
+
+
+@app.post("/api/credentials")
+async def create_credential(request: Request, payload: dict):
+    """Create or update a credential in the vault file and current env."""
+    cfg = request.app.state.cfg
+    from aede.credentials import set_credential as _set
+    name = payload.get("name")
+    value = payload.get("value")
+    provider = payload.get("provider")
+    if not name or not value:
+        raise HTTPException(status_code=400, detail="name and value are required")
+    import os
+    _set(cfg.home, name, value, provider)
+    os.environ[name] = value
+
+    acp_connected = False
+    if provider:
+        mgr = getattr(request.app.state, "acp_manager", None)
+        if mgr:
+            cmd_info = ACP_COMMANDS.get(provider)
+            if cmd_info:
+                command, args = cmd_info
+                from aede.acp.registry import AgentConfig, AgentTransport
+                try:
+                    mgr._registry.get(provider)
+                except KeyError:
+                    try:
+                        mgr._registry.add(AgentConfig(
+                            name=provider,
+                            transport=AgentTransport.LOCAL,
+                            command=command,
+                            args=args,
+                        ))
+                    except ValueError:
+                        pass
+                try:
+                    mgr.connect(provider)
+                    acp_connected = True
+                except Exception:
+                    pass
+
+    return {"status": "ok", "name": name, "acp_connected": acp_connected}
+
+
+@app.delete("/api/credentials/{name}")
+async def delete_credential(request: Request, name: str):
+    """Delete a credential from the vault file and current env."""
+    cfg = request.app.state.cfg
+    from aede.credentials import delete_credential as _del, list_credentials as _list
+    creds = {c["name"]: c.get("provider") for c in _list(cfg.home)}
+    provider = creds.get(name)
+    _del(cfg.home, name)
+    import os
+    os.environ.pop(name, None)
+
+    if provider:
+        mgr = getattr(request.app.state, "acp_manager", None)
+        if mgr and provider in ACP_COMMANDS:
+            mgr.disconnect(provider)
+            try:
+                mgr._registry.remove(provider)
+            except (KeyError, ValueError):
+                pass
+
+    return {"status": "ok"}
+
+
+# ── Learnings endpoints ───────────────────────────────────────
+
+
+def _get_learnings_store(request: Request):
+    """Lazy-init LearningsStore from request state."""
+    if not hasattr(request.app.state, 'learnings_store') or request.app.state.learnings_store is None:
+        from aede.memory.store import LearningsStore
+        request.app.state.learnings_store = LearningsStore(
+            data_dir=request.app.state.cfg.data_dir,
+            db=request.app.state.db,
+        )
+    return request.app.state.learnings_store
+
+
+@app.get("/api/learnings")
+async def list_learnings(request: Request):
+    """Return all learnings from the store."""
+    store = _get_learnings_store(request)
+    return store.list_all()
+
+
+@app.post("/api/learnings")
+async def create_learning(request: Request, payload: dict):
+    """Create a new learning."""
+    store = _get_learnings_store(request)
+    record = store.write_learning(
+        type=payload.get("type", "config-correction"),
+        content=payload.get("content", ""),
+        source=payload.get("source", "user"),
+        source_session_id=payload.get("source_session_id", ""),
+        trusted=payload.get("trusted", True),
+    )
+    return record
+
+
+@app.delete("/api/learnings/{learning_id}")
+async def delete_learning(request: Request, learning_id: str):
+    """Delete a learning."""
+    store = _get_learnings_store(request)
+    success = store.delete(learning_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Learning not found")
+    return {"status": "ok"}
+
+
+# ── Agents / Skills endpoints ─────────────────────────────────
+
+_PHASE1_TOOLS = ["powershell", "read_file", "write_file", "create_file",
+                 "list_dir", "search_files", "fetch_url", "web_search",
+                 "session_search", "write_learning", "subagent"]
+
+
+def _get_agent_registry(request: Request) -> dict:
+    if not hasattr(request.app.state, 'agent_registry'):
+        from aede.agents.loader import load_agents
+        from aede.skills.loader import load_skills
+        home = request.app.state.cfg.home
+        skill_registry = _get_skill_registry(request)
+        request.app.state.agent_registry = load_agents(
+            global_dir=home,
+            project_dir=home,
+            skill_registry=skill_registry,
+            all_tool_names=_PHASE1_TOOLS,
+        )
+    return request.app.state.agent_registry
+
+
+def _get_skill_registry(request: Request) -> dict:
+    if not hasattr(request.app.state, 'skill_registry'):
+        from aede.skills.loader import load_skills
+        home = request.app.state.cfg.home
+        request.app.state.skill_registry = load_skills(global_dir=home, project_dir=home)
+    return request.app.state.skill_registry
+
+
+_AGENT_UPLOAD_EXTS = (".md", ".agent")
+
+
+def _resolve_agent_path(home: Path, name: str, scope: str = "global", project_dir: str | None = None) -> Path:
+    if scope == "project" and project_dir:
+        return Path(project_dir) / "agents" / f"{name}.md"
+    return home / "agents" / f"{name}.md"
+
+
+def _resolve_skill_path(home: Path, name: str, scope: str = "global", project_dir: str | None = None) -> Path:
+    if scope == "project" and project_dir:
+        return Path(project_dir) / "skills" / f"{name}.md"
+    return home / "skills" / f"{name}.md"
+
+
+@app.post("/api/agents/upload")
+async def upload_agent(request: Request, file: UploadFile = File(...)):
+    """Upload an agent .md or .agent file and save it to the agents directory."""
+    if not file.filename or not any(file.filename.lower().endswith(e) for e in _AGENT_UPLOAD_EXTS):
+        raise HTTPException(status_code=400, detail="Only .md and .agent files are accepted")
+    content = (await file.read()).decode("utf-8")
+    if not content.startswith("---"):
+        raise HTTPException(status_code=400, detail="File must start with YAML frontmatter (---)")
+    from aede.agents.schema import AgentDef, AgentLoadError
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8")
+    try:
+        tmp.write(content)
+        tmp.close()
+        ad = AgentDef.from_file(Path(tmp.name))
+    except AgentLoadError as e:
+        Path(tmp.name).unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    home = request.app.state.cfg.home
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    dest = _resolve_agent_path(home, ad.name, scope, project_dir)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        Path(tmp.name).unlink(missing_ok=True)
+        raise HTTPException(status_code=409, detail=f"Agent {ad.name!r} already exists")
+    Path(tmp.name).rename(dest)
+    request.app.state.agent_registry = None
+    return {"status": "ok", "name": ad.name}
+
+
+@app.get("/api/agents")
+async def list_agents(request: Request):
+    """Return list of available agents."""
+    registry = _get_agent_registry(request)
+    home = request.app.state.cfg.home
+    agents = []
+    for name, ad in registry.items():
+        fp = ad.source_path or home / "agents" / f"{name}.md"
+        scope = "global" if str(fp).startswith(str(home)) else "project"
+        agents.append({
+            "name": name,
+            "description": ad.description,
+            "model": ad.model,
+            "skills": ad.skills,
+            "tools": ad.tools,
+            "disallowed_tools": ad.disallowed_tools,
+            "max_turns": ad.max_turns,
+            "system_prompt": ad.system_prompt,
+            "body": ad.body,
+            "file_path": str(fp),
+            "scope": scope,
+        })
+    return agents
+
+
+@app.post("/api/agents")
+async def create_agent(request: Request, payload: dict):
+    """Create a new agent definition file."""
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    home = request.app.state.cfg.home
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+    filepath = _resolve_agent_path(home, name, scope, project_dir)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if filepath.exists():
+        raise HTTPException(status_code=409, detail=f"Agent {name!r} already exists")
+    _write_agent_file(filepath, payload)
+    request.app.state.agent_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.put("/api/agents/{name}")
+async def update_agent(request: Request, name: str, payload: dict):
+    """Update an existing agent definition file."""
+    home = request.app.state.cfg.home
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+    filepath = _resolve_agent_path(home, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Agent {name!r} not found")
+    _write_agent_file(filepath, payload)
+    request.app.state.agent_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.delete("/api/agents/{name}")
+async def delete_agent(request: Request, name: str):
+    """Delete an agent definition file."""
+    home = request.app.state.cfg.home
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    filepath = _resolve_agent_path(home, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Agent {name!r} not found")
+    filepath.unlink()
+    request.app.state.agent_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.post("/api/agents/{name}/open")
+async def open_agent_file(name: str, request: Request):
+    """Open an agent definition file in the default OS editor."""
+    home = request.app.state.cfg.home
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    filepath = _resolve_agent_path(home, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Agent {name!r} not found")
+    os.startfile(str(filepath))
+    return {"status": "ok"}
+
+
+def _write_agent_file(filepath: Path, payload: dict) -> None:
+    import yaml
+    frontmatter = {}
+    for key in ("name", "description", "model", "skills", "tools", "disallowedTools",
+                "disallowed_tools", "maxTurns", "max_turns", "systemPrompt", "system_prompt"):
+        if key in payload and payload[key] is not None:
+            val = payload[key]
+            # Normalize keys to the canonical YAML format
+            norm = {"disallowed_tools": "disallowedTools",
+                    "max_turns": "maxTurns",
+                    "system_prompt": "systemPrompt"}.get(key, key)
+            if val != "" and val != [] and val != {}:
+                frontmatter[norm] = val
+    body = payload.get("body", "")
+    yaml_str = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True).rstrip()
+    content = f"---\n{yaml_str}\n---\n"
+    if body:
+        content += f"\n{body}\n"
+    filepath.write_text(content, encoding="utf-8")
+
+
+_SKILL_UPLOAD_EXTS = (".md", ".skill")
+
+
+@app.post("/api/skills/upload")
+async def upload_skill(request: Request, file: UploadFile = File(...)):
+    """Upload a skill .md or .skill file and save it to the skills directory."""
+    if not file.filename or not any(file.filename.lower().endswith(e) for e in _SKILL_UPLOAD_EXTS):
+        raise HTTPException(status_code=400, detail="Only .md and .skill files are accepted")
+    content = (await file.read()).decode("utf-8")
+    if not content.startswith("---"):
+        raise HTTPException(status_code=400, detail="File must start with YAML frontmatter (---)")
+    from aede.skills.schema import SkillDef, SkillLoadError
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8")
+    try:
+        tmp.write(content)
+        tmp.close()
+        sd = SkillDef.from_file(Path(tmp.name))
+    except SkillLoadError as e:
+        Path(tmp.name).unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    home = request.app.state.cfg.home
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    dest = _resolve_skill_path(home, sd.name, scope, project_dir)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        Path(tmp.name).unlink(missing_ok=True)
+        raise HTTPException(status_code=409, detail=f"Skill {sd.name!r} already exists")
+    Path(tmp.name).rename(dest)
+    request.app.state.skill_registry = None
+    return {"status": "ok", "name": sd.name}
+
+
+@app.get("/api/skills")
+async def list_skills(request: Request):
+    """Return list of available skills."""
+    registry = _get_skill_registry(request)
+    home = request.app.state.cfg.home
+    skills = []
+    for sd in registry.values():
+        fp = sd.source_path or home / "skills" / f"{sd.name}.md"
+        scope = "global" if str(fp).startswith(str(home)) else "project"
+        skills.append({
+            "name": sd.name,
+            "description": sd.description,
+            "trigger_phrases": sd.trigger_phrases,
+            "allowed_tools": sd.allowed_tools,
+            "model": sd.model,
+            "body": sd.body,
+            "file_path": str(fp),
+            "scope": scope,
+        })
+    return skills
+
+
+@app.post("/api/skills")
+async def create_skill(request: Request, payload: dict):
+    """Create a new skill definition file."""
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    home = request.app.state.cfg.home
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+    filepath = _resolve_skill_path(home, name, scope, project_dir)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if filepath.exists():
+        raise HTTPException(status_code=409, detail=f"Skill {name!r} already exists")
+    _write_skill_file(filepath, payload)
+    request.app.state.skill_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.put("/api/skills/{name}")
+async def update_skill(request: Request, name: str, payload: dict):
+    """Update an existing skill definition file."""
+    home = request.app.state.cfg.home
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+    filepath = _resolve_skill_path(home, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
+    _write_skill_file(filepath, payload)
+    request.app.state.skill_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.delete("/api/skills/{name}")
+async def delete_skill(request: Request, name: str):
+    """Delete a skill definition file."""
+    home = request.app.state.cfg.home
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    filepath = _resolve_skill_path(home, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
+    filepath.unlink()
+    request.app.state.skill_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.post("/api/skills/{name}/open")
+async def open_skill_file(name: str, request: Request):
+    """Open a skill definition file in the default OS editor."""
+    home = request.app.state.cfg.home
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    filepath = _resolve_skill_path(home, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
+    os.startfile(str(filepath))
+    return {"status": "ok"}
+
+
+def _write_skill_file(filepath: Path, payload: dict) -> None:
+    import yaml
+    frontmatter = {}
+    for key in ("name", "description", "trigger_phrases", "allowed_tools", "model"):
+        if key in payload and payload[key] is not None:
+            val = payload[key]
+            if val != "" and val != [] and val != {}:
+                frontmatter[key] = val
+    body = payload.get("body", "")
+    yaml_str = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True).rstrip()
+    content = f"---\n{yaml_str}\n---\n"
+    if body:
+        content += f"\n{body}\n"
+    filepath.write_text(content, encoding="utf-8")
+
+
+# ── ACP (Agent Client Protocol) endpoints ────────────────────
+
+
+@app.post("/api/acp/register")
+async def acp_register(request: Request, payload: dict):
+    """Register a new ACP agent config. Body: {name, command, args?, credentials_ref?}"""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        raise HTTPException(status_code=500, detail="ACP manager not initialized")
+    name = payload.get("name")
+    command = payload.get("command")
+    if not name or not command:
+        raise HTTPException(status_code=400, detail="name and command are required")
+    from aede.acp.registry import AgentConfig, AgentTransport
+    config = AgentConfig(
+        name=name,
+        transport=AgentTransport.LOCAL,
+        command=command,
+        args=payload.get("args", []),
+        credentials_ref=payload.get("credentials_ref"),
+    )
+    try:
+        mgr._registry.add(config)
+        return {"status": "registered", "name": name}
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@app.get("/api/acp/configs")
+async def acp_configs(request: Request):
+    """Return list of registered ACP agent configs."""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        return {"configs": []}
+    configs = []
+    for c in mgr._registry.list_all():
+        configs.append({
+            "name": c.name,
+            "command": c.command,
+            "args": c.args,
+            "credentials_ref": c.credentials_ref,
+        })
+    return {"configs": configs}
+
+
+@app.post("/api/acp/connect")
+async def acp_connect(request: Request, payload: dict):
+    """Connect to an ACP agent. Body: {name}"""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        raise HTTPException(status_code=500, detail="ACP manager not initialized")
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    try:
+        session_id = mgr.connect(name)
+        return {"status": "connected", "name": name, "session_id": session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/acp/disconnect")
+async def acp_disconnect(request: Request, payload: dict):
+    """Disconnect from an ACP agent. Body: {name}"""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        raise HTTPException(status_code=500, detail="ACP manager not initialized")
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    mgr.disconnect(name)
+    return {"status": "disconnected", "name": name}
+
+
+@app.get("/api/acp/status")
+async def acp_status(request: Request):
+    """Return current ACP connection status."""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        return {"connected": False, "active": None, "sessions": []}
+    active = mgr.active_session()
+    return {
+        "connected": active is not None,
+        "active": active.name if active else None,
+        "sessions": mgr.list_connected(),
+    }
+
+
+# ── Model endpoints ──────────────────────────────────────────
+
+
+@app.get("/api/models")
+async def list_models(request: Request):
+    """Return the configured model list (presets + user additions)."""
+    from aede.models import load_models
+    return load_models(request.app.state.cfg.home)
+
+
+@app.post("/api/models")
+async def add_model(request: Request, payload: dict):
+    """Add a custom model. Body: {id, label, provider}"""
+    from aede.models import load_models, save_models
+    model_id = payload.get("id")
+    label = payload.get("label")
+    provider = payload.get("provider")
+    if not model_id or not label or not provider:
+        raise HTTPException(status_code=400, detail="id, label, and provider are required")
+    models = load_models(request.app.state.cfg.home)
+    models.append({"id": model_id, "label": label, "provider": provider})
+    save_models(request.app.state.cfg.home, models)
+    return {"status": "ok"}
+
+
+@app.delete("/api/models/{model_id}")
+async def delete_model(request: Request, model_id: str):
+    """Remove a model from the list."""
+    from aede.models import load_models, save_models
+    models = [m for m in load_models(request.app.state.cfg.home) if m["id"] != model_id]
+    save_models(request.app.state.cfg.home, models)
+    return {"status": "ok"}
+
+
+@app.put("/api/models")
+async def replace_models(request: Request, payload: list):
+    """Bulk-replace the model list (for drag reorder or full sync)."""
+    from aede.models import save_models
+    save_models(request.app.state.cfg.home, payload)
+    return {"status": "ok"}
+
+
+@app.post("/api/models/reset")
+async def reset_models(request: Request):
+    """Reset the model list to factory presets."""
+    from aede.models import reset_models as _reset
+    _reset(request.app.state.cfg.home)
+    return {"status": "ok"}
+
+
+# ── Session token detail ──────────────────────────────────────
+
+
+@app.get("/api/sessions/{session_id}/tokens")
+async def get_session_token_detail(request: Request, session_id: str):
+    """Return per-turn token usage for a session."""
+    db = request.app.state.db
+    cfg = request.app.state.cfg
+    records = db.get_token_usage_detail(session_id)
+    prices = cfg.model_prices
+    from aede.tokens import estimate_cost
+    total_input = sum(r["input_tokens"] for r in records)
+    total_output = sum(r["output_tokens"] for r in records)
+    total_cached = sum(r["cached_tokens"] for r in records)
+    cost = estimate_cost(cfg.model, total_input, total_output, total_cached, prices)
+    return {
+        "turns": records,
+        "totals": {
+            "input_tokens": total_input,
+            "output_tokens": total_output,
+            "cached_tokens": total_cached,
+        },
+        "estimated_cost_usd": cost,
+        "model": cfg.model,
     }
 
 

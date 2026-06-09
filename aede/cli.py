@@ -283,7 +283,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     from aede.gate import PermissionStore, TerminalGateBackend
     from aede.tokens import TokenTracker, PriceCache
     from aede.agent import AgentLoop
-    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_agents, _load_session_notes, handle_delete_session
+    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_agents, handle_acp, _load_session_notes, handle_delete_session
 
     console = Console()
 
@@ -369,6 +369,19 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     except Exception as e:
         agent_registry = {}
         console.print(f"[yellow]⚠ Agent load error: {e}[/yellow]")
+
+    # ── ACP (Agent Client Protocol) ──────────────────────────────
+    from aede.acp.registry import AgentRegistry as AcpAgentRegistry
+    from aede.acp.manager import AcpManager
+    from aede.acp.credentials import CredentialProvider
+
+    acp_registry = AcpAgentRegistry(config_dir=home)
+    acp_credential_provider = CredentialProvider(home=home)
+    acp_manager = AcpManager(
+        registry=acp_registry,
+        credential_provider=acp_credential_provider,
+    )
+    acp_active = False
 
     router = ToolRouter(
         shell=cfg.shell,
@@ -484,7 +497,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
             elif cmd.name == "config":
                 handle_config_edit(cmd.args, cfg, console, home, Path.cwd())
             elif cmd.name == "setkey":
-                handle_setkey(cmd.args, console, home)
+                handle_setkey(cmd.args, console, home, acp_manager)
             elif cmd.name == "compact":
                 result = await agent.compact()
                 console.print(
@@ -495,6 +508,12 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
                 handle_skills(skill_registry, console)
             elif cmd.name == "agents":
                 handle_agents(agent_registry, console)
+            elif cmd.name == "acp":
+                result = handle_acp(cmd.args, acp_manager, console)
+                if result == "connected":
+                    acp_active = True
+                elif result == "disconnected":
+                    acp_active = False
             elif cmd.name in ("delete-session", "rm"):
                 handle_delete_session(cmd.args, db, console, cfg.data_dir)
             elif cmd.name == "resume":
@@ -503,6 +522,25 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
                     resume_target = target_id
                     stop_reason = "resume"
                     break
+            continue
+
+        if acp_active:
+            acp_sesh = acp_manager.active_session()
+            if acp_sesh:
+                console.print(f"[dim]→ ACP: {acp_sesh.name}[/dim]")
+                try:
+                    result = await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: acp_sesh.session.prompt(text=user_input)
+                    )
+                    text = result.raw.get("content", "")
+                    if isinstance(text, list):
+                        text = " ".join(
+                            b.get("text", "") for b in text if isinstance(b, dict)
+                        )
+                    if text:
+                        console.print(text)
+                except Exception as e:
+                    console.print(f"[red]ACP error: {e}[/red]")
             continue
 
         _maybe_set_title(session, db, user_input)

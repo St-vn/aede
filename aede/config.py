@@ -23,6 +23,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "auto_approve": [],
     "model_prices": {},
     "api_base_url": None,  # None = Anthropic direct; set to OpenAI-compatible base URL (e.g. https://openrouter.ai/api/v1) for non-Anthropic models via OpenAI SDK
+    "reasoning_effort": "auto",  # auto | none | low | medium | high | xhigh | max
+    "thinking_budget": 0,  # 0 = auto/default, otherwise token count (min 1024)
     # Basic Correctness — Phase 2
     "grounding_enabled": True,
     "critic_enabled": False,
@@ -66,6 +68,10 @@ batch_approval_max: 20
 # critic_enabled: false      # Run a critic LLM pass before gated writes (default false; costs extra call)
 # critic_model:              # Optional separate model for critic; null = same model, critic persona
 # critic_api_base_url:       # Optional base URL for critic model (e.g. https://openrouter.ai/api/v1)
+
+# Reasoning / thinking mode
+# reasoning_effort: auto     # auto | none | low | medium | high | xhigh | max
+# thinking_budget: 0         # 0 = auto/default, otherwise token count (min 1024)
 """
 
 
@@ -112,6 +118,9 @@ class AedeConfig:
         self.auto_approve: list[str] = data.get("auto_approve") or []
         self.model_prices: dict[str, Any] = data.get("model_prices") or {}
         self.api_base_url: str | None = data.get("api_base_url") or None
+        # Reasoning / thinking mode
+        self.reasoning_effort: str = data.get("reasoning_effort", "auto")
+        self.thinking_budget: int = data.get("thinking_budget", 0)
         # Basic Correctness — Phase 2
         self.grounding_enabled: bool = data.get("grounding_enabled", True)
         self.critic_enabled: bool = data.get("critic_enabled", False)

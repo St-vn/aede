@@ -7,15 +7,17 @@ import { ToolCallCard } from './ToolCallCard'
 import { GateCard } from './GateCard'
 import { InputBar } from '@/components/input/InputBar'
 import { useWebSocket, type WSEvent } from '@/hooks/useWebSocket'
+import { ContextBar } from './ContextBar'
+import { LearningsChip } from './LearningsChip'
 import { useQueryClient } from '@tanstack/react-query'
 
 interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean }
 interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number }
 interface GateRequest { gateId: string; toolName: string; args: Record<string, unknown> }
 
-interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void }
+interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void; onOpenSettings?: (tab?: string) => void; onOpenHelp?: () => void }
 
-export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage }: Props) {
+export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp }: Props) {
   const [streamingText, setStreamingText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([])
@@ -110,6 +112,10 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
           )}
         </div>
       </ScrollArea>
+      <ContextBar sessionId={sessionId} />
+      <div className="max-w-[760px] mx-auto w-full px-4 pb-1 flex items-center justify-end">
+        <LearningsChip sessionId={sessionId} />
+      </div>
       <div className="max-w-[760px] mx-auto w-full">
         <InputBar onSend={handleSend} disabled={inputDisabled} sessionId={sessionId} />
       </div>

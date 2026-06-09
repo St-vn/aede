@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 import json
+import os
 import subprocess
 
 from .registry import AgentConfig
@@ -37,8 +38,8 @@ class AcpClient:
         self._process: Optional[subprocess.Popen] = None
         self._request_id = 0
 
-    def initialize(self) -> InitializeResult:
-        self._start()
+    def initialize(self, credential_provider=None) -> InitializeResult:
+        self._start(credential_provider=credential_provider)
         result = self._send_request("initialize", {
             "protocolVersion": ACP_PROTOCOL_VERSION,
             "clientCapabilities": {
@@ -120,13 +121,24 @@ class AcpClient:
             self._process.terminate()
             self._process.wait(timeout=5)
 
-    def _start(self) -> None:
+    def _inject_env(self, credential_provider=None) -> dict:
+        env = os.environ.copy()
+        if credential_provider and self._config.credentials_ref:
+            try:
+                val = credential_provider.get(self._config.credentials_ref)
+                env[self._config.credentials_ref] = val
+            except KeyError:
+                pass
+        return env
+
+    def _start(self, credential_provider=None) -> None:
         self._process = subprocess.Popen(
             [self._config.command] + self._config.args,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=self._inject_env(credential_provider),
         )
 
     def _send_request(self, method: str, params: dict) -> Any:

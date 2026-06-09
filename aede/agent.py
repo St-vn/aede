@@ -582,6 +582,8 @@ class AgentLoop:
                     messages=self._messages,
                     max_tokens=8096,
                     console=self._console,
+                    reasoning_effort=self._cfg.reasoning_effort,
+                    thinking_budget=self._cfg.thinking_budget,
                 )
             except Exception as e:
                 status_code: int | None = getattr(e, "status_code", None)

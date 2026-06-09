@@ -56,3 +56,46 @@ def test_parse_mcp_servers_none():
     from aede.mcp.client import _parse_mcp_servers
 
     assert _parse_mcp_servers(None) == {}
+
+
+def test_mcp_server_config_enabled_defaults():
+    """MCPServerConfig has enabled=True and disabled_tools=[] by default."""
+    from aede.mcp.client import MCPServerConfig
+
+    cfg = MCPServerConfig(command="echo")
+    assert cfg.enabled is True
+    assert cfg.disabled_tools == []
+
+
+def test_mcp_server_config_explicit_disabled():
+    """MCPServerConfig accepts explicit enabled/disabled_tools."""
+    from aede.mcp.client import MCPServerConfig
+
+    cfg = MCPServerConfig(command="echo", enabled=False, disabled_tools=["tool_a", "tool_b"])
+    assert cfg.enabled is False
+    assert cfg.disabled_tools == ["tool_a", "tool_b"]
+
+
+def test_parse_mcp_servers_with_enabled_fields():
+    """_parse_mcp_servers parses enabled and disabled_tools from raw dict."""
+    from aede.mcp.client import _parse_mcp_servers
+
+    raw = {
+        "enabled_srv": {
+            "command": "echo",
+        },
+        "disabled_srv": {
+            "command": "echo",
+            "enabled": False,
+        },
+        "filtered_srv": {
+            "command": "echo",
+            "disabled_tools": ["dangerous_tool"],
+        },
+    }
+
+    result = _parse_mcp_servers(raw)
+    assert result["enabled_srv"].enabled is True
+    assert result["disabled_srv"].enabled is False
+    assert result["filtered_srv"].disabled_tools == ["dangerous_tool"]
+    assert result["enabled_srv"].disabled_tools == []

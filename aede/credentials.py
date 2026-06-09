@@ -50,16 +50,21 @@ def load_credentials_into_env(home: Path) -> list[str]:
         )
 
     loaded: list[str] = []
-    for name, value in data.items():
+    for name, entry in data.items():
         if name in os.environ:
-            # Real environment variable wins — do not overwrite.
             continue
-        os.environ[name] = str(value)
+        if isinstance(entry, dict):
+            actual_value = entry.get("value", "")
+        else:
+            actual_value = entry
+        os.environ[name] = str(actual_value)
         loaded.append(name)
     return loaded
 
 
-def set_credential(home: Path, name: str, value: str) -> None:
+def set_credential(
+    home: Path, name: str, value: str, provider: str | None = None
+) -> None:
     """
     Write a credential into the vault file, creating it if necessary.
 
@@ -76,14 +81,72 @@ def set_credential(home: Path, name: str, value: str) -> None:
             if isinstance(existing, dict):
                 data = existing
         except (json.JSONDecodeError, ValueError):
-            # Overwrite an unparseable file rather than fail the set.
             data = {}
 
-    data[name] = value
+    entry: dict[str, Any] = {"value": value}
+    if provider:
+        entry["provider"] = provider
+    data[name] = entry
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     try:
         os.chmod(path, 0o600)
     except (OSError, NotImplementedError):
-        # chmod is largely a no-op on Windows; never fail the operation.
         pass
+
+
+def list_credentials(home: Path) -> list[dict[str, Any]]:
+    """Return all credentials from the vault file.
+
+    Each entry has keys ``name``, ``value``, and optionally ``provider``.
+    Returns an empty list if the file does not exist or is unparseable.
+    """
+    path = credentials_path(home)
+    if not path.exists():
+        return []
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError):
+        return []
+
+    if not isinstance(data, dict):
+        return []
+
+    result: list[dict[str, Any]] = []
+    for name, entry in data.items():
+        if isinstance(entry, dict):
+            result.append({
+                "name": name,
+                "value": entry.get("value", ""),
+                "provider": entry.get("provider"),
+            })
+        else:
+            # Backward compat: flat ``{name: value}`` format.
+            result.append({
+                "name": name,
+                "value": entry,
+                "provider": None,
+            })
+    return result
+
+
+def delete_credential(home: Path, name: str) -> None:
+    """Remove a single credential from the vault file.
+
+    No-op if the key does not exist or the file is missing.
+    """
+    path = credentials_path(home)
+    if not path.exists():
+        return
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError):
+        return
+
+    if not isinstance(data, dict):
+        return
+
+    data.pop(name, None)
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")

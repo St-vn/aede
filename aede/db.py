@@ -513,6 +513,13 @@ class DB:
             "SELECT * FROM learnings ORDER BY created_at ASC"
         ).fetchall()
 
+    def get_token_usage_detail(self, session_id: str) -> list[dict]:
+        """Return per-turn token usage data for a session."""
+        return self.con.execute(
+            "SELECT turn_number, input_tokens, output_tokens, cached_tokens, role, created_at FROM token_usage WHERE session_id = ? ORDER BY turn_number ASC",
+            (session_id,),
+        ).fetchall()
+
     def close(self) -> None:
         """Close the underlying SQLite connection."""
         self.con.close()

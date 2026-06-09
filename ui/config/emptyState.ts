@@ -16,10 +16,13 @@ export const EMPTY_STATE: EmptyStateConfig = {
   //   "Let's get to work.",
   // ],
   headlines: [
-    "What do you want to build?",
-    "What should we research today?",
-    "Let's get to work.",
-    "Time to cook!"
+    "Time to cook!",
+    "Bugs? No problem!",
+    "What's the game plan?",
+    "Enter the building room.",
+    "Start orchestrating.",
+    "What do you want to brainstorm?",
+    "From an idea to a product.",
   ],
   headlineIntervalMs: 3500,
   subtitle: "aede, your building room",

@@ -8,3 +8,11 @@ export async function apiFetch<T = unknown>(path: string, init?: RequestInit): P
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
   return res.json() as Promise<T>
 }
+
+export async function apiUpload<T = unknown>(path: string, file: File): Promise<T> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API_BASE}${path}`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+  return res.json() as Promise<T>
+}

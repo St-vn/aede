@@ -7,12 +7,15 @@ import { ChatView } from '@/components/chat/ChatView'
 import { useSessions, useSessionMessages, useCreateSession, useDeleteSession } from '@/hooks/useSession'
 import { InputBar } from '@/components/input/InputBar'
 import { useQueryClient } from '@tanstack/react-query'
+import { SettingsModal, type SettingsTabId } from '@/components/settings/SettingsModal'
 
 export function AgentPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [initialMessage, setInitialMessage] = useState<string>('')
   const [activeProjectDir, setActiveProjectDir] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId | undefined>(undefined)
   const qc = useQueryClient()
 
   const { data: sessions = [] } = useSessions()
@@ -86,30 +89,35 @@ export function AgentPage() {
   }
 
   return (
-    <Layout
-      sidebar={
-        <Sidebar sessions={sessions} activeSessionId={activeId} activeProjectDir={activeProjectDir}
-          onSelectSession={handleSelectSession} onNewSession={handleNewSession}
-          onDeleteSession={handleDeleteSession} onResumeBranch={handleResumeBranch}
-          onOpenProject={handleOpenProject} />
-      }
-      centerPane={activeId ? (
-        <ChatView
-          sessionId={activeId}
-          messages={messages}
-          initialMessage={initialMessage}
-          onClearInitialMessage={() => setInitialMessage('')}
-        />
-      ) : (
-        <div className="flex-1 flex flex-col min-h-0 justify-between">
-          <div className="flex-1 overflow-y-auto min-h-0">
-            <EmptyState onOpenProject={handleOpenProject} projectName={activeProjectDir ? activeProjectDir.split(/[\\/]/).pop() || activeProjectDir : undefined} activeProjectDir={activeProjectDir} />
+    <>
+      <Layout
+        sidebar={
+          <Sidebar sessions={sessions} activeSessionId={activeId} activeProjectDir={activeProjectDir}
+            onSelectSession={handleSelectSession} onNewSession={handleNewSession}
+            onDeleteSession={handleDeleteSession} onResumeBranch={handleResumeBranch}
+            onOpenProject={handleOpenProject} onOpenSettings={() => setSettingsOpen(true)} />
+        }
+        centerPane={activeId ? (
+          <ChatView
+            sessionId={activeId}
+            messages={messages}
+            initialMessage={initialMessage}
+            onClearInitialMessage={() => setInitialMessage('')}
+            onOpenSettings={(tab) => { setSettingsTab(tab as SettingsTabId); setSettingsOpen(true) }}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col min-h-0 justify-between">
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <EmptyState onOpenProject={handleOpenProject} projectName={activeProjectDir ? activeProjectDir.split(/[\\/]/).pop() || activeProjectDir : undefined} activeProjectDir={activeProjectDir} />
+            </div>
+            <div className="max-w-[760px] mx-auto w-full">
+              <InputBar onSend={handleSendNewSession} disabled={createSession.isPending} sessionId={activeId} projectDir={activeProjectDir}
+                onOpenSettings={(tab) => { setSettingsTab(tab as SettingsTabId); setSettingsOpen(true) }} />
+            </div>
           </div>
-          <div className="max-w-[760px] mx-auto w-full">
-            <InputBar onSend={handleSendNewSession} disabled={createSession.isPending} sessionId={activeId} projectDir={activeProjectDir} />
-          </div>
-        </div>
-      )}
-    />
+        )}
+      />
+      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} initialTab={settingsTab} />
+    </>
   )
 }

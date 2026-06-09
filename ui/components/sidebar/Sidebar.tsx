@@ -29,9 +29,10 @@ interface SidebarProps {
   onDeleteSession?: (id: string) => void
   onResumeBranch?: (id: string) => void
   onOpenProject?: (dir: string | null) => void
+  onOpenSettings?: () => void
 }
 
-export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectSession, onNewSession, onDeleteSession, onResumeBranch, onOpenProject }: SidebarProps) {
+export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectSession, onNewSession, onDeleteSession, onResumeBranch, onOpenProject, onOpenSettings }: SidebarProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [folderPickerOpen, setFolderPickerOpen] = useState(false)
   const [removingProject, setRemovingProject] = useState<Project | null>(null)
@@ -182,11 +183,11 @@ export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectS
         {/* Bottom */}
         <div className="flex flex-col gap-1 px-2 py-2 border-t border-border">
           {[{ icon: <User className="w-4 h-4" />, label: 'Profile' },
-            { icon: <Settings className="w-4 h-4" />, label: 'Settings' }]
-            .map(({ icon, label }) => (
+            { icon: <Settings className="w-4 h-4" />, label: 'Settings', onClick: onOpenSettings }]
+            .map(({ icon, label, onClick }) => (
               <Tooltip key={label}>
                 <TooltipTrigger render={
-                  <Button variant="ghost" size="icon" aria-label={label}>{icon}</Button>
+                  <Button variant="ghost" size="icon" aria-label={label} onClick={onClick}>{icon}</Button>
                 } />
                 <TooltipContent side="right">{label}</TooltipContent>
               </Tooltip>

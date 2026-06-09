@@ -479,3 +479,54 @@ async def test_spawn_one_stores_process_handle(server_configs):
     assert "test_server" in bridge._processes, (
         "_processes should have entry after spawn"
     )
+
+
+@pytest.mark.asyncio
+async def test_spawn_all_skips_disabled_servers(server_configs):
+    """spawn_all does not call _spawn_one for servers with enabled=False."""
+    from aede.mcp.client import MCPBridge, MCPServerConfig
+
+    disabled_cfg = MCPServerConfig(
+        command="npx", args=["-y", "should-not-spawn"], enabled=False,
+    )
+    configs = {"disabled": disabled_cfg, **server_configs}
+    bridge = MCPBridge(servers=configs)
+
+    async def fake_spawn(name, cfg):
+        await asyncio.sleep(0.01)
+        return [{"name": f"{name}_tool", "description": "", "input_schema": {}}]
+
+    bridge._spawn_one = AsyncMock(side_effect=fake_spawn)
+    failures = bridge.spawn_all()
+
+    assert failures == []
+    assert "disabled" not in bridge._tool_schemas
+    enabled_count = sum(1 for c in configs.values() if c.enabled)
+    assert bridge._spawn_one.call_count == enabled_count
+
+
+@pytest.mark.asyncio
+async def test_discovered_tools_filters_disabled_tools(server_configs):
+    """discovered_tools excludes tools listed in server's disabled_tools."""
+    from aede.mcp.client import MCPBridge, MCPServerConfig
+
+    filtered_cfg = MCPServerConfig(
+        command="echo", trusted=True, disabled_tools=["tool_b"],
+    )
+    configs = {"filtered_srv": filtered_cfg}
+    bridge = MCPBridge(servers=configs)
+    bridge._tool_schemas = {
+        "filtered_srv": [
+            {"name": "tool_a", "description": "Alpha", "input_schema": {}},
+            {"name": "tool_b", "description": "Bravo", "input_schema": {}},
+            {"name": "tool_c", "description": "Charlie", "input_schema": {}},
+        ],
+    }
+
+    tools = bridge.discovered_tools()
+    tool_names = [t[0] for t in tools]
+
+    assert "mcp__filtered_srv__tool_a" in tool_names
+    assert "mcp__filtered_srv__tool_b" not in tool_names
+    assert "mcp__filtered_srv__tool_c" in tool_names
+    assert len(tools) == 2

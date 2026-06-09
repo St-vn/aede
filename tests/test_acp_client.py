@@ -1,7 +1,9 @@
 import json
+import os
 import pytest
 from pathlib import Path
 from aede.acp.client import AcpClient
+from aede.acp.credentials import CredentialProvider
 from aede.acp.registry import AgentConfig, AgentTransport
 
 
@@ -94,3 +96,67 @@ sys.stdout.flush()
     client = AcpClient(config)
     with pytest.raises(Exception, match="Model unavailable"):
         client.initialize()
+
+
+def make_env_echo_agent(script_path: Path) -> Path:
+    """Create a fake ACP agent that reads an env var and returns it."""
+    script_path.write_text(f"""
+import sys, json, os
+
+def read():
+    line = sys.stdin.readline()
+    return json.loads(line) if line else None
+
+def write(msg):
+    sys.stdout.write(json.dumps(msg) + "\\n")
+    sys.stdout.flush()
+
+req = read()
+assert req["method"] == "initialize"
+api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+write({{
+    "jsonrpc": "2.0",
+    "id": req["id"],
+    "result": {{
+        "protocolVersion": 1,
+        "agentCapabilities": {{"loadSession": False}},
+        "agentInfo": {{"name": api_key, "title": "Env Agent", "version": "0.0.0"}},
+        "authMethods": [],
+    }},
+}})
+""")
+    return script_path
+
+
+def test_start_injects_credentials_ref_env(tmp_path):
+    credentials_file = tmp_path / "credentials.json"
+    credentials_file.write_text(json.dumps({
+        "ANTHROPIC_API_KEY": {"value": "sk-ant-test-key", "provider": "anthropic"},
+    }))
+    provider = CredentialProvider(home=tmp_path)
+    script = make_env_echo_agent(tmp_path / "env_agent.py")
+    config = AgentConfig(
+        name="env_test",
+        transport=AgentTransport.LOCAL,
+        command="python",
+        args=[str(script)],
+        credentials_ref="ANTHROPIC_API_KEY",
+    )
+    client = AcpClient(config)
+    result = client.initialize(credential_provider=provider)
+    assert result.agent_info.name == "sk-ant-test-key"
+
+
+def test_start_with_unset_credentials_ref_skips_injection(tmp_path):
+    provider = CredentialProvider(home=tmp_path)
+    script = make_env_echo_agent(tmp_path / "no_ref_agent.py")
+    config = AgentConfig(
+        name="no_ref",
+        transport=AgentTransport.LOCAL,
+        command="python",
+        args=[str(script)],
+        credentials_ref="MISSING_KEY",
+    )
+    client = AcpClient(config)
+    result = client.initialize(credential_provider=provider)
+    assert result.agent_info.name == ""

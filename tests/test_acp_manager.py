@@ -31,7 +31,7 @@ def test_switch_between_agents(tmp_path):
     registry.add(AgentConfig(name="alpha", transport=AgentTransport.LOCAL, command="python", args=[str(alpha_script)]))
     registry.add(AgentConfig(name="beta", transport=AgentTransport.LOCAL, command="python", args=[str(beta_script)]))
 
-    manager = AcpManager(registry, CredentialProvider(vault_dir=tmp_path))
+    manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
     sid_a = manager.connect("alpha")
     assert sid_a == "sess_alpha"
@@ -55,7 +55,7 @@ def test_agent_not_found_error(tmp_path):
         args=[],
     ))
 
-    manager = AcpManager(registry, CredentialProvider(vault_dir=tmp_path))
+    manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
     with pytest.raises(AcpConnectionError, match="not found"):
         manager.connect("missing")
@@ -72,7 +72,7 @@ def test_agent_crash_isolated(tmp_path):
     registry.add(AgentConfig(name="stable", transport=AgentTransport.LOCAL, command="python", args=[str(stable_script)]))
     registry.add(AgentConfig(name="crash", transport=AgentTransport.LOCAL, command="python", args=[str(crash_script)]))
 
-    manager = AcpManager(registry, CredentialProvider(vault_dir=tmp_path))
+    manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
     sid_stable = manager.connect("stable")
     assert sid_stable == "sess_stable"
@@ -86,7 +86,7 @@ def test_agent_crash_isolated(tmp_path):
 def test_connect_unknown_agent(tmp_path):
     """Connecting to an unregistered agent raises KeyError."""
     registry = AgentRegistry(config_dir=tmp_path)
-    manager = AcpManager(registry, CredentialProvider(vault_dir=tmp_path))
+    manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
     with pytest.raises(KeyError, match="not found"):
         manager.connect("unknown")
@@ -95,7 +95,7 @@ def test_connect_unknown_agent(tmp_path):
 def test_switch_to_not_connected(tmp_path):
     """Switching to an agent that has no active connection raises KeyError."""
     registry = AgentRegistry(config_dir=tmp_path)
-    manager = AcpManager(registry, CredentialProvider(vault_dir=tmp_path))
+    manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
     with pytest.raises(KeyError, match="Not connected"):
         manager.switch_to("never-connected")
@@ -110,7 +110,7 @@ def test_list_connected_agents(tmp_path):
     registry.add(AgentConfig(name="alpha", transport=AgentTransport.LOCAL, command="python", args=[str(alpha_script)]))
     registry.add(AgentConfig(name="beta", transport=AgentTransport.LOCAL, command="python", args=[str(beta_script)]))
 
-    manager = AcpManager(registry, CredentialProvider(vault_dir=tmp_path))
+    manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
     assert manager.list_connected() == []
 

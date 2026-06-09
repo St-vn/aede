@@ -15,7 +15,7 @@ from typing import Any
 COMMANDS = {
     "help", "keybinds", "resume", "sessions", "tools", "config",
     "compact", "tokens", "clear", "exit", "setkey",
-    "skills", "agents", "delete-session", "rm",
+    "skills", "agents", "delete-session", "rm", "acp",
 }
 
 
@@ -62,6 +62,11 @@ def handle_help(console: Any) -> None:
             "  /compact                      — manually compact context",
             "  /tokens                       — show token usage and cost",
             "  /setkey <NAME> <value>        — save a credential to aede's vault (loaded on every launch)",
+            "  /acp register <name> <cmd...>  — register an ACP agent",
+            "  /acp connect <name>            — connect to an ACP agent (use its subscription as backend)",
+            "  /acp disconnect                — disconnect from the ACP agent, return to normal mode",
+            "  /acp list                      — show connected ACP agents",
+            "  /acp configs                   — show registered ACP agent configs",
             "  /clear                        — start a new session",
             "  /exit                         — end session cleanly",
         ])
@@ -132,6 +137,105 @@ def handle_agents(agent_registry: dict[str, Any], console: Any) -> None:
         model_str = agent.model if agent.model != "inherit" else "inherit"
         lines.append(f"  {name:<25} {desc:<62} {model_str}")
     console.print("\n".join(lines))
+
+
+def handle_acp(args: list[str], acp_manager: Any, console: Any) -> str | None:
+    """Handle ACP agent lifecycle commands.
+
+    Subcommands:
+      register <name> <command> [args...]  — register an ACP agent config.
+      connect <name>                       — connect to an ACP agent.
+      disconnect                           — disconnect from the active ACP agent.
+      list                                 — show connected ACP agents.
+      configs                              — show registered ACP agent configs.
+
+    Returns:
+      ``"connected"`` if a connect was just performed (so the caller can
+      enter ACP routing mode), or ``None`` otherwise.
+    """
+    if not args:
+        console.print("Usage: /acp {register|connect|disconnect|list|configs}")
+        return None
+
+    sub = args[0].lower()
+
+    if sub == "register":
+        if len(args) < 3:
+            console.print("Usage: /acp register <name> <command> [args...]")
+            return None
+        name = args[1]
+        command = args[2]
+        extra_args = args[3:]
+        from aede.acp.registry import AgentConfig, AgentTransport
+        config = AgentConfig(
+            name=name,
+            transport=AgentTransport.LOCAL,
+            command=command,
+            args=extra_args,
+        )
+        try:
+            acp_manager._registry.add(config)
+            console.print(f"[green]✓[/green] Registered ACP agent '{name}' → {command}")
+        except ValueError as e:
+            console.print(f"[red]Error: {e}[/red]")
+        return None
+
+    if sub == "connect":
+        if len(args) < 2:
+            console.print("Usage: /acp connect <name>")
+            console.print("Registered configs:")
+            for c in acp_manager._registry.list_all():
+                console.print(f"  {c.name:<20} {c.command} {' '.join(c.args)}")
+            return None
+        name = args[1]
+        if name in acp_manager.list_connected():
+            console.print(f"[green]Already connected to '{name}'[/green]")
+            return "connected"
+        try:
+            session_id = acp_manager.connect(name)
+            console.print(f"[green]✓[/green] Connected to '{name}' (ACP session {session_id[:8]})")
+            return "connected"
+        except Exception as e:
+            console.print(f"[red]Failed to connect: {e}[/red]")
+            return None
+
+    if sub == "disconnect":
+        active = acp_manager.active_session()
+        if active:
+            acp_manager.disconnect(active.name)
+            console.print(f"[green]✓[/green] Disconnected from '{active.name}'")
+            return "disconnected"
+        console.print("[yellow]Not connected to any ACP agent[/yellow]")
+        return None
+
+    if sub == "list":
+        connected = acp_manager.list_connected()
+        active = acp_manager.active_session()
+        if not connected:
+            console.print("No connected ACP agents.")
+        else:
+            lines = ["Connected ACP agents:"]
+            for name in connected:
+                marker = "→" if active and active.name == name else " "
+                lines.append(f"  {marker} {name}")
+            console.print("\n".join(lines))
+        return None
+
+    if sub == "configs":
+        configs = acp_manager._registry.list_all()
+        if not configs:
+            console.print("No registered ACP agents. Use '/acp register <name> <command> [args...]'")
+        else:
+            lines = ["Registered ACP agents:"]
+            for c in configs:
+                args_str = " ".join(c.args) if c.args else ""
+                cref = f" [{c.credentials_ref}]" if c.credentials_ref else ""
+                lines.append(f"  {c.name:<20} {c.command} {args_str}{cref}")
+            console.print("\n".join(lines))
+        return None
+
+    console.print(f"Unknown acp subcommand: {sub!r}. Use register, connect, disconnect, list, or configs.")
+    return None
 
 
 def handle_tokens(tracker: Any, model: str, prices: Any, console: Any) -> None:
@@ -239,25 +343,59 @@ def handle_config_edit(
     )
 
 
-def handle_setkey(args: list[str], console: Any, home: Path) -> None:
+ACP_COMMANDS = {
+    "codex": ("codex-acp", []),
+    "claude-code": ("claude-agent-acp", []),
+    "gemini": ("gemini", ["--experimental-acp"]),
+    "agy": ("agy", ["--acp"]),
+}
+
+
+def handle_setkey(args: list[str], console: Any, home: Path, acp_manager: Any = None) -> None:
     """Persist a credential to the vault and inject it into the current process environment.
 
     Args:
-        args: Expects ``[NAME, value]``; prints usage help if fewer than 2 items.
+        args: Expects ``[NAME, value, provider?]``; prints usage help if fewer than 2 items.
         console: Rich Console for output.
         home: aede home directory (Path) where ``credentials.json`` lives.
+        acp_manager: Optional AcpManager instance; if given and provider is an ACP
+            provider, auto-registers and connects the ACP agent.
     """
     if len(args) < 2:
-        console.print("Usage: /setkey <NAME> <value>")
-        console.print("Example: /setkey OPENROUTER_API_KEY sk-or-v1-...")
+        console.print("Usage: /setkey <NAME> <value> [provider]")
+        console.print("Example: /setkey CODEX_API_KEY sk-or-v1-... codex")
         return
     name = args[0].upper()
     value = args[1]
+    provider = args[2].lower() if len(args) > 2 else None
 
     import os
     from aede.credentials import set_credential
-    set_credential(home, name, value)
+    set_credential(home, name, value, provider)
     os.environ[name] = value
+
+    if provider and acp_manager:
+        cmd_info = ACP_COMMANDS.get(provider)
+        if cmd_info:
+            command, extra_args = cmd_info
+            from aede.acp.registry import AgentConfig, AgentTransport
+            try:
+                acp_manager._registry.get(provider)
+            except KeyError:
+                try:
+                    acp_manager._registry.add(AgentConfig(
+                        name=provider,
+                        transport=AgentTransport.LOCAL,
+                        command=command,
+                        args=extra_args,
+                    ))
+                except ValueError:
+                    pass
+            try:
+                acp_manager.connect(provider)
+                console.print(f"[green]✓[/green] Connected to ACP agent '{provider}'")
+            except Exception as e:
+                console.print(f"[yellow]Could not connect ACP agent '{provider}': {e}[/yellow]")
 
     console.print(
         f"[green]✓[/green] {name} saved to ~/.aede/credentials.json and active "
@@ -426,6 +564,34 @@ def handle_serve(
 
     app.state.cfg = cfg
     app.state.db = db
+
+    from aede.acp.registry import AgentRegistry as AcpAgentRegistry
+    from aede.acp.manager import AcpManager
+    from aede.acp.credentials import CredentialProvider
+    from pathlib import Path
+    home = Path(cfg.home)
+    acp_registry = AcpAgentRegistry(config_dir=home)
+    app.state.acp_manager = AcpManager(
+        registry=acp_registry,
+        credential_provider=CredentialProvider(home=home),
+    )
+
+    # MCP server bridge
+    mcp_servers = getattr(cfg, "mcp_servers", {})
+    if mcp_servers:
+        try:
+            from aede.mcp.client import MCPBridge
+            app.state.mcp_bridge = MCPBridge(servers=mcp_servers)
+            failed = app.state.mcp_bridge.spawn_all()
+            if failed:
+                console.print(f"[yellow]⚠ MCP servers failed: {', '.join(failed)}[/yellow]")
+            discovered = app.state.mcp_bridge.discovered_tools()
+            if discovered:
+                console.print(f"[dim]MCP: {len(discovered)} tools from {len(mcp_servers)} servers[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]⚠ MCP bridge error: {e}[/yellow]")
+    else:
+        app.state.mcp_bridge = None
 
     console.print(f"[green]Starting aede backend server at http://{host}:{port}[/green]")
     console.print("[dim]Press Ctrl+C to stop.[/dim]")

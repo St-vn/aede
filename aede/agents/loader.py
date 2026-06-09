@@ -4,13 +4,16 @@ from pathlib import Path
 from aede.agents.schema import AgentDef, AgentLoadError
 
 
+_AGENT_EXTS = {".md", ".agent"}
+
+
 def _scan_dir(agents_dir: Path) -> dict[str, AgentDef]:
     """Scan a single agents directory and return {name -> AgentDef}."""
     registry: dict[str, AgentDef] = {}
     if not agents_dir.is_dir():
         return registry
     for child in sorted(agents_dir.iterdir()):
-        if child.suffix.lower() == ".md":
+        if child.suffix.lower() in _AGENT_EXTS:
             try:
                 ad = AgentDef.from_file(child)
                 registry[ad.name] = ad

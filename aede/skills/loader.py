@@ -4,14 +4,17 @@ from pathlib import Path
 from aede.skills.schema import SkillDef, SkillLoadError
 
 
+_SKILL_EXTS = {".md", ".skill"}
+
+
 def _scan_dir(skills_dir: Path) -> dict[str, SkillDef]:
     """Scan a single skills directory and return {name -> SkillDef}."""
     registry: dict[str, SkillDef] = {}
     if not skills_dir.is_dir():
         return registry
     for child in sorted(skills_dir.iterdir()):
-        if child.suffix.lower() == ".md" or (child.is_dir() and (child / "SKILL.md").exists()):
-            md_path = child if child.suffix.lower() == ".md" else child / "SKILL.md"
+        if child.suffix.lower() in _SKILL_EXTS or (child.is_dir() and (child / "SKILL.md").exists()):
+            md_path = child if child.suffix.lower() in _SKILL_EXTS else child / "SKILL.md"
             try:
                 sd = SkillDef.from_file(md_path)
                 registry[sd.name] = sd

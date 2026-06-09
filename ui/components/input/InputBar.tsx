@@ -19,6 +19,8 @@ interface Props {
   defaultModel?: string
   sessionId?: string | null
   projectDir?: string | null
+  onOpenSettings?: (tab?: string) => void
+  onOpenHelp?: () => void
 }
 
 let imageIdCounter = 0
@@ -30,7 +32,7 @@ function buildMessageText(text: string, images: ImageAttachment[]): string {
   return text + imageMarkdown
 }
 
-export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', sessionId, projectDir }: Props) {
+export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', sessionId, projectDir, onOpenSettings, onOpenHelp }: Props) {
   const [text, setText] = useState('')
   const [model, setModel] = useState(defaultModel)
   const [mentionOpen, setMentionOpen] = useState(false)
@@ -206,11 +208,31 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
 
   // --- Slash command ---
   const handleSlashSelect = useCallback((command: string) => {
+    if (command === '/settings') {
+      onOpenSettings?.()
+      setSlashOpen(false)
+      setSlashQuery('')
+      return
+    }
+    if (command.startsWith('/settings:')) {
+      const tab = command.split(':')[1]
+      onOpenSettings?.(tab)
+      setSlashOpen(false)
+      setSlashQuery('')
+      return
+    }
+    if (command === '/help') {
+      onOpenHelp?.()
+      setSlashOpen(false)
+      setSlashQuery('')
+      return
+    }
+    // Regular command - insert text
     setText(command)
     setSlashOpen(false)
     setSlashQuery('')
     setTimeout(() => ref.current?.focus(), 0)
-  }, [])
+  }, [onOpenSettings, onOpenHelp])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
@@ -365,7 +387,8 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
             onAddUrl={handleAddUrl}
           />
           <div className="flex items-center gap-2">
-            <ModelSelector currentModel={model} onModelChange={setModel} />
+            <ModelSelector currentModel={model} onModelChange={setModel}
+              onOpenSettings={onOpenSettings ? () => onOpenSettings('models') : undefined} />
             <Tooltip>
               <TooltipTrigger render={
                 <Button size="icon" className="w-7 h-7" aria-label="Send message"

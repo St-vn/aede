@@ -22,10 +22,13 @@ SHUTDOWN_GRACE = 5.0  # seconds total for shutdown
 
 @dataclass
 class MCPServerConfig:
-    command: str
+    command: str = ""
     args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     trusted: bool = False
+    url: str = ""
+    enabled: bool = True
+    disabled_tools: list[str] = field(default_factory=list)
 
 
 def _parse_mcp_servers(raw: dict[str, Any] | None) -> dict[str, MCPServerConfig]:
@@ -51,6 +54,9 @@ def _parse_mcp_servers(raw: dict[str, Any] | None) -> dict[str, MCPServerConfig]
             args=conf.get("args", []),
             env=conf.get("env") if "env" in conf else None,
             trusted=bool(conf.get("trusted", False)),
+            url=conf.get("url", ""),
+            enabled=bool(conf.get("enabled", True)),
+            disabled_tools=conf.get("disabled_tools", []),
         )
     return result
 
@@ -88,19 +94,21 @@ class MCPBridge:
     async def _spawn_one(self, name: str, cfg: MCPServerConfig) -> list[dict]:
         """Spawn one MCP server, perform the handshake, and return tool schemas.
 
-        Returns a list of Anthropic-format tool schema dicts (without the
-        ``mcp__`` prefix in the name — that is prepended later).
+        Supports both stdio (command+args) and SSE/WebSocket (url) transports.
         """
         import mcp
-        from mcp.client.stdio import stdio_client
 
-        server_params = mcp.StdioServerParameters(
-            command=cfg.command,
-            args=cfg.args,
-            env={**os.environ, **cfg.env} if cfg.env is not None else None,
-        )
-
-        transport_cm = stdio_client(server_params)
+        if cfg.url:
+            from mcp.client.sse import sse_client
+            transport_cm = sse_client(url=cfg.url)
+        else:
+            from mcp.client.stdio import stdio_client
+            server_params = mcp.StdioServerParameters(
+                command=cfg.command,
+                args=cfg.args,
+                env={**os.environ, **cfg.env} if cfg.env is not None else None,
+            )
+            transport_cm = stdio_client(server_params)
         transport = await transport_cm.__aenter__()
         read, write = transport
 
@@ -153,7 +161,7 @@ class MCPBridge:
                 except Exception:
                     failed.append(name)
 
-            tasks = [_spawn_with_timeout(n, c) for n, c in self._servers.items()]
+            tasks = [_spawn_with_timeout(n, c) for n, c in self._servers.items() if c.enabled]
             if tasks:
                 await asyncio.gather(*tasks)
 
@@ -175,6 +183,8 @@ class MCPBridge:
             if cfg is None:
                 continue
             for schema in schemas:
+                if schema["name"] in (cfg.disabled_tools or []):
+                    continue
                 full_name = f"mcp__{server_name}__{schema['name']}"
                 anthropic_schema = {
                     "name": full_name,

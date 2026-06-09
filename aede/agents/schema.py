@@ -19,6 +19,7 @@ class AgentDef:
     max_turns: int = 20
     system_prompt: str = ""
     body: str = ""
+    source_path: Path | None = None
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -69,4 +70,5 @@ class AgentDef:
             max_turns=max_turns,
             system_prompt=system_prompt,
             body=body,
+            source_path=path,
         )
