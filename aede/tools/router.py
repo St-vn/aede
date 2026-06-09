@@ -54,6 +54,7 @@ class ToolRouter:
         _agent_registry: dict[str, Any] | None = None,
         _session_id: str | None = None,
         data_dir: "Path | None" = None,
+        _get_bridge: "Callable[[], Any] | None" = None,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
@@ -68,6 +69,18 @@ class ToolRouter:
         self._registry = self._build_registry()
         self._mcp_bridge: Any = None
         self._trusted_servers: dict[str, bool] = {}
+        self._get_bridge = _get_bridge
+
+    def _resolve_bridge(self) -> Any:
+        """Return the current MCP bridge, resolving lazily if a getter was provided.
+
+        If ``_get_bridge`` is set (web server flow), it is called on every
+        invocation so that bridge restarts are picked up automatically.
+        Otherwise falls back to the stored ``_mcp_bridge`` reference (CLI flow).
+        """
+        if self._get_bridge is not None:
+            return self._get_bridge()
+        return self._mcp_bridge
 
     def _build_registry(self) -> dict[str, Callable]:
         from aede.tools.files import read_file, write_file, create_file, list_dir
@@ -190,10 +203,11 @@ class ToolRouter:
 
     def _make_mcp_handler(self, server_name: str, full_name: str) -> Any:
         def handler(args: dict) -> str:
-            if self._mcp_bridge is None:
+            bridge = self._resolve_bridge()
+            if bridge is None:
                 return "[error: MCP bridge not initialized]"
             tool_short = full_name.split("__", 2)[2] if "__" in full_name else full_name
-            return self._mcp_bridge.call_sync(server_name, tool_short, args)
+            return bridge.call_sync(server_name, tool_short, args)
         return handler
 
     def tool_names(self) -> list[str]:

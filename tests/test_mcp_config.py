@@ -99,3 +99,56 @@ def test_parse_mcp_servers_with_enabled_fields():
     assert result["disabled_srv"].enabled is False
     assert result["filtered_srv"].disabled_tools == ["dangerous_tool"]
     assert result["enabled_srv"].disabled_tools == []
+
+
+def test_expand_env_vars_noop_when_no_vars():
+    """expand_env_vars returns the string unchanged when no ${...} patterns."""
+    from aede.mcp.client import expand_env_vars
+    assert expand_env_vars("npx") == "npx"
+    assert expand_env_vars("/usr/bin/node") == "/usr/bin/node"
+    assert expand_env_vars("hello world") == "hello world"
+
+
+def test_expand_env_vars_with_known_var(monkeypatch):
+    """expand_env_vars replaces ${VAR} with os.environ[VAR]."""
+    monkeypatch.setenv("MY_MCP_PATH", "/custom/path")
+    from aede.mcp.client import expand_env_vars
+    assert expand_env_vars("${MY_MCP_PATH}") == "/custom/path"
+
+
+def test_expand_env_vars_with_default():
+    """expand_env_vars uses default when ${VAR:-default} and VAR is unset."""
+    from aede.mcp.client import expand_env_vars
+    result = expand_env_vars("${UNSET_VAR:-fallback}")
+    assert result == "fallback"
+
+
+def test_expand_env_vars_with_default_and_var_set(monkeypatch):
+    """expand_env_vars uses the env var value (not default) when VAR is set."""
+    monkeypatch.setenv("MY_VAR", "real")
+    from aede.mcp.client import expand_env_vars
+    result = expand_env_vars("${MY_VAR:-fallback}")
+    assert result == "real"
+
+
+def test_expand_env_vars_raises_on_missing_var():
+    """expand_env_vars raises KeyError for ${VAR} without default when unset."""
+    from aede.mcp.client import expand_env_vars
+    with pytest.raises(KeyError):
+        expand_env_vars("${DEFINITELY_NOT_SET_XYZ_123}")
+
+
+def test_expand_env_vars_partial_expansion(monkeypatch):
+    """expand_env_vars expands multiple vars within a single string."""
+    monkeypatch.setenv("TOOL", "npx")
+    monkeypatch.setenv("PKG", "@playwright/mcp")
+    from aede.mcp.client import expand_env_vars
+    result = expand_env_vars("${TOOL} -y ${PKG}")
+    assert result == "npx -y @playwright/mcp"
+
+
+def test_expand_env_vars_unexpanded_text_preserved():
+    """expand_env_vars preserves text that has no ${...} patterns."""
+    from aede.mcp.client import expand_env_vars
+    assert expand_env_vars("-y") == "-y"
+    assert expand_env_vars("/tmp/some/path") == "/tmp/some/path"

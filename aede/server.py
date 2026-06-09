@@ -550,12 +550,30 @@ async def create_mcp_server(request: Request, payload: dict):
         "env": payload.get("env") or None,
         "url": payload.get("url", ""),
         "trusted": payload.get("trusted", False),
+        "enabled": payload.get("enabled", True),
+        "disabled_tools": payload.get("disabled_tools", []),
     }
     cfg_path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
-    # Reload config
-    from aede.config import Config
-    request.app.state.cfg = Config.load()
-    # Restart bridge
+    _restart_mcp_bridge(request)
+    return {"status": "ok", "name": name}
+
+
+@app.put("/api/mcp/servers/{name}")
+async def update_mcp_server(name: str, request: Request, payload: dict):
+    """Update an existing MCP server's fields (enabled, disabled_tools, etc.) and restart."""
+    import yaml
+    cfg = request.app.state.cfg
+    cfg_path = cfg.home / "config.yml"
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    mcp_data = data.setdefault("mcp_servers", {})
+    if name not in mcp_data:
+        raise HTTPException(status_code=404, detail=f"MCP server {name!r} not found")
+    entry = mcp_data[name]
+    if "enabled" in payload:
+        entry["enabled"] = payload["enabled"]
+    if "disabled_tools" in payload:
+        entry["disabled_tools"] = payload["disabled_tools"]
+    cfg_path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
     _restart_mcp_bridge(request)
     return {"status": "ok", "name": name}
 
@@ -563,18 +581,15 @@ async def create_mcp_server(request: Request, payload: dict):
 @app.delete("/api/mcp/servers/{name}")
 async def delete_mcp_server(name: str, request: Request):
     """Remove an MCP server from config.yml and restart the bridge."""
-    cfg = request.app.state.cfg
-    home = cfg.home
     import yaml
-    cfg_path = home / "config.yml"
+    cfg = request.app.state.cfg
+    cfg_path = cfg.home / "config.yml"
     data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
     mcp_data = data.setdefault("mcp_servers", {})
     if name not in mcp_data:
         raise HTTPException(status_code=404, detail=f"MCP server {name!r} not found")
     del mcp_data[name]
     cfg_path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
-    from aede.config import Config
-    request.app.state.cfg = Config.load()
     _restart_mcp_bridge(request)
     return {"status": "ok", "name": name}
 

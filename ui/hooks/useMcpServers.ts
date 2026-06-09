@@ -38,8 +38,12 @@ export const useAddMcpServer = () => {
 export const useUpdateMcpServer = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (payload: Record<string, unknown>) =>
-      apiFetch('/api/mcp/servers', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } }),
+    mutationFn: (payload: Record<string, unknown>) => {
+      const { name, ...updates } = payload
+      return apiFetch(`/api/mcp/servers/${encodeURIComponent(name as string)}`, {
+        method: 'PUT', body: JSON.stringify(updates), headers: { 'Content-Type': 'application/json' },
+      })
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['mcp', 'servers'] }),
   })
 }

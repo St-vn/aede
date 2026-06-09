@@ -8,6 +8,7 @@ are surfaced to ToolRouter for the LLM to call.
 from __future__ import annotations
 import asyncio
 import os
+import re
 import concurrent.futures
 import threading
 import time
@@ -18,6 +19,23 @@ from typing import Any
 MCP_TIMEOUT = 10.0  # seconds per server for spawn
 CALL_TIMEOUT = 60.0  # seconds per tool call
 SHUTDOWN_GRACE = 5.0  # seconds total for shutdown
+
+_ENV_VAR_RE = re.compile(r"\$\{([^}:-]+)(?::-([^}]*))?\}")
+
+
+def expand_env_vars(value: str) -> str:
+    """Expand ${VAR} and ${VAR:-default} patterns in *value* from ``os.environ``.
+
+    Raises ``KeyError`` if a ``${VAR}`` without a ``:-default`` fallback is not
+    found in the current environment.
+    """
+    def _replace(m: re.Match) -> str:
+        var_name = m.group(1)
+        default = m.group(2)
+        if default is not None:
+            return os.environ.get(var_name, default)
+        return os.environ[var_name]
+    return _ENV_VAR_RE.sub(_replace, value)
 
 
 @dataclass
@@ -100,13 +118,18 @@ class MCPBridge:
 
         if cfg.url:
             from mcp.client.sse import sse_client
-            transport_cm = sse_client(url=cfg.url)
+            transport_cm = sse_client(url=expand_env_vars(cfg.url))
         else:
             from mcp.client.stdio import stdio_client
+            expanded_env = None
+            if cfg.env is not None:
+                expanded_env = {**os.environ}
+                for k, v in cfg.env.items():
+                    expanded_env[k] = expand_env_vars(v)
             server_params = mcp.StdioServerParameters(
-                command=cfg.command,
-                args=cfg.args,
-                env={**os.environ, **cfg.env} if cfg.env is not None else None,
+                command=expand_env_vars(cfg.command),
+                args=[expand_env_vars(a) for a in cfg.args],
+                env=expanded_env,
             )
             transport_cm = stdio_client(server_params)
         transport = await transport_cm.__aenter__()
