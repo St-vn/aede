@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { ScopeSelector } from '@/components/settings/ScopeSelector'
 import { useMcpServers, useAddMcpServer, useUpdateMcpServer, useDeleteMcpServer, useRestartMcpServers, type McpToolInfo } from '@/hooks/useMcpServers'
-import { Puzzle, RefreshCw, Wifi, WifiOff, Plus, Trash2, X, Check, ExternalLink, Globe, ChevronRight, Code } from 'lucide-react'
+import { Puzzle, RefreshCw, Wifi, WifiOff, Plus, Trash2, X, Check, ExternalLink, Globe, ChevronRight, Code, Power, ShieldCheck } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 
 function ToolRow({ tool, disabledTools, onToggle }: {
@@ -188,21 +188,29 @@ export function McpTab() {
                     {server.url ? server.url : `${server.command} ${server.args?.join(' ') || ''}`}
                   </span>
                 </div>
-                <Switch
-                  size="sm"
-                  checked={isEnabled}
-                  onCheckedChange={(checked) => handleUpdate(name, { enabled: checked })}
-                  aria-label={`enable ${name}`}
-                  className="shrink-0"
-                />
-                <Switch
-                  size="sm"
-                  checked={!!server.trusted}
-                  onCheckedChange={(checked) => handleUpdate(name, { trusted: checked })}
-                  aria-label={`trust ${name}`}
-                  className="shrink-0"
-                  title={server.trusted ? 'Trusted (bypasses approval)' : 'Not trusted (requires approval)'}
-                />
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-1">
+                    <Power className={`w-3 h-3 ${isEnabled ? 'text-green-500' : 'text-muted-foreground'}`} />
+                    <Switch
+                      size="sm"
+                      checked={isEnabled}
+                      onCheckedChange={(checked) => handleUpdate(name, { enabled: checked })}
+                      aria-label={`enable ${name}`}
+                    />
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">{isEnabled ? 'On' : 'Off'}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <ShieldCheck className={`w-3 h-3 ${server.trusted ? 'text-amber-500' : 'text-muted-foreground'}`} />
+                    <Switch
+                      size="sm"
+                      checked={!!server.trusted}
+                      onCheckedChange={(checked) => handleUpdate(name, { trusted: checked })}
+                      aria-label={`trust ${name}`}
+                      title={server.trusted ? 'Trusted (bypasses approval)' : 'Not trusted (requires approval)'}
+                    />
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">{server.trusted ? 'Trusted' : 'Gated'}</span>
+                  </div>
+                </div>
                 <span className="flex items-center gap-1 text-[10px] shrink-0">
                   {server.status === 'running' ? (
                     <><Wifi className="w-3 h-3 text-green-500" /> Running</>
