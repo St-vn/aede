@@ -120,9 +120,10 @@ def test_prompt_multiple_chunks_concatenated(tmp_path):
 # Task 2: Clean up ACP_COMMANDS — remove Agy, fix Gemini args
 # ---------------------------------------------------------------------------
 
-def test_acp_commands_no_agy():
+def test_acp_commands_includes_agy():
     from aede.commands import ACP_COMMANDS
-    assert "agy" not in ACP_COMMANDS
+    assert "agy" in ACP_COMMANDS
+    assert ACP_COMMANDS["agy"] == ("agy", ["--acp"])
 
 
 def test_acp_commands_gemini_uses_acp_flag():
@@ -130,9 +131,11 @@ def test_acp_commands_gemini_uses_acp_flag():
     assert ACP_COMMANDS["gemini"] == ("gemini", ["--acp"])
 
 
-def test_model_presets_no_agy():
+def test_model_presets_includes_agy():
     from aede.models import MODEL_PRESETS
-    assert "agy" not in MODEL_PRESETS
+    assert "agy" in MODEL_PRESETS
+    assert MODEL_PRESETS["agy"][0]["id"] == "agy"
+    assert MODEL_PRESETS["agy"][0]["label"] == "Antigravity"
 
 
 def test_server_acp_commands_match_cli():
@@ -144,13 +147,13 @@ def test_server_acp_commands_match_cli():
 
 def test_acp_commands_includes_common_agents():
     from aede.commands import ACP_COMMANDS
-    for name in ["codex", "claude-code", "gemini", "cline", "cursor", "goose", "opencode"]:
+    for name in ["codex", "claude-code", "gemini", "agy", "cline", "cursor", "goose", "opencode"]:
         assert name in ACP_COMMANDS, f"{name} missing from ACP_COMMANDS"
 
 
 def test_model_presets_includes_acp_agents():
     from aede.models import MODEL_PRESETS
-    for name in ["codex", "claude-code", "gemini", "cline", "cursor", "goose", "opencode"]:
+    for name in ["codex", "claude-code", "gemini", "agy", "cline", "cursor", "goose", "opencode"]:
         assert name in MODEL_PRESETS, f"{name} missing from MODEL_PRESETS"
         assert len(MODEL_PRESETS[name]) > 0, f"{name} has no presets"
 
@@ -162,7 +165,7 @@ def test_model_presets_includes_acp_agents():
 def test_acp_model_ids_set():
     """ACP_MODEL_IDS should include all known ACP agents."""
     from aede.provider import ACP_MODEL_IDS
-    for name in ["codex", "claude-code", "gemini", "cline", "cursor", "goose", "opencode"]:
+    for name in ["codex", "claude-code", "gemini", "agy", "cline", "cursor", "goose", "opencode"]:
         assert name in ACP_MODEL_IDS, f"{name} missing from ACP_MODEL_IDS"
 
 

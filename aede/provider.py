@@ -487,7 +487,7 @@ class OpenAIProvider:
 
 # Models that should be routed through ACP rather than LLM API
 ACP_MODEL_IDS: frozenset[str] = frozenset({
-    "codex", "claude-code", "gemini",
+    "codex", "claude-code", "gemini", "agy",
     "cline", "cursor", "goose", "opencode",
 })
 

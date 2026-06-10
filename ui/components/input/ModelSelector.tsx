@@ -27,6 +27,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   codex: 'Codex',
   'claude-code': 'Claude Code',
   gemini: 'Gemini',
+  agy: 'Antigravity',
   cline: 'Cline',
   cursor: 'Cursor',
   goose: 'Goose',

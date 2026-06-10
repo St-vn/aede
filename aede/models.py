@@ -25,6 +25,7 @@ MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
     "codex": [{"id": "codex", "label": "Codex"}],
     "claude-code": [{"id": "claude-code", "label": "Claude Code"}],
     "gemini": [{"id": "gemini", "label": "Gemini"}],
+    "agy": [{"id": "agy", "label": "Antigravity"}],
     "cline": [{"id": "cline", "label": "Cline"}],
     "cursor": [{"id": "cursor", "label": "Cursor"}],
     "goose": [{"id": "goose", "label": "Goose"}],

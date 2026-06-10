@@ -26,6 +26,7 @@ const AUTH_CATEGORIES = [
   { value: 'google-ai', label: 'Google AI' },
   { value: 'claude-code', label: 'Claude Code (ACP)' },
   { value: 'gemini', label: 'Gemini (ACP)' },
+  { value: 'agy', label: 'Antigravity (ACP)' },
   { value: 'codex', label: 'Codex (ACP)' },
   { value: 'cline', label: 'Cline (ACP)' },
   { value: 'cursor', label: 'Cursor (ACP)' },
@@ -42,6 +43,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   codex: 'Codex (ACP)',
   'claude-code': 'Claude Code (ACP)',
   gemini: 'Gemini (ACP)',
+  agy: 'Antigravity (ACP)',
   cline: 'Cline (ACP)',
   cursor: 'Cursor (ACP)',
   goose: 'Goose (ACP)',
@@ -57,6 +59,7 @@ const PROVIDER_BADGE_COLORS: Record<string, string> = {
   codex: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
   'claude-code': 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
   gemini: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
+  agy: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
   cline: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
   cursor: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
   goose: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
@@ -100,6 +103,7 @@ const MODEL_SUGGESTIONS: ModelSuggestion[] = [
   { label: 'Codex', id: 'codex', provider: 'codex' },
   { label: 'Claude Code', id: 'claude-code', provider: 'claude-code' },
   { label: 'Gemini', id: 'gemini', provider: 'gemini' },
+  { label: 'Antigravity', id: 'agy', provider: 'agy' },
   { label: 'Cline', id: 'cline', provider: 'cline' },
   { label: 'Cursor', id: 'cursor', provider: 'cursor' },
   { label: 'Goose', id: 'goose', provider: 'goose' },
@@ -376,7 +380,7 @@ export function ModelsTab() {
   }
 
   const isAcpProvider = (provider: string | null) =>
-    provider && ['codex', 'claude-code', 'gemini', 'cline', 'cursor', 'goose', 'opencode'].includes(provider)
+    provider && ['codex', 'claude-code', 'gemini', 'agy', 'cline', 'cursor', 'goose', 'opencode'].includes(provider)
 
   const handleAddCred = async () => {
     if (!newName || !newValue) return

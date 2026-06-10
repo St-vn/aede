@@ -367,6 +367,7 @@ ACP_COMMANDS = {
     "codex": ("codex-acp", []),
     "claude-code": ("claude-agent-acp", []),
     "gemini": ("gemini", ["--acp"]),
+    "agy": ("agy", ["--acp"]),
     "cline": ("cline", ["--acp"]),
     "cursor": ("cursor-agent", ["--acp"]),
     "goose": ("goose", ["acp"]),
