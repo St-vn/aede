@@ -4,32 +4,34 @@ import { Separator } from '@/components/ui/separator'
 
 const IMPORT_COMMANDS = [
   {
-    command: '/import agent <path>',
-    description: 'Import a Claude Code or OpenCode agent',
-    example: '/import agent ~/.claude/agents/my-agent.md',
+    command: '/import agent <path> [--source]',
+    description: 'Import an agent or rules file (AGENTS.md, GEMINI.md, .cursor/rules/*.mdc)',
+    example: '/import agent ~/.codex/AGENTS.md --source codex',
   },
   {
-    command: '/import skill <path>',
-    description: 'Import a Claude Code skill (flat .md or SKILL.md dir)',
-    example: '/import skill ~/.claude/skills/kaizen',
+    command: '/import skill <path> [--source]',
+    description: 'Import a SKILL.md (flat .md or SKILL.md dir) from any source',
+    example: '/import skill ~/.gemini/skills/my-skill --source antigravity',
   },
   {
-    command: '/import mcp',
-    description: 'Import MCP servers from ~/.claude/mcp.json',
-    example: '/import mcp --dry-run',
+    command: '/import mcp <path> [--source]',
+    description: 'Import MCP servers from a JSON config or Codex config.toml',
+    example: '/import mcp --source codex --dry-run',
   },
   {
-    command: '/import all',
-    description: 'Import everything from ~/.claude/ (agents, skills, MCP)',
-    example: '/import all',
+    command: '/import all [--source]',
+    description: "Import everything from a source's standard directories",
+    example: '/import all --source windsurf',
   },
 ]
 
 const SUPPORTED_SOURCES = [
   { source: 'Claude Code', agents: true, skills: true, mcp: true, notes: 'Full support' },
   { source: 'OpenCode', agents: true, skills: false, mcp: false, notes: 'Delegates to Claude Code importer' },
-  { source: 'Cursor', agents: false, skills: false, mcp: false, notes: 'Deferred (unstructured format)' },
-  { source: 'Windsurf', agents: false, skills: false, mcp: false, notes: 'Deferred (format unknown)' },
+  { source: 'Antigravity', agents: true, skills: true, mcp: true, notes: 'AGENTS.md/GEMINI.md, SKILL.md, JSON MCP' },
+  { source: 'Codex', agents: true, skills: true, mcp: true, notes: 'AGENTS.md, SKILL.md, TOML MCP' },
+  { source: 'Cursor', agents: true, skills: false, mcp: true, notes: '.mdc rules + JSON MCP (no native skills)' },
+  { source: 'Windsurf', agents: true, skills: true, mcp: true, notes: '.windsurf/rules, SKILL.md, JSON MCP' },
 ]
 
 export function ImportTab() {
@@ -38,7 +40,8 @@ export function ImportTab() {
       <div>
         <h3 className="text-sm font-medium">Import from Other Harnesses</h3>
         <p className="text-xs text-muted-foreground mt-1">
-          Import agents, skills, and MCP server configurations from Claude Code or OpenCode.
+          Import agents, skills, and MCP server configurations from Claude Code, OpenCode,
+          Antigravity, Codex, Cursor, and Windsurf.
         </p>
       </div>
       <Separator />
@@ -94,8 +97,10 @@ export function ImportTab() {
         <h4 className="text-xs font-medium mb-2">Fidelity Notes</h4>
         <div className="space-y-1 text-xs text-muted-foreground">
           <p>• <strong>Claude Code agents:</strong> name, description, model transfer. Behavioral fields (hooks, memory, isolation) are commented out.</p>
-          <p>• <strong>Claude Code skills:</strong> Most fields transfer. Only `hidden` is unsupported.</p>
-          <p>• <strong>MCP servers:</strong> stdio transport (command+args+env) transfers cleanly. SSE/WebSocket not supported.</p>
+          <p>• <strong>AGENTS.md / GEMINI.md (Antigravity, Codex, Windsurf):</strong> plain-markdown rules become the agent body; name is synthesized, model defaults to inherit.</p>
+          <p>• <strong>Cursor `.mdc` rules:</strong> description + body transfer; `globs` and `alwaysApply` are commented out. Cursor has no native skills.</p>
+          <p>• <strong>Skills (SKILL.md):</strong> the cross-tool standard — most fields transfer across all sources.</p>
+          <p>• <strong>MCP servers:</strong> stdio (command+args+env) and remote (url) transfer. Codex uses TOML; timeout/OAuth-scope fields are dropped.</p>
         </div>
       </div>
     </div>

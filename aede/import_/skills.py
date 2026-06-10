@@ -18,8 +18,15 @@ def import_claude_code_skill(
     src_path: Path,
     dest_dir: Path,
     _input_fn: Callable[[str], str] | None = None,
+    source: str = "Claude Code",
 ) -> ImportReport:
-    """Import a Claude Code skill into aede SKILL.md format."""
+    """Import a Claude Code skill into aede SKILL.md format.
+
+    The ``source`` parameter lets callers tag the originating tool so that
+    ``ImportReport.format`` reflects the real importer (e.g. "Antigravity",
+    "Windsurf", "Codex").  It defaults to "Claude Code" so all existing
+    callers remain unaffected.
+    """
     import yaml
 
     if src_path.is_dir():
@@ -59,7 +66,7 @@ def import_claude_code_skill(
         else:
             raw = _input_fn(f"Overwrite {dest_path}? [y/N] ")
         if raw.lower() != "y":
-            return ImportReport(name=name, dest_path=dest_path, was_skipped=True)
+            return ImportReport(name=name, dest_path=dest_path, was_skipped=True, format=source)
 
     frontmatter_lines = ["---"]
     for key, value in supported.items():
@@ -71,4 +78,4 @@ def import_claude_code_skill(
     output_text = "\n".join(frontmatter_lines) + "\n\n" + body
     dest_path.write_text(output_text, encoding="utf-8")
 
-    return ImportReport(name=name, dest_path=dest_path)
+    return ImportReport(name=name, dest_path=dest_path, format=source)

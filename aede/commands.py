@@ -63,10 +63,10 @@ def handle_help(console: Any) -> None:
             "  /compact                      — manually compact context",
             "  /tokens                       — show token usage and cost",
             "  /setkey <NAME> <value>        — save a credential to aede's vault (loaded on every launch)",
-            "  /import agent <path> [--dest]  — import a Claude Code/OpenCode agent",
-            "  /import skill <path> [--dest]  — import a Claude Code skill",
-            "  /import mcp [--dry-run]        — import MCP servers from Claude Code",
-            "  /import all                    — import everything from ~/.claude/",
+            "  /import agent <path> [--source] — import an agent/rules file (claude-code, opencode, antigravity, codex, cursor, windsurf)",
+            "  /import skill <path> [--source] — import a SKILL.md (claude-code, antigravity, codex, windsurf)",
+            "  /import mcp <path> [--source]   — import MCP servers (JSON or Codex TOML)",
+            "  /import all [--source <name>]   — import everything from a source's standard dirs",
             "  /acp register <name> <cmd...>  — register an ACP agent",
             "  /acp connect <name>            — connect to an ACP agent (use its subscription as backend)",
             "  /acp disconnect                — disconnect from the ACP agent, return to normal mode",
@@ -378,6 +378,7 @@ ACP_COMMANDS = {
     "gemini": ("gemini", ["--acp"]),
     "agy": ("agy", ["--acp"]),
     "agy/gemini-3-5-flash": ("agy", ["--acp"]),
+    "agy/gemini-3-1-pro": ("agy", ["--acp"]),
     "agy/claude-sonnet-4-6": ("agy", ["--acp"]),
     "agy/claude-opus-4-6": ("agy", ["--acp"]),
     "cline": ("cline", ["--acp"]),
@@ -409,6 +410,7 @@ def get_acp_model_override(agent_name: str) -> str | None:
         "claude-code/sonnet-4-6": "claude-sonnet-4-6",
         "claude-code/haiku-4-5": "claude-haiku-4-5",
         "agy/gemini-3-5-flash": "gemini-3.5-flash",
+        "agy/gemini-3-1-pro": "gemini-3.1-pro",
         "agy/claude-sonnet-4-6": "claude-sonnet-4.6-thinking",
         "agy/claude-opus-4-6": "claude-opus-4.6-thinking",
         "goose/anthropic-claude-sonnet-4-6": "anthropic/claude-sonnet-4-6",
@@ -778,10 +780,11 @@ def handle_import(args: list[str], console: Any, home: Path) -> None:
     import shlex
 
     if not args:
-        console.print("[yellow]Usage: /import agent <path> [--dest <dir>][/yellow]")
-        console.print("[yellow]       /import skill <path> [--dest <dir>][/yellow]")
-        console.print("[yellow]       /import mcp [--dry-run][/yellow]")
-        console.print("[yellow]       /import all[/yellow]")
+        console.print("[yellow]Usage: /import agent <path> [--source <name>] [--dest <dir>][/yellow]")
+        console.print("[yellow]       /import skill <path> [--source <name>] [--dest <dir>][/yellow]")
+        console.print("[yellow]       /import mcp <path> [--source <name>] [--dry-run][/yellow]")
+        console.print("[yellow]       /import all [--source <name>][/yellow]")
+        console.print("[dim]Sources: claude-code, opencode, antigravity, codex, cursor, windsurf[/dim]")
         return
 
     sub = args[0]
@@ -800,6 +803,20 @@ def handle_import(args: list[str], console: Any, home: Path) -> None:
         console.print("[yellow]Valid types: agent, skill, mcp, all[/yellow]")
 
 
+# Sources whose rules/agent files are plain markdown (AGENTS.md / GEMINI.md / .md rules).
+_AGENTS_MD_SOURCES = {"antigravity", "codex", "windsurf"}
+# Sources whose MCP config is the shared JSON `mcpServers` shape.
+_JSON_MCP_SOURCES = {"claude-code", "antigravity", "cursor", "windsurf"}
+_IMPORT_SOURCES = {
+    "claude-code", "opencode", "antigravity", "codex", "cursor", "windsurf",
+}
+# Pretty format tag per source slug.
+_SOURCE_LABELS = {
+    "claude-code": "Claude Code", "opencode": "OpenCode", "antigravity": "Antigravity",
+    "codex": "Codex", "cursor": "Cursor", "windsurf": "Windsurf",
+}
+
+
 def _parse_import_args(args: list[str], sub: str) -> argparse.Namespace:
     """Parse args for an import subcommand."""
     import argparse as _argparse
@@ -807,42 +824,82 @@ def _parse_import_args(args: list[str], sub: str) -> argparse.Namespace:
     if sub in ("agent", "skill"):
         parser.add_argument("src", type=Path, help="Source path")
         parser.add_argument("--dest", type=Path, default=None, help="Output directory")
+        parser.add_argument("--source", default=None, help="Source harness (auto-detect if omitted)")
     elif sub == "mcp":
+        parser.add_argument("path", type=Path, nargs="?", default=None,
+                            help="Source MCP config (default: the source's standard path)")
         parser.add_argument("--dry-run", action="store_true", help="Preview without writing")
         parser.add_argument("--src", type=Path, default=None,
-                            help="Source mcp.json (default: ~/.claude/mcp.json)")
+                            help="Source MCP config (alias for the positional path)")
+        parser.add_argument("--source", default="claude-code", help="Source harness")
     elif sub == "all":
         parser.add_argument("--dry-run", action="store_true", help="Preview without writing")
+        parser.add_argument("--source", default="claude-code", help="Source harness")
     return parser.parse_args(args)
 
 
 def _handle_import_agent(args: list[str], console: Any, home: Path) -> None:
-    """Import a Claude Code or OpenCode agent."""
+    """Import an agent / rules file from any supported source."""
     try:
         ns = _parse_import_args(args, "agent")
     except SystemExit:
         return
 
+    source = ns.source
+    if source is not None and source not in _IMPORT_SOURCES:
+        console.print(f"[red]Unknown source: {source!r}[/red]")
+        console.print(f"[yellow]Valid sources: {', '.join(sorted(_IMPORT_SOURCES))}[/yellow]")
+        return
+
     dest_dir = ns.dest or (home / "agents")
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    from aede.import_.claude_code import import_claude_code_agent
-    from aede.import_.opencode import import_opencode_agent
-
-    # Try Claude Code first; if it fails, try OpenCode
     try:
-        report = import_claude_code_agent(src_path=ns.src, dest_dir=dest_dir)
-    except Exception:
-        try:
-            report = import_opencode_agent(src_path=ns.src, dest_dir=dest_dir)
-        except Exception as e:
-            console.print(f"[red]Import failed: {e}[/red]")
-            return
+        report = _import_one_agent(ns.src, dest_dir, source)
+    except Exception as e:
+        console.print(f"[red]Import failed: {e}[/red]")
+        return
 
     if report.was_skipped:
         console.print(f"[yellow]Skipped {report.name} (already exists)[/yellow]")
     else:
-        console.print(f"[green]Imported {report.name} → {report.dest_path}[/green]")
+        console.print(f"[green]Imported {report.name} → {report.dest_path} ({report.format})[/green]")
+
+
+def _import_one_agent(src: Path, dest_dir: Path, source: str | None, _input_fn=None):
+    """Route a single agent/rules file to the right importer based on source/format.
+
+    source=None auto-detects: .mdc → Cursor, plain markdown (AGENTS.md/GEMINI.md/no
+    frontmatter) → agents_md, frontmatter .md → Claude Code (fallback OpenCode).
+    """
+    # Explicit plain-markdown sources (Antigravity/Codex/Windsurf rules).
+    if source in _AGENTS_MD_SOURCES:
+        from aede.import_.agents_md import import_agents_md
+        return import_agents_md(src_path=src, dest_dir=dest_dir,
+                                source=_SOURCE_LABELS[source], _input_fn=_input_fn)
+    if source == "cursor" or src.suffix == ".mdc":
+        from aede.import_.cursor import import_cursor_mdc
+        return import_cursor_mdc(src_path=src, dest_dir=dest_dir, _input_fn=_input_fn)
+    if source == "opencode":
+        from aede.import_.opencode import import_opencode_agent
+        return import_opencode_agent(src_path=src, dest_dir=dest_dir, _input_fn=_input_fn)
+
+    text = src.read_text(encoding="utf-8")
+    has_frontmatter = text.lstrip().startswith("---")
+    if source == "claude-code" or (source is None and has_frontmatter):
+        from aede.import_.claude_code import import_claude_code_agent
+        try:
+            return import_claude_code_agent(src_path=src, dest_dir=dest_dir, _input_fn=_input_fn)
+        except Exception:
+            if source is None:
+                from aede.import_.opencode import import_opencode_agent
+                return import_opencode_agent(src_path=src, dest_dir=dest_dir, _input_fn=_input_fn)
+            raise
+
+    # Plain markdown with no frontmatter (auto-detected AGENTS.md / GEMINI.md / rules).
+    from aede.import_.agents_md import import_agents_md
+    label = _SOURCE_LABELS.get(source or "", src.name)
+    return import_agents_md(src_path=src, dest_dir=dest_dir, source=label, _input_fn=_input_fn)
 
 
 def _handle_import_skill(args: list[str], console: Any, home: Path) -> None:
@@ -852,13 +909,20 @@ def _handle_import_skill(args: list[str], console: Any, home: Path) -> None:
     except SystemExit:
         return
 
+    source = ns.source
+    if source is not None and source not in _IMPORT_SOURCES:
+        console.print(f"[red]Unknown source: {source!r}[/red]")
+        console.print(f"[yellow]Valid sources: {', '.join(sorted(_IMPORT_SOURCES))}[/yellow]")
+        return
+
     dest_dir = ns.dest or (home / "skills")
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     from aede.import_.skills import import_claude_code_skill
 
+    label = _SOURCE_LABELS.get(source or "claude-code", "Claude Code")
     try:
-        report = import_claude_code_skill(src_path=ns.src, dest_dir=dest_dir)
+        report = import_claude_code_skill(src_path=ns.src, dest_dir=dest_dir, source=label)
     except Exception as e:
         console.print(f"[red]Import failed: {e}[/red]")
         return
@@ -866,85 +930,149 @@ def _handle_import_skill(args: list[str], console: Any, home: Path) -> None:
     if report.was_skipped:
         console.print(f"[yellow]Skipped {report.name} (already exists)[/yellow]")
     else:
-        console.print(f"[green]Imported {report.name} → {report.dest_path}[/green]")
+        console.print(f"[green]Imported {report.name} → {report.dest_path} ({report.format})[/green]")
+
+
+# Default MCP config path per source (relative to Path.home()).
+_MCP_DEFAULT_PATHS = {
+    "claude-code": (".claude", "mcp.json"),
+    "antigravity": (".gemini", "config", "mcp_config.json"),
+    "codex": (".codex", "config.toml"),
+    "cursor": (".cursor", "mcp.json"),
+    "windsurf": (".codeium", "windsurf", "mcp_config.json"),
+}
+
+
+def _default_mcp_src(source: str) -> Path:
+    parts = _MCP_DEFAULT_PATHS.get(source, (".claude", "mcp.json"))
+    return Path.home().joinpath(*parts)
 
 
 def _handle_import_mcp(args: list[str], console: Any, home: Path) -> None:
-    """Import MCP servers from Claude Code config."""
+    """Import MCP servers from a source's config (JSON shape or Codex TOML)."""
     try:
         ns = _parse_import_args(args, "mcp")
     except SystemExit:
         return
 
-    src_path = ns.src or (Path.home() / ".claude" / "mcp.json")
-    if not src_path.exists():
-        console.print(f"[yellow]No Claude Code MCP config found at {src_path}[/yellow]")
+    source = ns.source
+    if source not in _IMPORT_SOURCES:
+        console.print(f"[red]Unknown source: {source!r}[/red]")
+        console.print(f"[yellow]Valid sources: {', '.join(sorted(_IMPORT_SOURCES))}[/yellow]")
+        return
+    if source == "opencode":
+        console.print("[yellow]OpenCode has no MCP config to import[/yellow]")
         return
 
-    from aede.config import load_config
-    cfg = load_config(home=home, project_dir=Path.cwd())
-    dest_path = home / "config.yml"
+    src_path = ns.path or ns.src or _default_mcp_src(source)
+    if not src_path.exists():
+        console.print(f"[yellow]No {_SOURCE_LABELS[source]} MCP config found at {src_path}[/yellow]")
+        return
 
-    from aede.import_.mcp import import_mcp_servers_from_claude_code
+    dest_path = home / "config.yml"
+    is_toml = source == "codex" or src_path.suffix == ".toml"
 
     if ns.dry_run:
-        import json
-        import yaml
-        src_data = json.loads(src_path.read_text(encoding="utf-8"))
-        servers = src_data.get("mcpServers", {})
-        if not servers:
+        names = _peek_mcp_server_names(src_path, is_toml)
+        if not names:
             console.print("[yellow]No MCP servers found in source config[/yellow]")
             return
-        console.print(f"[dim]Would import {len(servers)} MCP server(s):[/dim]")
-        for name in servers:
+        console.print(f"[dim]Would import {len(names)} MCP server(s):[/dim]")
+        for name in names:
             console.print(f"  • {name}")
         return
 
-    reports = import_mcp_servers_from_claude_code(
-        src_config_path=src_path,
-        dest_config_path=dest_path,
-    )
+    from aede.import_.mcp import import_mcp_from_json, import_mcp_from_toml
+    label = _SOURCE_LABELS[source]
+    if is_toml:
+        reports = import_mcp_from_toml(src_config_path=src_path, dest_config_path=dest_path, source=label)
+    else:
+        reports = import_mcp_from_json(src_config_path=src_path, dest_config_path=dest_path, source=label)
 
     if not reports:
         console.print("[yellow]No MCP servers found to import[/yellow]")
         return
 
-    imported = [r for r in reports if not r.was_skipped]
-    skipped = [r for r in reports if r.was_skipped]
+    for r in reports:
+        if r.was_skipped:
+            console.print(f"[yellow]Skipped MCP server: {r.name} (already exists)[/yellow]")
+        else:
+            console.print(f"[green]Imported MCP server: {r.name}[/green]")
 
-    for r in imported:
-        console.print(f"[green]Imported MCP server: {r.name}[/green]")
-    for r in skipped:
-        console.print(f"[yellow]Skipped MCP server: {r.name} (already exists)[/yellow]")
+
+def _peek_mcp_server_names(src_path: Path, is_toml: bool) -> list[str]:
+    """List server names in a source MCP config without writing anything."""
+    if is_toml:
+        import tomllib
+        data = tomllib.loads(src_path.read_text(encoding="utf-8"))
+        return list((data.get("mcp_servers") or {}).keys())
+    import json
+    data = json.loads(src_path.read_text(encoding="utf-8"))
+    return list((data.get("mcpServers") or {}).keys())
+
+
+# Per-source default directories for `import all`, relative to Path.home().
+# rules: list of (parts, kind) where kind is "file" (single md) or "agents_dir" (*.md glob)
+#        or "mdc_dir" (*.mdc glob). skills: dir parts. mcp: handled via _default_mcp_src.
+_IMPORT_ALL_LAYOUT = {
+    "claude-code": {
+        "agents": [((".claude", "agents"), "agents_dir")],
+        "skills": (".claude", "skills"),
+    },
+    "antigravity": {
+        "agents": [((".gemini", "AGENTS.md"), "file"), ((".gemini", "GEMINI.md"), "file")],
+        "skills": (".gemini", "skills"),
+    },
+    "codex": {
+        "agents": [((".codex", "AGENTS.md"), "file")],
+        "skills": (".codex", "skills"),
+    },
+    "cursor": {
+        "agents": [((".cursor", "rules"), "mdc_dir")],
+        "skills": None,
+    },
+    "windsurf": {
+        "agents": [((".windsurf", "rules"), "agents_dir")],
+        "skills": (".windsurf", "skills"),
+    },
+}
 
 
 def _handle_import_all(args: list[str], console: Any, home: Path) -> None:
-    """Import everything from ~/.claude/ — agents, skills, MCP servers."""
+    """Import everything from a source's standard dirs — agents, skills, MCP servers."""
     try:
         ns = _parse_import_args(args, "all")
     except SystemExit:
         return
 
-    claude_dir = Path.home() / ".claude"
-    if not claude_dir.exists():
-        console.print(f"[yellow]No Claude Code setup detected at {claude_dir}[/yellow]")
+    source = ns.source
+    if source not in _IMPORT_ALL_LAYOUT:
+        console.print(f"[red]Unknown source: {source!r}[/red]")
+        console.print(f"[yellow]Valid sources: {', '.join(sorted(_IMPORT_ALL_LAYOUT))}[/yellow]")
         return
 
+    layout = _IMPORT_ALL_LAYOUT[source]
+    label = _SOURCE_LABELS[source]
+    skip_existing = lambda p: "n"  # noqa: E731 — import-all never overwrites silently
     imported_count = 0
     skipped_count = 0
 
-    # Import agents from ~/.claude/agents/ (if it exists) or skill-like agent files
-    agents_dir = claude_dir / "agents"
-    if agents_dir.exists():
-        from aede.import_.claude_code import import_claude_code_agent
-        dest_dir = home / "agents"
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        for src in agents_dir.glob("*.md"):
+    # --- Agents / rules ---
+    agents_dest = home / "agents"
+    agents_dest.mkdir(parents=True, exist_ok=True)
+    for parts, kind in layout["agents"]:
+        base = Path.home().joinpath(*parts)
+        if kind == "file":
+            srcs = [base] if base.exists() else []
+        elif kind == "agents_dir":
+            srcs = sorted(base.glob("*.md")) if base.exists() else []
+        elif kind == "mdc_dir":
+            srcs = sorted(base.glob("*.mdc")) if base.exists() else []
+        else:
+            srcs = []
+        for src in srcs:
             try:
-                report = import_claude_code_agent(
-                    src_path=src, dest_dir=dest_dir,
-                    _input_fn=lambda p: "n",  # skip existing
-                )
+                report = _import_one_agent(src, agents_dest, source, _input_fn=skip_existing)
                 if report.was_skipped:
                     skipped_count += 1
                 else:
@@ -953,33 +1081,24 @@ def _handle_import_all(args: list[str], console: Any, home: Path) -> None:
             except Exception as e:
                 console.print(f"  [red]Agent {src.name}: {e}[/red]")
 
-    # Import skills from ~/.claude/skills/
-    skills_dir = claude_dir / "skills"
-    if skills_dir.exists():
-        from aede.import_.skills import import_claude_code_skill
-        dest_dir = home / "skills"
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        for child in skills_dir.iterdir():
-            if child.is_dir():
-                skill_file = child / "SKILL.md"
-                if skill_file.exists():
-                    try:
-                        report = import_claude_code_skill(
-                            src_path=child, dest_dir=dest_dir,
-                            _input_fn=lambda p: "n",
-                        )
-                        if report.was_skipped:
-                            skipped_count += 1
-                        else:
-                            imported_count += 1
-                            console.print(f"  [green]Skill: {report.name}[/green]")
-                    except Exception as e:
-                        console.print(f"  [red]Skill {child.name}: {e}[/red]")
-            elif child.suffix == ".md":
+    # --- Skills (SKILL.md standard) ---
+    skills_parts = layout["skills"]
+    if skills_parts is None:
+        console.print(f"  [dim]{label} has no skills to import[/dim]")
+    else:
+        skills_dir = Path.home().joinpath(*skills_parts)
+        if skills_dir.exists():
+            from aede.import_.skills import import_claude_code_skill
+            skills_dest = home / "skills"
+            skills_dest.mkdir(parents=True, exist_ok=True)
+            for child in sorted(skills_dir.iterdir()):
+                is_skill = (child.is_dir() and (child / "SKILL.md").exists()) or child.suffix == ".md"
+                if not is_skill:
+                    continue
                 try:
                     report = import_claude_code_skill(
-                        src_path=child, dest_dir=dest_dir,
-                        _input_fn=lambda p: "n",
+                        src_path=child, dest_dir=skills_dest,
+                        source=label, _input_fn=skip_existing,
                     )
                     if report.was_skipped:
                         skipped_count += 1
@@ -989,24 +1108,28 @@ def _handle_import_all(args: list[str], console: Any, home: Path) -> None:
                 except Exception as e:
                     console.print(f"  [red]Skill {child.name}: {e}[/red]")
 
-    # Import MCP servers
-    mcp_json = claude_dir / "mcp.json"
-    if mcp_json.exists():
-        from aede.import_.mcp import import_mcp_servers_from_claude_code
+    # --- MCP servers ---
+    mcp_src = _default_mcp_src(source)
+    if mcp_src.exists():
+        from aede.import_.mcp import import_mcp_from_json, import_mcp_from_toml
         dest_path = home / "config.yml"
-        reports = import_mcp_servers_from_claude_code(
-            src_config_path=mcp_json,
-            dest_config_path=dest_path,
-            _input_fn=lambda p: "n",  # skip existing
-        )
-        for r in reports:
-            if r.was_skipped:
-                skipped_count += 1
-            else:
-                imported_count += 1
-                console.print(f"  [green]MCP server: {r.name}[/green]")
+        is_toml = source == "codex" or mcp_src.suffix == ".toml"
+        importer = import_mcp_from_toml if is_toml else import_mcp_from_json
+        try:
+            reports = importer(
+                src_config_path=mcp_src, dest_config_path=dest_path,
+                source=label, _input_fn=skip_existing,
+            )
+            for r in reports:
+                if r.was_skipped:
+                    skipped_count += 1
+                else:
+                    imported_count += 1
+                    console.print(f"  [green]MCP server: {r.name}[/green]")
+        except Exception as e:
+            console.print(f"  [red]MCP import: {e}[/red]")
 
     console.print(
-        f"\nImport complete: [green]{imported_count} imported[/green], "
+        f"\nImport complete ({label}): [green]{imported_count} imported[/green], "
         f"[yellow]{skipped_count} skipped[/yellow]"
     )
