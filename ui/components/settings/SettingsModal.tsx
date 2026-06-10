@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  Cog, Key, Puzzle, BarChart3, BrainCircuit, Bot, Sparkles, Keyboard, FolderOpen,
+  Cog, Key, Puzzle, BarChart3, BrainCircuit, Bot, Sparkles, Keyboard, FolderOpen, Download,
 } from 'lucide-react'
 import { ConfigTab } from './tabs/ConfigTab'
 import { ModelsTab } from './tabs/ModelsTab'
@@ -15,6 +15,7 @@ import { AgentsTab } from './tabs/AgentsTab'
 import { SkillsTab } from './tabs/SkillsTab'
 import { KeybindsTab } from './tabs/KeybindsTab'
 import { ProjectsTab } from './tabs/ProjectsTab'
+import { ImportTab } from './tabs/ImportTab'
 const TABS = [
   { id: 'config', label: 'Config', icon: Cog },
   { id: 'models', label: 'Models', icon: Key },
@@ -23,6 +24,7 @@ const TABS = [
   { id: 'memory', label: 'Memory', icon: BrainCircuit },
   { id: 'agents', label: 'Agents', icon: Bot },
   { id: 'skills', label: 'Skills', icon: Sparkles },
+  { id: 'import', label: 'Import', icon: Download },
   { id: 'keybinds', label: 'Keybinds', icon: Keyboard },
   { id: 'projects', label: 'Projects', icon: FolderOpen },
 ] as const
@@ -93,6 +95,9 @@ export function SettingsModal({ open, onOpenChange, initialTab }: Props) {
                 </TabsContent>
                 <TabsContent value="skills" className="mt-0">
                   <SkillsTab />
+                </TabsContent>
+                <TabsContent value="import" className="mt-0">
+                  <ImportTab />
                 </TabsContent>
                 <TabsContent value="keybinds" className="mt-0">
                   <KeybindsTab />

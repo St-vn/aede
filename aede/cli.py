@@ -75,8 +75,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser = argparse.ArgumentParser(prog="aede", description="Personal AI agent CLI")
         parser.add_argument("task", nargs="?", default=None, help="Optional first message")
         parser.add_argument("--version", action="version", version=f"aede {VERSION}")
-        parser.add_argument("--import", dest="import_action", choices=["claude-code", "opencode"],
-                            help="Import an agent from Claude Code or OpenCode")
+        parser.add_argument("--import", dest="import_action",
+                            choices=["claude-code", "opencode", "skill", "mcp", "all"],
+                            help="Import agents, skills, or MCP servers")
         parser.add_argument("--src", type=Path, help="Path to the source agent .md file")
         parser.add_argument("--dest", type=Path, default=None, help="Output directory (default: ~/.aede/agents/)")
         parser.add_argument("--serve", action="store_true", help="Start the FastAPI backend server")
@@ -239,28 +240,68 @@ def _handle_import(args: argparse.Namespace) -> None:
     """Handle the ``import`` subcommand synchronously."""
     from rich.console import Console
     console = Console()
+    home = Path(os.environ.get("AEDE_HOME", str(Path.home() / ".aede")))
 
-    dest_dir = args.dest or (Path.home() / ".aede" / "agents")
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    if args.import_action in ("claude-code", "opencode"):
+        if not args.src:
+            console.print("[red]Error: --src is required for import[/red]")
+            return
+        dest_dir = args.dest or (home / "agents")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        if args.import_action == "claude-code":
+            from aede.import_.claude_code import import_claude_code_agent
+            report = import_claude_code_agent(src_path=args.src, dest_dir=dest_dir)
+        else:
+            from aede.import_.opencode import import_opencode_agent
+            report = import_opencode_agent(src_path=args.src, dest_dir=dest_dir)
+        if report.was_skipped:
+            console.print(f"[yellow]Skipped {report.name} (already exists)[/yellow]")
+        else:
+            console.print(f"[green]Imported {report.name} → {report.dest_path}[/green]")
 
-    if not args.src:
-        console.print("[red]Error: --src is required for import[/red]")
-        return
+    elif args.import_action == "skill":
+        if not args.src:
+            console.print("[red]Error: --src is required for skill import[/red]")
+            return
+        dest_dir = args.dest or (home / "skills")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        from aede.import_.skills import import_claude_code_skill
+        try:
+            report = import_claude_code_skill(src_path=args.src, dest_dir=dest_dir)
+        except Exception as e:
+            console.print(f"[red]Import failed: {e}[/red]")
+            return
+        if report.was_skipped:
+            console.print(f"[yellow]Skipped {report.name} (already exists)[/yellow]")
+        else:
+            console.print(f"[green]Imported {report.name} → {report.dest_path}[/green]")
 
-    if args.import_action == "claude-code":
-        from aede.import_.claude_code import import_claude_code_agent
-        report = import_claude_code_agent(src_path=args.src, dest_dir=dest_dir)
-    elif args.import_action == "opencode":
-        from aede.import_.opencode import import_opencode_agent
-        report = import_opencode_agent(src_path=args.src, dest_dir=dest_dir)
+    elif args.import_action == "mcp":
+        src_path = args.src or (Path.home() / ".claude" / "mcp.json")
+        if not src_path.exists():
+            console.print(f"[yellow]No Claude Code MCP config found at {src_path}[/yellow]")
+            return
+        from aede.import_.mcp import import_mcp_servers_from_claude_code
+        dest_path = home / "config.yml"
+        reports = import_mcp_servers_from_claude_code(
+            src_config_path=src_path,
+            dest_config_path=dest_path,
+        )
+        if not reports:
+            console.print("[yellow]No MCP servers found to import[/yellow]")
+            return
+        for r in reports:
+            if r.was_skipped:
+                console.print(f"[yellow]Skipped MCP server: {r.name} (already exists)[/yellow]")
+            else:
+                console.print(f"[green]Imported MCP server: {r.name}[/green]")
+
+    elif args.import_action == "all":
+        from aede.commands import _handle_import_all
+        _handle_import_all([], console, home)
+
     else:
         console.print("[red]Error: unknown import type[/red]")
-        return
-
-    if report.was_skipped:
-        console.print(f"[yellow]Skipped {report.name} (already exists)[/yellow]")
-    else:
-        console.print(f"[green]Imported {report.name} → {report.dest_path}[/green]")
 
 
 async def _run(initial_task: str | None = None, resume_session_id: str | None = None) -> None:
@@ -283,7 +324,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     from aede.gate import PermissionStore, TerminalGateBackend
     from aede.tokens import TokenTracker, PriceCache
     from aede.agent import AgentLoop
-    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_agents, handle_acp, _load_session_notes, handle_delete_session
+    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_agents, handle_acp, _load_session_notes, handle_delete_session, handle_import
 
     console = Console()
 
@@ -522,6 +563,8 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
                     resume_target = target_id
                     stop_reason = "resume"
                     break
+            elif cmd.name == "import":
+                handle_import(cmd.args, console, home)
             continue
 
         if acp_active:
