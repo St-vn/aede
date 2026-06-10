@@ -133,6 +133,7 @@ Defined in `aede/commands.py:COMMANDS` (line 15-19):
 | `/tools` | `handle_tools` | List tools + approval status |
 | `/skills` | `handle_skills` | List loaded skills |
 | `/agents` | `handle_agents` | List loaded agents |
+| `/mcp` | `handle_mcp` | List MCP servers and tools |
 | `/config [scope] [key] [value]` | `handle_config_edit` | View/set config |
 | `/compact` | `agent.compact()` | Manual context compaction |
 | `/tokens` | `handle_tokens` | Token usage + cost estimate |
