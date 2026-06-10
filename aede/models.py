@@ -33,7 +33,7 @@ MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
         {"id": "claude-code", "label": "Claude Code"},
         {"id": "claude-code/fable-5", "label": "Claude Code / Fable 5"},
         {"id": "claude-code/opus-4-8", "label": "Claude Code / Opus 4.8"},
-        {"id": "claude-code/opus-4-7", "label": "Claude Code / Opus 4.7"},
+        # {"id": "claude-code/opus-4-7", "label": "Claude Code / Opus 4.7"},
         {"id": "claude-code/sonnet-4-6", "label": "Claude Code / Sonnet 4.6"},
         {"id": "claude-code/haiku-4-5", "label": "Claude Code / Haiku 4.5"},
     ],
@@ -41,6 +41,7 @@ MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
     "agy": [
         {"id": "agy", "label": "Antigravity"},
         {"id": "agy/gemini-3-5-flash", "label": "Antigravity / Gemini 3.5 Flash"},
+        {"id": "agy/gemini-3-1-pro", "label": "Antigravity / Gemini 3.1 Pro"},
         {"id": "agy/claude-sonnet-4-6", "label": "Antigravity / Claude Sonnet 4.6"},
         {"id": "agy/claude-opus-4-6", "label": "Antigravity / Claude Opus 4.6"},
     ],

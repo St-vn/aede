@@ -364,17 +364,17 @@ def handle_config_edit(
 
 
 ACP_COMMANDS = {
-    "codex": ("codex-acp", []),
-    "codex/gpt-5.5": ("codex-acp", []),
-    "codex/gpt-5.3-codex": ("codex-acp", []),
-    "codex/o3": ("codex-acp", []),
-    "codex/o4-mini": ("codex-acp", []),
-    "claude-code": ("claude-agent-acp", []),
-    "claude-code/fable-5": ("claude-agent-acp", []),
-    "claude-code/opus-4-8": ("claude-agent-acp", []),
-    "claude-code/opus-4-7": ("claude-agent-acp", []),
-    "claude-code/sonnet-4-6": ("claude-agent-acp", []),
-    "claude-code/haiku-4-5": ("claude-agent-acp", []),
+    "codex": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/gpt-5.5": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/gpt-5.3-codex": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/o3": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/o4-mini": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "claude-code": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/fable-5": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/opus-4-8": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    # "claude-code/opus-4-7": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/sonnet-4-6": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/haiku-4-5": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
     "gemini": ("gemini", ["--acp"]),
     "agy": ("agy", ["--acp"]),
     "agy/gemini-3-5-flash": ("agy", ["--acp"]),
@@ -386,7 +386,7 @@ ACP_COMMANDS = {
     "goose": ("goose", ["acp"]),
     "goose/anthropic-claude-sonnet-4-6": ("goose", ["acp"]),
     "goose/openai-gpt-4o": ("goose", ["acp"]),
-    "opencode": ("opencode", ["--acp"]),
+
 }
 
 
@@ -406,7 +406,7 @@ def get_acp_model_override(agent_name: str) -> str | None:
         "codex/o4-mini": "o4-mini",
         "claude-code/fable-5": "claude-fable-5",
         "claude-code/opus-4-8": "claude-opus-4-8",
-        "claude-code/opus-4-7": "claude-opus-4-7",
+        # "claude-code/opus-4-7": "claude-opus-4-7",
         "claude-code/sonnet-4-6": "claude-sonnet-4-6",
         "claude-code/haiku-4-5": "claude-haiku-4-5",
         "agy/gemini-3-5-flash": "gemini-3.5-flash",
@@ -417,6 +417,55 @@ def get_acp_model_override(agent_name: str) -> str | None:
         "goose/openai-gpt-4o": "openai/gpt-4o",
     }
     return MODEL_OVERRIDES.get(agent_name)
+
+
+ACP_CREDENTIALS = {
+    "codex": "OPENAI_API_KEY",
+    "claude-code": "ANTHROPIC_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "cursor": "CURSOR_API_KEY",
+}
+
+
+def credentials_ref_for(agent_name: str) -> str | None:
+    base = agent_name.split("/", 1)[0].split("\\", 1)[0]
+    return ACP_CREDENTIALS.get(base)
+
+
+def _masked_prompt(label: str, password: bool = False) -> str:
+    from rich.prompt import Prompt
+    return Prompt.ask(label, password=password)
+
+
+def run_acp_connect(agent_name, vault, registry, console):
+    from aede.acp.auth import (
+        drive_auth, NeedsKey, NeedsBrowser, NeedsTerminal, Progress, Connected, Failed)
+    from aede.acp.client import AcpClient
+    client = AcpClient(registry.get(agent_name)) if registry else None
+    gen = drive_auth(agent_name, client=client, vault=vault, registry=registry)
+    to_send = None
+    while True:
+        try:
+            step = gen.send(to_send)
+        except StopIteration:
+            return None
+        to_send = None
+        if isinstance(step, Progress):
+            console.print(step.message)
+        elif isinstance(step, NeedsKey):
+            val = _masked_prompt(f"Enter {step.env_var}", password=True)
+            vault.set(step.env_var, val)
+            to_send = val
+        elif isinstance(step, NeedsBrowser):
+            console.print("Complete the login in your browser...")
+        elif isinstance(step, NeedsTerminal):
+            console.print(f"Complete login in the opened terminal: {step.command}")
+        elif isinstance(step, Connected):
+            console.print(f"[green]✓[/green] connected to {agent_name}")
+            return step.session_id
+        elif isinstance(step, Failed):
+            console.print(f"[red]Failed:[/red] {step.reason}")
+            return None
 
 
 def handle_setkey(args: list[str], console: Any, home: Path, acp_manager: Any = None) -> None:
@@ -458,6 +507,7 @@ def handle_setkey(args: list[str], console: Any, home: Path, acp_manager: Any = 
                         command=command,
                         args=extra_args,
                         model_override=model_override,
+                        credentials_ref=credentials_ref_for(provider),
                     ))
                 except ValueError:
                     pass
@@ -635,12 +685,13 @@ def handle_serve(
     app.state.cfg = cfg
     app.state.db = db
 
-    from aede.acp.registry import AgentRegistry as AcpAgentRegistry
+    from aede.acp.registry import AgentRegistry as AcpAgentRegistry, seed_default_agents
     from aede.acp.manager import AcpManager
     from aede.acp.credentials import CredentialProvider
     from pathlib import Path
     home = Path(cfg.home)
     acp_registry = AcpAgentRegistry(config_dir=home)
+    seed_default_agents(acp_registry)
     app.state.acp_manager = AcpManager(
         registry=acp_registry,
         credential_provider=CredentialProvider(home=home),

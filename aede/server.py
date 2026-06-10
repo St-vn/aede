@@ -77,6 +77,18 @@ class WebSocketConsole:
         except Exception:
             pass
 
+    def error(self, message: str):
+        """Sends an error message to the UI as a toast."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self._websocket.send_json({
+                    "type": "error",
+                    "message": message,
+                }))
+        except Exception:
+            pass
+
 
 @app.get("/health")
 async def health():
@@ -84,10 +96,17 @@ async def health():
     return {"status": "ok"}
 
 
+_ws_handler_id = 0
+
 @app.websocket("/ws/sessions/{session_id}")
 async def websocket_turn(websocket: WebSocket, session_id: str):
     """Handle interactive agent turns for a specific session over WebSocket."""
+    global _ws_handler_id
+    _ws_handler_id += 1
+    hid = _ws_handler_id
+    print(f"[WS#{hid}] accept: session={session_id}", flush=True)
     await websocket.accept()
+    print(f"[WS#{hid}] accepted: session={session_id}", flush=True)
     
     db = app.state.db
     cfg = app.state.cfg
@@ -98,14 +117,22 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
     try:
         while True:
+            print(f"[WS#{hid}] waiting for message... session={session_id}", flush=True)
             data = await websocket.receive_json()
             msg_type = data.get("type")
+            print(f"[WS#{hid}] RECEIVED type={msg_type} session={session_id}", flush=True)
 
             if msg_type == "user_message":
                 content = data.get("content")
                 if not session_id or not content:
                     await websocket.send_json({"type": "error", "message": "Missing session_id or content"})
                     continue
+
+                # Per-turn model override from the UI
+                turn_model = data.get("model")
+                if turn_model:
+                    print(f"[WS#{hid}] per-turn model override: {cfg.model} → {turn_model}", flush=True)
+                    cfg.model = turn_model
 
                 # Bootstrap AgentLoop for this turn
                 from aede.session import Session
@@ -117,7 +144,9 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
                 try:
                     session = Session.load(db, session_id)
+                    print(f"[WS#{hid}] Session loaded: {session.id}", flush=True)
                 except KeyError:
+                    print(f"[WS#{hid}] Session NOT FOUND: {session_id}", flush=True)
                     await websocket.send_json({"type": "error", "message": f"Session {session_id} not found"})
                     continue
 
@@ -142,6 +171,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 tracker = TokenTracker(session_id=session.id, db=db)
                 rollout = Rollout(cfg.data_dir / "sessions", session.id)
 
+                print(f"[WS#{hid}] Creating AgentLoop...", flush=True)
                 agent = AgentLoop(
                     cfg=cfg,
                     session=session,
@@ -163,6 +193,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     for r in rows
                 ]
                 agent.initialize(is_resume=True, prior_messages=prior_messages)
+                print(f"[WS#{hid}] AgentLoop initialized", flush=True)
 
                 # Resolve @[filename] mentions from the session's project dir
                 ws_workspace = Path(session.project_dir).expanduser().resolve() if session.project_dir else None
@@ -171,11 +202,16 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     await websocket.send_json({"type": "console_message", "content": "Resolved @ file references"})
 
                 # Run the turn in the background so we can still receive gate responses
+                print(f"[WS#{hid}] Starting agent.run_turn...", flush=True)
                 turn_task = asyncio.create_task(agent.run_turn(resolved_content))
+                print(f"[WS#{hid}] agent.run_turn task created", flush=True)
                 
                 def on_turn_done(fut):
+                    nonlocal hid
+                    print(f"[WS#{hid}] on_turn_done CALLED", flush=True)
                     try:
                         fut.result()
+                        print(f"[WS#{hid}] run_turn completed successfully", flush=True)
                         asyncio.create_task(websocket.send_json({"type": "turn_completed"}))
                         # Emit context usage info
                         try:
@@ -186,8 +222,8 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                                     "used": ctx.get("total_tokens", 0),
                                     "total": cfg.context_window,
                                 }))
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            print(f"[WS#{hid}] context_usage error: {e}", flush=True)
                         # Emit learnings count
                         try:
                             from aede.memory.store import LearningsStore
@@ -197,12 +233,16 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                                 "type": "learnings_injected",
                                 "count": len(all_l),
                             }))
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            print(f"[WS#{hid}] learnings error: {e}", flush=True)
                     except Exception as e:
+                        print(f"[WS#{hid}] run_turn FAILED: {e}", flush=True)
+                        import traceback
+                        traceback.print_exc()
                         asyncio.create_task(websocket.send_json({"type": "error", "message": str(e)}))
 
                 turn_task.add_done_callback(on_turn_done)
+                print(f"[WS#{hid}] Done setting up turn, returning to message loop", flush=True)
 
             elif msg_type == "gate_response":
                 gate_id = data.get("gate_id")
@@ -215,8 +255,11 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     await websocket.send_json({"type": "error", "message": f"Unknown gate_id: {gate_id}"})
 
     except WebSocketDisconnect:
-        pass
+        print(f"[WS#{hid}] WebSocket disconnected", flush=True)
     except Exception as e:
+        print(f"[WS#{hid}] UNHANDLED EXCEPTION: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:
@@ -653,20 +696,21 @@ async def list_credentials(request: Request):
 
 
 ACP_COMMANDS = {
-    "codex": ("codex-acp", []),
-    "codex/gpt-5.5": ("codex-acp", []),
-    "codex/gpt-5.3-codex": ("codex-acp", []),
-    "codex/o3": ("codex-acp", []),
-    "codex/o4-mini": ("codex-acp", []),
-    "claude-code": ("claude-agent-acp", []),
-    "claude-code/fable-5": ("claude-agent-acp", []),
-    "claude-code/opus-4-8": ("claude-agent-acp", []),
-    "claude-code/opus-4-7": ("claude-agent-acp", []),
-    "claude-code/sonnet-4-6": ("claude-agent-acp", []),
-    "claude-code/haiku-4-5": ("claude-agent-acp", []),
+    "codex": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/gpt-5.5": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/gpt-5.3-codex": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/o3": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/o4-mini": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "claude-code": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/fable-5": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/opus-4-8": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    # "claude-code/opus-4-7": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/sonnet-4-6": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/haiku-4-5": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
     "gemini": ("gemini", ["--acp"]),
     "agy": ("agy", ["--acp"]),
     "agy/gemini-3-5-flash": ("agy", ["--acp"]),
+    "agy/gemini-3-1-pro": ("agy", ["--acp"]),
     "agy/claude-sonnet-4-6": ("agy", ["--acp"]),
     "agy/claude-opus-4-6": ("agy", ["--acp"]),
     "cline": ("cline", ["--acp"]),
@@ -674,7 +718,7 @@ ACP_COMMANDS = {
     "goose": ("goose", ["acp"]),
     "goose/anthropic-claude-sonnet-4-6": ("goose", ["acp"]),
     "goose/openai-gpt-4o": ("goose", ["acp"]),
-    "opencode": ("opencode", ["--acp"]),
+
 }
 
 
@@ -1109,7 +1153,7 @@ def _write_skill_file(filepath: Path, payload: dict) -> None:
 
 @app.post("/api/acp/register")
 async def acp_register(request: Request, payload: dict):
-    """Register a new ACP agent config. Body: {name, command, args?, credentials_ref?}"""
+    """Register or update an ACP agent config. Body: {name, command, args?, credentials_ref?}"""
     mgr = getattr(request.app.state, "acp_manager", None)
     if not mgr:
         raise HTTPException(status_code=500, detail="ACP manager not initialized")
@@ -1125,11 +1169,22 @@ async def acp_register(request: Request, payload: dict):
         args=payload.get("args", []),
         credentials_ref=payload.get("credentials_ref"),
     )
+    mgr._registry.upsert(config)
+    return {"status": "registered", "name": name}
+
+
+@app.delete("/api/acp/{name}")
+async def acp_delete(request: Request, name: str):
+    """Unregister and disconnect an ACP agent."""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        raise HTTPException(status_code=500, detail="ACP manager not initialized")
+    mgr.disconnect(name)
     try:
-        mgr._registry.add(config)
-        return {"status": "registered", "name": name}
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        mgr._registry.remove(name)
+    except KeyError:
+        pass
+    return {"status": "deleted", "name": name}
 
 
 @app.get("/api/acp/configs")
@@ -1217,7 +1272,7 @@ async def add_model(request: Request, payload: dict):
     return {"status": "ok"}
 
 
-@app.delete("/api/models/{model_id}")
+@app.delete("/api/models/{model_id:path}")
 async def delete_model(request: Request, model_id: str):
     """Remove a model from the list."""
     from aede.models import load_models, save_models

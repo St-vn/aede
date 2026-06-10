@@ -3,7 +3,9 @@ from dataclasses import dataclass
 from typing import Any, Optional
 import json
 import os
+import shutil
 import subprocess
+import sys
 
 from .registry import AgentConfig
 
@@ -45,13 +47,14 @@ class AcpClient:
             "clientCapabilities": {
                 "fs": {"readTextFile": True, "writeTextFile": True},
                 "terminal": True,
+                "auth": {"terminal": True},
             },
             "clientInfo": {
                 "name": "aede",
                 "title": "aede",
                 "version": "0.1.0",
             },
-        })
+        }, timeout=120.0)
         if result.protocol_version != ACP_PROTOCOL_VERSION:
             raise ValueError(
                 f"Unsupported protocol version {result.protocol_version}: "
@@ -122,6 +125,9 @@ class AcpClient:
                 if on_update:
                     on_update(update)
 
+    def authenticate(self, method_id: str) -> None:
+        self._send_request("session/authenticate", {"methodId": method_id})
+
     def close(self) -> None:
         if self._process:
             self._process.terminate()
@@ -167,6 +173,13 @@ class AcpClient:
         if self._config.model_override and self._config.name == "codex":
             cmd.extend(["--model", self._config.model_override])
         
+        # Windows: .cmd/.bat files can't be spawned directly by CreateProcess.
+        # Resolve via shutil.which and wrap in cmd.exe /c if needed.
+        if sys.platform == 'win32':
+            resolved = shutil.which(cmd[0])
+            if resolved and resolved.lower().endswith(('.cmd', '.bat')):
+                cmd = ['cmd.exe', '/c'] + cmd
+
         self._process = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -176,7 +189,8 @@ class AcpClient:
             env=self._inject_env(credential_provider),
         )
 
-    def _send_request(self, method: str, params: dict) -> Any:
+    def _send_request(self, method: str, params: dict, timeout: float = 10.0) -> Any:
+        import threading
         req_id = self._request_id
         self._request_id += 1
         msg = json.dumps({
@@ -189,7 +203,18 @@ class AcpClient:
         self._process.stdin.write(msg + "\n")
         self._process.stdin.flush()
 
-        line = self._process.stdout.readline()
+        box: dict[str, Any] = {}
+        def _read():
+            box["line"] = self._process.stdout.readline()
+        t = threading.Thread(target=_read, daemon=True)
+        t.start()
+        t.join(timeout)
+        if t.is_alive():
+            raise AcpError(-1, f"Agent '{self._config.name}' timed out after {timeout}s")
+
+        line = box["line"]
+        if not line:
+            raise AcpError(-1, f"Agent '{self._config.name}' closed connection before responding")
         response = json.loads(line)
         assert response["id"] == req_id
 

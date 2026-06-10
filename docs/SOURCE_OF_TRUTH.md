@@ -1,8 +1,8 @@
 # aede — Source of Truth
 
 **Version:** 0.1.0  
-**Last updated:** 2026-06-09  
-**Status:** Phase 1 complete (168+ tests) · Phase 2 partial (memory, MCP, ACP, critic, web server, import)
+**Last updated:** 2026-06-10  
+**Status:** Phase 1 complete · Phase 2 partial (memory, MCP, ACP + chat routing, critic, web server, import)
 
 ---
 
@@ -853,12 +853,12 @@ MCP servers can be imported from Claude Code via `/import mcp` or `aede --import
 JSON-RPC 2.0 client over stdio subprocess.
 
 **Key methods:**
-- `initialize()` — protocol version negotiation, client capabilities (fs, terminal)
+- `initialize()` — protocol version negotiation, client capabilities (fs, terminal); returns `InitializeResult` (now carries `auth_methods`)
 - `new_session()` — create session with optional MCP servers
-- `prompt(text)` — send prompt, stream updates via `on_update` callback
-- `destroy_session()` — cleanup
+- `prompt(text)` — send prompt; accumulates `agent_message_chunk` text from streaming notifications, returns it in the result
+- `close()` — terminate subprocess
 
-**Dataclasses:** `InitializeResult`, `AgentInfo`, `AcpError`
+**Dataclasses:** `InitializeResult` (incl. `auth_methods`), `AgentInfo`, `AcpError` (carries `.code`, `.message`)
 
 **Note:** Custom JSON-RPC implementation (pre-official-SDK prototype). Migration to official SDK deferred to Phase 3.
 
@@ -895,9 +895,27 @@ Maps ACP permission requests to aede's approval gate.
 **File:** `aede/acp/credentials.py` (37 lines)  
 Injects credentials from vault into agent subprocess environment.
 
-### Known Gap: ACP Chat Routing
+### ACP Chat Routing
 
-The model selector → ACP agent chat routing is **not wired**. Selecting an ACP agent (Claude Code, Gemini, etc.) from the model selector saves `cfg.model` but the chat loop has no routing logic to detect "this model is an ACP agent" and send messages to the ACP subprocess. Deferred to Phase 3.
+**File:** `aede/provider.py:485-632`
+
+ACP agents are routed through the provider abstraction. `get_provider(cfg, acp_manager)` intercepts before LLM-provider selection: if `cfg.model` is in `ACP_MODEL_IDS`, it returns an `AcpProvider` (raises if no `acp_manager` passed).
+
+**`ACP_MODEL_IDS`** (`aede/provider.py:489-497`) — frozenset of routable model IDs: base agents (`codex`, `claude-code`, `gemini`, `agy`, `cline`, `cursor`, `goose`, `opencode`) plus sub-model entries (e.g. `codex/gpt-5.5`, `claude-code/opus-4-8`, `goose/openai-gpt-4o`).
+
+**`AcpProvider`** (`aede/provider.py:500-575`) — implements the `Provider` protocol's `stream_turn()`. On each turn: disconnects the previous agent if the model changed, auto-connects (or `switch_to`) the target agent, builds a single prompt string from the message history via `_build_prompt_text()`, and runs `session.prompt()` in a thread (blocking — streaming TBD). Returns a `NormalizedResponse` with the accumulated text. Token counts are 0 (ACP agents don't report usage).
+
+`acp_manager` is threaded from `cli.py` and `server.py` → `AgentLoop` → `get_provider()`. The old `acp_active` flag and manual routing branch were removed.
+
+### Sub-model Entries (`fff452c`)
+
+`AgentConfig` gained a `model_override` field (`aede/acp/registry.py`). ACP agents can expose sub-models that inject the right override per agent type at spawn (`aede/acp/client.py` `_inject_env`/`_start`): `ANTHROPIC_MODEL` for Claude Code, `GOOSE_PROVIDER`+`GOOSE_MODEL` for Goose, `--model` flag for Codex. Sub-model names use `agent/model` form (e.g. `claude-code/opus-4-8`).
+
+### Client-Driven Auth (in progress, CLI-first)
+
+**File:** `aede/acp/auth.py` (NEW)
+
+An I/O-free auth engine for non-technical connect flows. Defines `AuthStep` event types (`NeedsBrowser`, `NeedsTerminal`, `NeedsKey`, `Progress`, `Connected`, `Failed`) that a `drive_auth()` generator yields to a CLI or Web adapter. The engine picks the least-resistance auth path (existing login → vault key → agent OAuth → terminal relaunch). Plan: `docs/sdlc-engineer/plans/2026-06-10-acp-auth.md` (gitignored). Status: Task 1 of 11 complete (AuthStep types).
 
 ---
 
@@ -1098,7 +1116,7 @@ Hardcoded mappings covering:
 - **DeepSeek:** v3-0324, r1-0528
 - **OpenRouter:** Gemini 2.5 Flash/Pro
 - **Codex CLI:** codex
-- **ACP agents:** claude-code, gemini, agy
+- **ACP agents:** codex, claude-code, gemini, agy, cline, cursor, goose, opencode (+ sub-model entries like `claude-code/opus-4-8`, `codex/gpt-5.5`)
 
 ### `load_models()` / `save_models()` / `reset_models()`
 
@@ -1125,11 +1143,11 @@ Persistent workspace directories with independent lifecycle (survives session de
 
 ## 25. Tests
 
-**Directory:** `tests/` (62 files)  
+**Directory:** `tests/` (70 files)  
 **Runner:** `uv run pytest` (or `uv run pytest -xvs` for verbose)  
 **Config:** `pyproject.toml` → `[tool.pytest.ini_options] asyncio_mode = "auto"`  
 **Fixture:** `tests/conftest.py:tmp_home` — redirects `~/.aede` to temp dir via `AEDE_HOME`  
-**Current count:** 478 tests passing
+**Current count:** 554 tests passing
 
 ### Test file summary
 
@@ -1173,7 +1191,8 @@ Persistent workspace directories with independent lifecycle (survives session de
 | `test_agent_skills_inject.py` | Skill injection into agent |
 | `test_agent_integration.py` | Agent end-to-end integration |
 | `test_subagent_*.py` (8) | Subagent orchestration |
-| `test_acp_*.py` (6) | ACP client, manager, session, registry, permissions, credentials |
+| `test_acp_*.py` (7) | ACP client, manager, session, registry, permissions, credentials, routing |
+| `test_acp_auth.py` | ACP client-driven auth engine (AuthStep types; in progress) |
 | `test_mcp_*.py` (3) | MCP bridge, router, config |
 | `test_server_*.py` (5) | FastAPI server |
 | `test_import_claude_code.py` | Claude Code agent import |

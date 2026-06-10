@@ -29,6 +29,15 @@ class AcpSession:
         self._session_id = self._client.new_session(cwd=cwd, mcp_servers=mcp_servers)
         return self._session_id
 
+    def adopt(self, session_id: str) -> None:
+        """Bind an already-created ACP session id to this wrapper.
+
+        Used when the session was created during the auth handshake
+        (``drive_auth`` calls ``client.new_session``) — re-calling
+        ``create()`` would spawn a redundant second session.
+        """
+        self._session_id = session_id
+
     def prompt(
         self,
         text: str,

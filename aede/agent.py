@@ -77,6 +77,7 @@ def build_system_prompt(
     compaction_summary: str | None,
     skills: list[Any] | None = None,
     learnings_suffix: str | None = None,
+    instructions_suffix: str | None = None,
 ) -> SystemPrompt:
     """Assemble the full system prompt from the stable base and per-session context.
 
@@ -96,11 +97,21 @@ def build_system_prompt(
             ## Session block (and after session notes/compaction summary).
             Kept in .dynamic, NOT .stable — cache breakpoint stays put.
 
+    Args:
+        instructions_suffix: Optional markdown block from
+            ``aede.instructions.build_instructions_suffix``.  Injected at the
+            top of the dynamic part, right after the stable prefix, so identity
+            and project-level rules frame the rest of the prompt.
+
     Returns:
         SystemPrompt with .stable and .dynamic fields.
     """
-    dynamic_parts = [
-        "",
+    dynamic_parts = [""]
+
+    if instructions_suffix:
+        dynamic_parts += [instructions_suffix, ""]
+
+    dynamic_parts += [
         "## Configuration",
         "",
         f"Model: {cfg.model}",
@@ -246,6 +257,7 @@ class AgentLoop:
         skills: list[Any] | None = None,
         learnings_suffix: str | None = None,
         initial_task: str | None = None,
+        instructions_suffix: str | None = None,
     ) -> None:
         """Build the system prompt and optionally restore prior message history.
 
@@ -271,6 +283,7 @@ class AgentLoop:
             cfg=self._cfg,
             skills=skills,
             learnings_suffix=learnings_suffix,
+            instructions_suffix=instructions_suffix,
             session_id=self._session.id,
             is_resume=is_resume,
             session_notes=session_notes,
@@ -615,22 +628,26 @@ class AgentLoop:
         except Exception:
             pass
 
+        error_msg: str
         if _is_html_body(error_str):
             code_part = f" {status_code}" if status_code else ""
-            self._console.print(
-                f"[red]API error{code_part}: endpoint returned an HTML page "
+            error_msg = (
+                f"API error{code_part}: endpoint returned an HTML page "
                 f"(likely wrong base_url or model not available at this endpoint). "
-                f"Check api_base_url and model id in your config.[/red]"
+                f"Check api_base_url and model id in your config."
             )
-            return
-
-        if status_code is not None:
-            # Extract a brief reason — first line of the error message
+        elif status_code is not None:
             first_line = error_str.split("\n")[0][:200]
-            self._console.print(f"[red]API error {status_code}: {first_line}[/red]")
+            error_msg = f"API error {status_code}: {first_line}"
         else:
             first_line = error_str.split("\n")[0][:200]
-            self._console.print(f"[red]API error: {first_line}[/red]")
+            error_msg = f"API error: {first_line}"
+
+        send_error = getattr(self._console, "error", None)
+        if send_error is not None:
+            send_error(error_msg)
+        else:
+            self._console.print(f"[red]{error_msg}[/red]")
 
     async def _run_critic_panel(self, tool_input: dict) -> None:
         """Call the critic LLM, render a Rich panel of findings, and handle failures.

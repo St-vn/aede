@@ -491,8 +491,10 @@ ACP_MODEL_IDS: frozenset[str] = frozenset({
     "cline", "cursor", "goose", "opencode",
     # Sub-model entries
     "codex/gpt-5.5", "codex/gpt-5.3-codex", "codex/o3", "codex/o4-mini",
-    "claude-code/fable-5", "claude-code/opus-4-8", "claude-code/opus-4-7", "claude-code/sonnet-4-6", "claude-code/haiku-4-5",
-    "agy/gemini-3-5-flash", "agy/claude-sonnet-4-6", "agy/claude-opus-4-6",
+    "claude-code/fable-5", "claude-code/opus-4-8",
+    # "claude-code/opus-4-7",
+    "claude-code/sonnet-4-6", "claude-code/haiku-4-5",
+    "agy/gemini-3-5-flash", "agy/gemini-3-1-pro", "agy/claude-sonnet-4-6", "agy/claude-opus-4-6",
     "goose/anthropic-claude-sonnet-4-6", "goose/openai-gpt-4o",
 })
 
@@ -527,10 +529,37 @@ class AcpProvider:
         reasoning_effort: str = "auto",
         thinking_budget: int = 0,
     ) -> NormalizedResponse:
-        agent = model
         manager = self._acp_manager
 
-        # Disconnect previous agent if model changed
+        # Resolve base agent and optional sub-model override.
+        # e.g. "claude-code/opus-4-8" -> base="claude-code", override="claude-opus-4-8"
+        if "/" in model:
+            base_agent = model.split("/", 1)[0]
+            from aede.commands import get_acp_model_override
+            model_override = get_acp_model_override(model)
+        else:
+            base_agent = model
+            model_override = None
+
+        # Apply model_override to the registry config so AcpClient._inject_env
+        # picks it up at subprocess spawn time.  If the override changed from
+        # the last turn we must disconnect and reconnect so the new env takes
+        # effect (the env is injected at spawn, not at runtime).
+        if model_override is not None:
+            try:
+                config = manager._registry.get(base_agent)
+                if config.model_override != model_override:
+                    # Override changed — disconnect to force a fresh spawn
+                    if base_agent in manager.list_connected():
+                        manager.disconnect(base_agent)
+                    config.model_override = model_override
+                    manager._registry.upsert(config)
+            except KeyError:
+                pass  # registry lookup will fail at connect() with a clear message
+
+        agent = base_agent
+
+        # Disconnect previous agent if model (base) changed
         if self._current_agent and self._current_agent != agent:
             manager.disconnect(self._current_agent)
 

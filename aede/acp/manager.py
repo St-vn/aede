@@ -33,38 +33,35 @@ class AcpManager:
 
     def connect(self, agent_name: str) -> str:
         config = self._registry.get(agent_name)
-
         if agent_name in self._sessions:
             self._active_name = agent_name
             return self._sessions[agent_name].session_id
 
+        from .auth import drive_auth, Connected, Failed, NeedsKey, NeedsBrowser, NeedsTerminal
         client = AcpClient(config)
         try:
-            client.initialize(credential_provider=self._credential_provider)
+            for step in drive_auth(agent_name, client=client,
+                                   vault=self._credential_provider, registry=self._registry):
+                if isinstance(step, Connected):
+                    session = AcpSession(client)
+                    # The ACP session was already created during the auth
+                    # handshake (drive_auth -> client.new_session). Adopt that
+                    # id instead of calling create() again, which would spawn a
+                    # redundant second session.
+                    session.adopt(step.session_id)
+                    self._sessions[agent_name] = AgentSession(
+                        name=agent_name, client=client, session=session,
+                        session_id=step.session_id)
+                    self._active_name = agent_name
+                    return step.session_id
+                if isinstance(step, Failed):
+                    client.close()
+                    raise AcpConnectionError(step.reason)
         except FileNotFoundError:
+            hint = f"Install Node.js from https://nodejs.org" if config.command in ("npx", "node") else f"Make sure '{config.command}' is installed and in PATH"
             raise AcpConnectionError(
-                f"Agent '{agent_name}' not found: "
-                f"command '{config.command}' not available"
-            )
-        except AcpError as e:
-            raise AcpConnectionError(
-                f"Agent '{agent_name}' protocol error (code {e.code}): {e.message}"
-            ) from e
-        except Exception as e:
-            raise AcpConnectionError(
-                f"Failed to connect to agent '{agent_name}': {e}"
-            ) from e
-
-        session = AcpSession(client)
-        session_id = session.create(cwd="")
-        self._sessions[agent_name] = AgentSession(
-            name=agent_name,
-            client=client,
-            session=session,
-            session_id=session_id,
-        )
-        self._active_name = agent_name
-        return session_id
+                f"Agent '{agent_name}' not found: command '{config.command}' not available. {hint}")
+        raise AcpConnectionError(f"Agent '{agent_name}' did not connect")
 
     def switch_to(self, agent_name: str) -> None:
         if agent_name not in self._sessions:

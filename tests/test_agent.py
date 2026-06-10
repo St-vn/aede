@@ -740,14 +740,17 @@ async def test_stream_response_exhausts_retries_on_persistent_500():
 
     assert result is None
     assert call_count["n"] == 3, f"Expected exactly 3 attempts, got {call_count['n']}"
-    # Error must have been printed
-    loop._console.print.assert_called()
+    # Error must have been emitted on either the error channel (preferred)
+    # or print (fallback for consoles without an .error method).
+    emitted_calls = (
+        loop._console.error.call_args_list + loop._console.print.call_args_list
+    )
     error_printed = any(
         "500" in str(a) or "error" in str(a).lower()
-        for call_args in loop._console.print.call_args_list
+        for call_args in emitted_calls
         for a in call_args[0]
     )
-    assert error_printed, "Expected error message to be printed"
+    assert error_printed, "Expected error message to be emitted"
 
 
 # ---------------------------------------------------------------------------

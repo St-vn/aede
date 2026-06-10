@@ -38,6 +38,7 @@ export const useConnect = () => {
       apiFetch<{ status: string; name: string; session_id: string }>('/api/acp/connect', {
         method: 'POST',
         body: JSON.stringify({ name }),
+        headers: { 'Content-Type': 'application/json' },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['acp'] })
@@ -52,6 +53,7 @@ export const useDisconnect = () => {
       apiFetch<{ status: string; name: string }>('/api/acp/disconnect', {
         method: 'POST',
         body: JSON.stringify({ name }),
+        headers: { 'Content-Type': 'application/json' },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['acp'] })
@@ -66,6 +68,20 @@ export const useRegister = () => {
       apiFetch<{ status: string; name: string }>('/api/acp/register', {
         method: 'POST',
         body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['acp'] })
+    },
+  })
+}
+
+export const useDeleteAgent = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) =>
+      apiFetch<{ status: string; name: string }>(`/api/acp/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['acp'] })

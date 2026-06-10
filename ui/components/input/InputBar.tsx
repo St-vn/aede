@@ -8,6 +8,7 @@ import {
   PopoverContent,
 } from '@/components/ui/popover'
 import { ModelSelector } from './ModelSelector'
+import { AcpConnectChip } from './AcpConnectChip'
 import { WorkspaceMentionPicker } from './WorkspaceMentionPicker'
 import { ContextButton, type FileAttachment } from './ContextButton'
 import { SlashCommandPicker } from './SlashCommandPicker'
@@ -389,6 +390,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
           <div className="flex items-center gap-2">
             <ModelSelector currentModel={model} onModelChange={setModel}
               onOpenSettings={onOpenSettings ? () => onOpenSettings('models') : undefined} />
+            <AcpConnectChip model={model} />
             <Tooltip>
               <TooltipTrigger render={
                 <Button size="icon" className="w-7 h-7" aria-label="Send message"

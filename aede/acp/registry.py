@@ -10,6 +10,28 @@ class AgentTransport(Enum):
     LOCAL = "local"
 
 
+# ---------------------------------------------------------------------------
+# Default ACP agent seed data (kept here to avoid circular imports)
+# ---------------------------------------------------------------------------
+
+_ACP_CREDENTIALS = {
+    "codex": "OPENAI_API_KEY",
+    "claude-code": "ANTHROPIC_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "cursor": "CURSOR_API_KEY",
+}
+
+_BASE_AGENTS: list[tuple[str, str, list[str]]] = [
+    ("codex",       "npx",          ["-y", "@agentclientprotocol/codex-acp"]),
+    ("claude-code", "npx",          ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    ("gemini",      "gemini",       ["--acp"]),
+    ("agy",         "agy",          ["--acp"]),
+    ("cline",       "cline",        ["--acp"]),
+    ("cursor",      "cursor-agent", ["--acp"]),
+    ("goose",       "goose",        ["acp"]),
+]
+
+
 @dataclass
 class AgentConfig:
     name: str
@@ -44,6 +66,11 @@ class AgentRegistry:
         del self._agents[name]
         self._save()
 
+    def upsert(self, config: AgentConfig) -> AgentConfig:
+        self._agents[config.name] = config
+        self._save()
+        return config
+
     def list_all(self) -> list[AgentConfig]:
         return list(self._agents.values())
 
@@ -71,3 +98,22 @@ class AgentRegistry:
                 credentials_ref=cfg.get("credentials_ref"),
                 model_override=cfg.get("model_override"),
             )
+
+
+def seed_default_agents(registry: "AgentRegistry") -> None:
+    """Register the 7 built-in ACP agents if they are not already present.
+
+    Only adds entries that are missing — user-edited configs in agents.json
+    are never overwritten.  Safe to call multiple times (idempotent).
+    """
+    for name, command, args in _BASE_AGENTS:
+        try:
+            registry.get(name)
+        except KeyError:
+            registry.add(AgentConfig(
+                name=name,
+                transport=AgentTransport.LOCAL,
+                command=command,
+                args=args,
+                credentials_ref=_ACP_CREDENTIALS.get(name),
+            ))

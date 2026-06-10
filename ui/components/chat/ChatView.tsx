@@ -10,6 +10,7 @@ import { useWebSocket, type WSEvent } from '@/hooks/useWebSocket'
 import { ContextBar } from './ContextBar'
 import { LearningsChip } from './LearningsChip'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 
 interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean }
 interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number }
@@ -24,6 +25,14 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   const [gate, setGate] = useState<GateRequest | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
+  const prevMessagesLenRef = useRef(messages.length)
+
+  useEffect(() => {
+    if (messages.length > prevMessagesLenRef.current && streamingText && !isStreaming) {
+      setStreamingText('')
+    }
+    prevMessagesLenRef.current = messages.length
+  }, [messages.length, streamingText, isStreaming])
 
   const onEvent = useCallback((ev: WSEvent) => {
     if (ev.type === 'text_delta') {
@@ -43,16 +52,24 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       setGate({ gateId: ev.gate_id as string, toolName: ev.tool_name as string, args: ev.args as Record<string, unknown> })
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
       setIsStreaming(false)
-      setStreamingText('')
       setGate(null)
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
+    } else if (ev.type === 'error') {
+      toast.error(ev.message as string, { duration: 8000 })
     }
   }, [sessionId, queryClient])
 
   const { send } = useWebSocket(sessionId, onEvent)
+  const initialSentRef = useRef(false)
+  const prevSessionRef = useRef(sessionId)
+  if (prevSessionRef.current !== sessionId) {
+    prevSessionRef.current = sessionId
+    initialSentRef.current = false
+  }
 
   useEffect(() => {
-    if (initialMessage) {
+    if (initialMessage && !initialSentRef.current) {
+      initialSentRef.current = true
       send({ type: 'user_turn', content: initialMessage })
       setIsStreaming(true)
       onClearInitialMessage?.()
@@ -72,6 +89,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
 
   const handleSend = (content: string, model?: string) => {
     send({ type: 'user_turn', content, model })
+    setStreamingText('')
     setIsStreaming(true)
   }
 

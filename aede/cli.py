@@ -233,6 +233,12 @@ def _handle_serve_cmd(args: argparse.Namespace) -> None:
     home = Path(os.environ.get("AEDE_HOME", str(Path.home() / ".aede")))
     bootstrap(home)
 
+    from aede.credentials import load_credentials_into_env, CredentialsError
+    try:
+        load_credentials_into_env(home)
+    except CredentialsError as e:
+        console.print(f"[yellow]⚠ Could not load credentials vault: {e}[/yellow]")
+
     cfg = load_config(home=home, project_dir=Path.cwd())
     db = DB(cfg.data_dir / "aede.db")
 
@@ -379,6 +385,9 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     gate_store = PermissionStore()
     gate_store.load_from_config(cfg.auto_approve)
 
+    from aede.instructions import build_instructions_suffix as _build_inst
+    instructions_suffix = _build_inst(home=home, project_dir=Path.cwd())
+
     from aede.skills.loader import load_skills
     skill_registry = load_skills(global_dir=home, project_dir=Path.cwd())
     if skill_registry:
@@ -400,11 +409,12 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         console.print(f"[yellow]⚠ Agent load error: {e}[/yellow]")
 
     # ── ACP (Agent Client Protocol) ──────────────────────────────
-    from aede.acp.registry import AgentRegistry as AcpAgentRegistry
+    from aede.acp.registry import AgentRegistry as AcpAgentRegistry, seed_default_agents
     from aede.acp.manager import AcpManager
     from aede.acp.credentials import CredentialProvider
 
     acp_registry = AcpAgentRegistry(config_dir=home)
+    seed_default_agents(acp_registry)
     acp_credential_provider = CredentialProvider(home=home)
     acp_manager = AcpManager(
         registry=acp_registry,
@@ -470,6 +480,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         prior_messages=prior_messages,
         skills=list(skill_registry.values()) if skill_registry else None,
         initial_task=initial_task,
+        instructions_suffix=instructions_suffix,
     )
 
     console.print(build_header(model=cfg.model, session_id=session.id))

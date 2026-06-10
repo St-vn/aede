@@ -35,3 +35,13 @@ class CredentialProvider:
                 self._cache[k] = v.get("value", "")
             elif isinstance(v, str):
                 self._cache[k] = v
+
+    def set(self, name: str, value: str) -> None:
+        self._cache[name] = value
+        data = {}
+        if self._path.exists():
+            data = json.loads(self._path.read_text(encoding="utf-8"))
+        data[name] = value
+        self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        if os.name != "nt":
+            os.chmod(self._path, 0o600)
