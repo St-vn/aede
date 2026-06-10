@@ -239,6 +239,60 @@ def test_acp_provider_reconnects_on_model_change():
     manager.connect.assert_called_once_with("claude-code")
 
 
+def test_acp_provider_connect_does_not_block_event_loop():
+    """Regression: a slow blocking connect() must not freeze the asyncio loop.
+
+    connect() does blocking subprocess I/O (initialize + new_session, 10-40s).
+    If run on the event loop it freezes the WebSocket handler, the socket goes
+    dead, the browser reconnects, and the in-flight turn is dropped (user sees
+    "nothing happens").  stream_turn must run connect off-loop via to_thread.
+    """
+    import time
+
+    manager = MagicMock()
+    manager.list_connected.return_value = []
+
+    def slow_connect(_name):
+        time.sleep(0.5)  # simulate a blocking subprocess connect
+        return "sess_slow"
+    manager.connect.side_effect = slow_connect
+
+    mock_session = MagicMock()
+    mock_result = MagicMock()
+    mock_result.text = "ok"
+    mock_session.session.prompt.return_value = mock_result
+    manager.active_session.return_value = mock_session
+
+    from aede.provider import AcpProvider
+    provider = AcpProvider(model="codex", acp_manager=manager)
+
+    async def _run():
+        ticks = {"n": 0}
+        stop = {"v": False}
+
+        async def heartbeat():
+            # Ticks every 50ms; if the loop is frozen during the 500ms connect
+            # it will miss most ticks.
+            while not stop["v"]:
+                await asyncio.sleep(0.05)
+                ticks["n"] += 1
+
+        hb = asyncio.create_task(heartbeat())
+        await provider.stream_turn(
+            model="codex", system="sys", tools=[],
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=1000, console=MagicMock(),
+        )
+        stop["v"] = True
+        await hb
+        return ticks["n"]
+
+    ticks = asyncio.new_event_loop().run_until_complete(_run())
+    # ~500ms connect at 50ms/tick → expect ~8+ ticks if the loop stayed live.
+    # A frozen loop would yield 0-1 ticks during the connect window.
+    assert ticks >= 5, f"event loop appears frozen during connect (only {ticks} heartbeat ticks)"
+
+
 def test_acp_provider_cloud_auth_stub():
     """AcpProvider should accept credential_provider for cloud agents."""
     from aede.provider import AcpProvider

@@ -529,6 +529,7 @@ class AcpProvider:
         reasoning_effort: str = "auto",
         thinking_budget: int = 0,
     ) -> NormalizedResponse:
+        import asyncio
         manager = self._acp_manager
 
         # Resolve base agent and optional sub-model override.
@@ -541,37 +542,48 @@ class AcpProvider:
             base_agent = model
             model_override = None
 
-        # Apply model_override to the registry config so AcpClient._inject_env
-        # picks it up at subprocess spawn time.  If the override changed from
-        # the last turn we must disconnect and reconnect so the new env takes
-        # effect (the env is injected at spawn, not at runtime).
-        if model_override is not None:
-            try:
-                config = manager._registry.get(base_agent)
-                if config.model_override != model_override:
-                    # Override changed — disconnect to force a fresh spawn
-                    if base_agent in manager.list_connected():
-                        manager.disconnect(base_agent)
-                    config.model_override = model_override
-                    manager._registry.upsert(config)
-            except KeyError:
-                pass  # registry lookup will fail at connect() with a clear message
-
         agent = base_agent
+        prev_agent = self._current_agent
 
-        # Disconnect previous agent if model (base) changed
-        if self._current_agent and self._current_agent != agent:
-            manager.disconnect(self._current_agent)
+        def _ensure_connected() -> Any:
+            """Blocking: apply override, (dis)connect, return the active session.
 
-        # Auto-connect if not already connected
-        if agent not in manager.list_connected():
-            manager.connect(agent)
-        else:
-            manager.switch_to(agent)
+            Runs entirely off the event loop via asyncio.to_thread — connect()
+            does blocking subprocess I/O (initialize + new_session) that can take
+            10–40s; running it on the event loop freezes the WebSocket handler,
+            making the socket appear dead and triggering client reconnects that
+            drop the in-flight turn.
+            """
+            # Apply model_override to the registry config so AcpClient._inject_env
+            # picks it up at subprocess spawn time.  If the override changed from
+            # the last turn we must disconnect and reconnect so the new env takes
+            # effect (the env is injected at spawn, not at runtime).
+            if model_override is not None:
+                try:
+                    config = manager._registry.get(base_agent)
+                    if config.model_override != model_override:
+                        if base_agent in manager.list_connected():
+                            manager.disconnect(base_agent)
+                        config.model_override = model_override
+                        manager._registry.upsert(config)
+                except KeyError:
+                    pass  # registry lookup will fail at connect() with a clear message
+
+            # Disconnect previous agent if model (base) changed
+            if prev_agent and prev_agent != agent:
+                manager.disconnect(prev_agent)
+
+            # Auto-connect if not already connected
+            if agent not in manager.list_connected():
+                manager.connect(agent)
+            else:
+                manager.switch_to(agent)
+
+            return manager.active_session()
+
+        session_wrapper = await asyncio.to_thread(_ensure_connected)
         self._current_agent = agent
 
-        # Get active session
-        session_wrapper = manager.active_session()
         if session_wrapper is None:
             raise RuntimeError(f"ACP session for '{agent}' is not active")
 
@@ -579,7 +591,6 @@ class AcpProvider:
         prompt_text = _build_prompt_text(messages)
 
         # Run prompt synchronously (blocking — streaming TBD)
-        import asyncio
         result = await asyncio.to_thread(
             session_wrapper.session.prompt,
             prompt_text,
