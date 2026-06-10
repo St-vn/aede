@@ -2,7 +2,7 @@
 
 **Version:** 0.1.0  
 **Last updated:** 2026-06-09  
-**Status:** Phase 1 complete (168+ tests) · Phase 2 partial (memory, MCP, ACP, critic, web server)
+**Status:** Phase 1 complete (168+ tests) · Phase 2 partial (memory, MCP, ACP, critic, web server, import)
 
 ---
 
@@ -69,7 +69,9 @@ aede/                    # Main Python package
 │   └── logger.py        # GEPA-compatible turn trace logger
 └── import_/
     ├── claude_code.py   # Claude Code .md → aede import
-    └── opencode.py      # OpenCode .md → aede (delegates to claude_code)
+    ├── opencode.py      # OpenCode .md → aede (delegates to claude_code)
+    ├── skills.py        # Claude Code skill → aede skill import
+    └── mcp.py           # Claude Code MCP config → aede config.yml import
 tests/                   # 62 test files, pytest + pytest-asyncio
 ui/                      # Next.js web frontend (React, shadcn/ui)
 docs/                    # ADRs, plans, documentation
@@ -88,7 +90,7 @@ docs/                    # ADRs, plans, documentation
 | `aede` | REPL | Interactive prompt loop (new session) |
 | `aede "<task>"` | REPL + initial task | Same, with first message injected |
 | `aede memory list\|show\|delete\|edit` | Memory CLI | Synchronous memory management |
-| `aede --import claude-code\|opencode --src <file> [--dest <dir>]` | Import | Import agent definitions |
+| `aede --import claude-code\|opencode\|skill\|mcp\|all --src <file> [--dest <dir>]` | Import | Import agents, skills, or MCP servers |
 | `aede --serve [--host] [--port]` | Server | FastAPI backend |
 
 ### Bootstrap sequence (`cli.py:_run()` line 266)
@@ -135,6 +137,7 @@ Defined in `aede/commands.py:COMMANDS` (line 15-19):
 | `/compact` | `agent.compact()` | Manual context compaction |
 | `/tokens` | `handle_tokens` | Token usage + cost estimate |
 | `/setkey <NAME> <value>` | `handle_setkey` | Save credential to vault |
+| `/import agent\|skill\|mcp\|all` | `handle_import` | Import from other harnesses |
 | `/acp ...` | `handle_acp` | ACP agent lifecycle |
 | `/clear` | — | Start new session (prompts confirm) |
 | `/exit` | — | End session cleanly |
@@ -692,6 +695,10 @@ Scans `~/.aede/skills/` (global) and `./skills/` (project). Project skills shado
 
 Skills injected into dynamic system prompt under `## Agent Skills` section (`aede/agent.py:137-140`). Passed to `AgentLoop.initialize()`.
 
+### Import
+
+Skills can be imported from Claude Code via `/import skill <path>` or `aede --import skill --src <path>`. Supports both flat `.md` files and `SKILL.md` directories. Maps `allowed-tools` → `allowed_tools`, `trigger` → `trigger_phrases`. Comments out unsupported fields (`hidden`). Fidelity: ~80%.
+
 ---
 
 ## 15. Agents & Subagent Orchestration
@@ -737,6 +744,10 @@ Creates isolated AgentLoop:
 ### `spawn_subagent` tool (`aede/tools/router.py:104-133`)
 
 Registered dynamically in ToolRouter if config + agent_registry are available. Calls `run_subagent()` with depth=1.
+
+### Import
+
+Agents can be imported from Claude Code or OpenCode via `/import agent <path>` or `aede --import claude-code --src <path>`. Maps `name`, `description`, `model` 1:1. Comments out unsupported fields (`permissionMode`, `mcpServers`, `memory`, `isolation`, `effort`, `color`, `hooks`). Fidelity: ~40%.
 
 ---
 
@@ -809,14 +820,26 @@ Manages multiple MCP server subprocesses, each in its own background daemon thre
 
 MCP tools prefixed with `mcp__<server>__<name>` to avoid collisions.
 
+### Environment variable expansion
+
+`expand_env_vars()` in `aede/mcp/client.py` expands `${VAR}` and `${VAR:-default}` patterns in server command, args, env, and URL at spawn time. Raises `KeyError` if a `${VAR}` without default is not found in `os.environ`.
+
+### Lazy bridge resolution
+
+`ToolRouter._get_bridge` callable enables lazy bridge resolution — the bridge is resolved on first tool call, not at router construction. This allows WebSocket sessions to survive bridge restarts.
+
 ### Config parsing (`_parse_mcp_servers()`)
 
-Supports both `mcp_servers` and `mcpServers` keys. Each server has: `command`, `args`, `env`, `trusted` (bool — determines gate behavior).
+Supports both `mcp_servers` and `mcpServers` keys. Each server has: `command`, `args`, `env`, `trusted` (bool — determines gate behavior), `enabled` (bool — server skipped if false), `disabled_tools` (list — specific tools to hide), `url` (str — for SSE/WebSocket servers).
 
 ### Timeouts
 
 - `MCP_TIMEOUT = 10s` — initialization timeout
 - `CALL_TIMEOUT = 60s` — tool call timeout
+
+### Import
+
+MCP servers can be imported from Claude Code via `/import mcp` or `aede --import mcp`. Reads `~/.claude/mcp.json`, normalizes to aede YAML format, merges into `~/.aede/config.yml` without clobbering existing entries. Supports stdio transport (command+args+env). Fidelity: ~90%.
 
 ---
 
@@ -925,17 +948,75 @@ Crash-safe: open + flush per write. Directory created lazily on first write.
 
 ## 21. Import Converters
 
-### Claude Code → aede
+### Overview
+
+aede can import agents, skills, and MCP server configurations from other AI coding harnesses. Import is available via CLI (`aede --import`), REPL (`/import`), and web UI (Import tab in Settings).
+
+### Claude Code → aede (Agents)
 
 **File:** `aede/import_/claude_code.py` (75 lines)
 
 Converts Claude Code agent `.md` (YAML frontmatter + body) to aede `AGENT.md` format. Maps supported fields 1:1, comments out unsupported ones (permissionMode, mcpServers, memory, isolation, effort, color, hooks). Returns `ImportReport(name, path, was_skipped)`.
+
+**Fidelity:** ~40% — core identity fields (name, description, model) transfer; behavioral fields commented out.
+
+### Claude Code → aede (Skills)
+
+**File:** `aede/import_/skills.py` (74 lines)
+
+Imports Claude Code skills from `~/.claude/skills/<name>/SKILL.md` directories or flat `.md` files. Maps `allowed-tools` → `allowed_tools`, `trigger` → `trigger_phrases`. Comments out `hidden`. Returns `ImportReport(name, path, was_skipped)`.
+
+**Fidelity:** ~80% — most fields transfer; only `hidden` is unsupported.
+
+### Claude Code → aede (MCP Servers)
+
+**File:** `aede/import_/mcp.py` (82 lines)
+
+Reads `~/.claude/mcp.json`, normalizes each server config, and appends to aede's `~/.aede/config.yml` under `mcp_servers:`. Prompts before overwriting existing servers. Returns `list[ImportReport]`.
+
+**Fidelity:** ~90% — stdio transport (command+args+env) transfers cleanly. SSE/WebSocket not in Claude Code's format.
 
 ### OpenCode → aede
 
 **File:** `aede/import_/opencode.py` (24 lines)
 
 Thin shim that delegates to `import_claude_code_agent()` and tags result format as `"OpenCode"`.
+
+### Future Sources (Deferred)
+
+| Source | Status | Alternative |
+|--------|--------|-------------|
+| Cursor (`.cursorrules`) | Deferred — unstructured format, no metadata | Copy rules into agent body manually |
+| Windsurf | Deferred — format unknown | Copy rules into agent body manually |
+| OpenAI Assistants | Deferred — requires API access | Create agent .md from scratch |
+| Cline | N/A — no declarable agent format | N/A |
+
+For unsupported sources, create a new agent/skill manually using the existing format templates, or use `/import` with a Claude Code-compatible export.
+
+### CLI Entry Points
+
+| Command | Description |
+|---------|-------------|
+| `aede --import claude-code --src <file> [--dest <dir>]` | Import Claude Code agent |
+| `aede --import opencode --src <file> [--dest <dir>]` | Import OpenCode agent |
+| `aede --import skill --src <path> [--dest <dir>]` | Import Claude Code skill |
+| `aede --import mcp [--src <path>]` | Import MCP servers from Claude Code |
+| `aede --import all` | Import everything from `~/.claude/` |
+
+### REPL Entry Points
+
+| Command | Description |
+|---------|-------------|
+| `/import agent <path> [--dest <dir>]` | Import an agent |
+| `/import skill <path> [--dest <dir>]` | Import a skill |
+| `/import mcp [--dry-run]` | Import MCP servers |
+| `/import all` | Import everything from `~/.claude/` |
+
+### Detection Logic
+
+1. If path is a directory with `SKILL.md` inside → Claude Code skill
+2. If path is a `.json` file with `mcpServers` key → MCP config
+3. If path is a `.md` file with YAML frontmatter → agent (Claude Code or OpenCode)
 
 ---
 
@@ -959,6 +1040,11 @@ Thin shim that delegates to `import_claude_code_agent()` and tags result format 
 | `/api/acp/configs` | GET/POST | ACP agent config management |
 | `/api/acp/connect` | POST | Connect ACP agent |
 | `/api/acp/disconnect` | POST | Disconnect ACP agent |
+| `/api/mcp/servers` | GET | List MCP servers with tools |
+| `/api/mcp/servers` | POST | Add MCP server |
+| `/api/mcp/servers/{name}` | PUT | Update MCP server (enable/disable) |
+| `/api/mcp/servers/{name}` | DELETE | Remove MCP server |
+| `/api/mcp/restart` | POST | Restart MCP bridge |
 
 ### WebSocket Gate Backend (`aede/server.py:26-55`)
 
@@ -977,7 +1063,7 @@ Redirects `console.print()` output to Web UI via JSON messages.
 ### `MODEL_PRESETS` dictionary
 
 Hardcoded mappings covering:
-- **Anthropic:** Claude Opus 4.8, Sonnet 4.6, Haiku 3.5
+- **Anthropic:** Claude Fable 5, Claude Opus 4.8, Sonnet 4.6, Haiku 3.5
 - **OpenAI:** GPT-5.5, o3, o4-mini
 - **DeepSeek:** v3-0324, r1-0528
 - **OpenRouter:** Gemini 2.5 Flash/Pro
@@ -1012,7 +1098,8 @@ Persistent workspace directories with independent lifecycle (survives session de
 **Directory:** `tests/` (62 files)  
 **Runner:** `uv run pytest` (or `uv run pytest -xvs` for verbose)  
 **Config:** `pyproject.toml` → `[tool.pytest.ini_options] asyncio_mode = "auto"`  
-**Fixture:** `tests/conftest.py:tmp_home` — redirects `~/.aede` to temp dir via `AEDE_HOME`
+**Fixture:** `tests/conftest.py:tmp_home` — redirects `~/.aede` to temp dir via `AEDE_HOME`  
+**Current count:** 478 tests passing
 
 ### Test file summary
 
@@ -1061,6 +1148,8 @@ Persistent workspace directories with independent lifecycle (survives session de
 | `test_server_*.py` (5) | FastAPI server |
 | `test_import_claude_code.py` | Claude Code agent import |
 | `test_opencode.py` | OpenCode agent import |
+| `test_import_skills.py` | Claude Code skill import |
+| `test_import_mcp.py` | MCP server config import |
 | `test_trace.py` | GEPA trace logger |
 | `test_system_prompt_split.py` | System prompt splitting |
 | `test_project_model.py` | Project model |
@@ -1099,6 +1188,9 @@ uv run aede "refactor this file"       # REPL with initial task
 uv run aede --serve                    # Start FastAPI backend
 uv run aede memory list                # List learnings
 uv run aede --import claude-code --src <file>  # Import agent
+uv run aede --import skill --src <path>       # Import skill
+uv run aede --import mcp                      # Import MCP servers
+uv run aede --import all                      # Import everything
 uv run pytest                          # Run all tests
 uv run pytest -xvs tests/test_file.py  # Run specific test
 uv sync                                # Install dependencies
@@ -1117,6 +1209,7 @@ uv sync                                # Install dependencies
 | `~/.aede/data/learnings.jsonl` | Learnings store |
 | `~/.aede/data/traces/<session>.jsonl` | GEPA trace logs |
 | `~/.aede/data/sessions/.../rollout-<session>.jsonl` | Per-session audit trail |
+| `~/.claude/mcp.json` | Claude Code MCP config (import source) |
 
 ### Agent definition files
 
