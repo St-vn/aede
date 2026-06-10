@@ -17,6 +17,7 @@ class AgentConfig:
     command: str
     args: list[str] = field(default_factory=list)
     credentials_ref: Optional[str] = None
+    model_override: Optional[str] = None
 
 
 class AgentRegistry:
@@ -53,6 +54,7 @@ class AgentRegistry:
                 "command": a.command,
                 "args": a.args,
                 "credentials_ref": a.credentials_ref,
+                "model_override": a.model_override,
             }
             for name, a in self._agents.items()
         }
@@ -67,4 +69,5 @@ class AgentRegistry:
                 command=cfg["command"],
                 args=cfg.get("args", []),
                 credentials_ref=cfg.get("credentials_ref"),
+                model_override=cfg.get("model_override"),
             )

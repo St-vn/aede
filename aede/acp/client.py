@@ -135,11 +135,40 @@ class AcpClient:
                 env[self._config.credentials_ref] = val
             except KeyError:
                 pass
+        
+        # Inject model override environment variables based on agent type
+        if self._config.model_override:
+            agent_name = self._config.name
+            model_override = self._config.model_override
+            
+            # Claude Code: ANTHROPIC_MODEL env var
+            if agent_name.startswith("claude-code"):
+                env["ANTHROPIC_MODEL"] = model_override
+            
+            # Goose: GOOSE_PROVIDER + GOOSE_MODEL env vars
+            elif agent_name.startswith("goose"):
+                # Model override format: "provider/model" (e.g., "anthropic/claude-sonnet-4-6")
+                if "/" in model_override:
+                    provider, model = model_override.split("/", 1)
+                    env["GOOSE_PROVIDER"] = provider
+                    env["GOOSE_MODEL"] = model
+                else:
+                    env["GOOSE_MODEL"] = model_override
+            
+            # Codex: Add --model flag to args (handled in _start)
+            elif agent_name.startswith("codex"):
+                pass  # Handled in _start method
+        
         return env
 
     def _start(self, credential_provider=None) -> None:
+        # Build command with model override flag for Codex
+        cmd = [self._config.command] + self._config.args
+        if self._config.model_override and self._config.name == "codex":
+            cmd.extend(["--model", self._config.model_override])
+        
         self._process = subprocess.Popen(
-            [self._config.command] + self._config.args,
+            cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

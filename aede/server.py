@@ -654,12 +654,26 @@ async def list_credentials(request: Request):
 
 ACP_COMMANDS = {
     "codex": ("codex-acp", []),
+    "codex/gpt-5.5": ("codex-acp", []),
+    "codex/gpt-5.3-codex": ("codex-acp", []),
+    "codex/o3": ("codex-acp", []),
+    "codex/o4-mini": ("codex-acp", []),
     "claude-code": ("claude-agent-acp", []),
+    "claude-code/fable-5": ("claude-agent-acp", []),
+    "claude-code/opus-4-8": ("claude-agent-acp", []),
+    "claude-code/opus-4-7": ("claude-agent-acp", []),
+    "claude-code/sonnet-4-6": ("claude-agent-acp", []),
+    "claude-code/haiku-4-5": ("claude-agent-acp", []),
     "gemini": ("gemini", ["--acp"]),
     "agy": ("agy", ["--acp"]),
+    "agy/gemini-3-5-flash": ("agy", ["--acp"]),
+    "agy/claude-sonnet-4-6": ("agy", ["--acp"]),
+    "agy/claude-opus-4-6": ("agy", ["--acp"]),
     "cline": ("cline", ["--acp"]),
     "cursor": ("cursor-agent", ["--acp"]),
     "goose": ("goose", ["acp"]),
+    "goose/anthropic-claude-sonnet-4-6": ("goose", ["acp"]),
+    "goose/openai-gpt-4o": ("goose", ["acp"]),
     "opencode": ("opencode", ["--acp"]),
 }
 
@@ -685,6 +699,8 @@ async def create_credential(request: Request, payload: dict):
             cmd_info = ACP_COMMANDS.get(provider)
             if cmd_info:
                 command, args = cmd_info
+                from aede.commands import get_acp_model_override
+                model_override = get_acp_model_override(provider)
                 from aede.acp.registry import AgentConfig, AgentTransport
                 try:
                     mgr._registry.get(provider)
@@ -695,6 +711,7 @@ async def create_credential(request: Request, payload: dict):
                             transport=AgentTransport.LOCAL,
                             command=command,
                             args=args,
+                            model_override=model_override,
                         ))
                     except ValueError:
                         pass

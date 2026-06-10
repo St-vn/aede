@@ -489,6 +489,11 @@ class OpenAIProvider:
 ACP_MODEL_IDS: frozenset[str] = frozenset({
     "codex", "claude-code", "gemini", "agy",
     "cline", "cursor", "goose", "opencode",
+    # Sub-model entries
+    "codex/gpt-5.5", "codex/gpt-5.3-codex", "codex/o3", "codex/o4-mini",
+    "claude-code/fable-5", "claude-code/opus-4-8", "claude-code/opus-4-7", "claude-code/sonnet-4-6", "claude-code/haiku-4-5",
+    "agy/gemini-3-5-flash", "agy/claude-sonnet-4-6", "agy/claude-opus-4-6",
+    "goose/anthropic-claude-sonnet-4-6", "goose/openai-gpt-4o",
 })
 
 

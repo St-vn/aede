@@ -22,13 +22,35 @@ MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
     "google-ai": [
         {"id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash"},
     ],
-    "codex": [{"id": "codex", "label": "Codex"}],
-    "claude-code": [{"id": "claude-code", "label": "Claude Code"}],
+    "codex": [
+        {"id": "codex", "label": "Codex"},
+        {"id": "codex/gpt-5.5", "label": "Codex / GPT-5.5"},
+        {"id": "codex/gpt-5.3-codex", "label": "Codex / GPT-5.3-Codex"},
+        {"id": "codex/o3", "label": "Codex / o3"},
+        {"id": "codex/o4-mini", "label": "Codex / o4-mini"},
+    ],
+    "claude-code": [
+        {"id": "claude-code", "label": "Claude Code"},
+        {"id": "claude-code/fable-5", "label": "Claude Code / Fable 5"},
+        {"id": "claude-code/opus-4-8", "label": "Claude Code / Opus 4.8"},
+        {"id": "claude-code/opus-4-7", "label": "Claude Code / Opus 4.7"},
+        {"id": "claude-code/sonnet-4-6", "label": "Claude Code / Sonnet 4.6"},
+        {"id": "claude-code/haiku-4-5", "label": "Claude Code / Haiku 4.5"},
+    ],
     "gemini": [{"id": "gemini", "label": "Gemini"}],
-    "agy": [{"id": "agy", "label": "Antigravity"}],
+    "agy": [
+        {"id": "agy", "label": "Antigravity"},
+        {"id": "agy/gemini-3-5-flash", "label": "Antigravity / Gemini 3.5 Flash"},
+        {"id": "agy/claude-sonnet-4-6", "label": "Antigravity / Claude Sonnet 4.6"},
+        {"id": "agy/claude-opus-4-6", "label": "Antigravity / Claude Opus 4.6"},
+    ],
     "cline": [{"id": "cline", "label": "Cline"}],
     "cursor": [{"id": "cursor", "label": "Cursor"}],
-    "goose": [{"id": "goose", "label": "Goose"}],
+    "goose": [
+        {"id": "goose", "label": "Goose"},
+        {"id": "goose/anthropic-claude-sonnet-4-6", "label": "Goose / Claude Sonnet 4.6"},
+        {"id": "goose/openai-gpt-4o", "label": "Goose / GPT-4o"},
+    ],
     "opencode": [{"id": "opencode", "label": "OpenCode"}],
 }
 
