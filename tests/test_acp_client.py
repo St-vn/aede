@@ -1,8 +1,9 @@
+import inspect
 import json
 import os
 import pytest
 from pathlib import Path
-from aede.acp.client import AcpClient
+from aede.acp.client import AcpClient, AcpError
 from aede.acp.credentials import CredentialProvider
 from aede.acp.registry import AgentConfig, AgentTransport
 
@@ -160,3 +161,88 @@ def test_start_with_unset_credentials_ref_skips_injection(tmp_path):
     client = AcpClient(config)
     result = client.initialize(credential_provider=provider)
     assert result.agent_info.name == ""
+
+
+# ── new_session timeout + notification-skipping (regression for the
+#    "Agent 'claude-code' timed out after 10.0s" bug) ──────────────────
+
+
+def make_session_agent(script_path: Path, *, new_delay: float = 0.0,
+                       notify_first: bool = False) -> Path:
+    """Fake ACP agent: answers initialize, then session/new.
+
+    ``new_delay`` sleeps before replying to session/new (to exercise the
+    timeout).  ``notify_first`` emits an id-less session/update notification
+    before the session/new response (to exercise notification-skipping).
+    """
+    script_path.write_text(f"""
+import sys, json, time
+
+def read():
+    line = sys.stdin.readline()
+    return json.loads(line) if line else None
+
+def write(msg):
+    sys.stdout.write(json.dumps(msg) + "\\n")
+    sys.stdout.flush()
+
+req = read()
+assert req["method"] == "initialize"
+write({{
+    "jsonrpc": "2.0", "id": req["id"],
+    "result": {{
+        "protocolVersion": 1,
+        "agentCapabilities": {{"loadSession": False}},
+        "agentInfo": {{"name": "sess", "title": "Sess", "version": "0.0.0"}},
+        "authMethods": [],
+    }},
+}})
+
+req2 = read()
+assert req2["method"] == "session/new"
+time.sleep({new_delay})
+if {notify_first}:
+    # id-less notification that must be skipped
+    write({{"jsonrpc": "2.0", "method": "session/update",
+            "params": {{"update": {{"sessionUpdate": "agent_thought"}}}}}})
+write({{"jsonrpc": "2.0", "id": req2["id"], "result": {{"sessionId": "sess_42"}}}})
+""")
+    return script_path
+
+
+def test_new_session_default_timeout_is_60s():
+    """Guard: nobody silently lowers the new_session timeout back toward 10s."""
+    assert inspect.signature(AcpClient.new_session).parameters["timeout"].default == 60.0
+
+
+def test_new_session_succeeds(tmp_path):
+    script = make_session_agent(tmp_path / "sess_agent.py")
+    config = AgentConfig(name="sess", transport=AgentTransport.LOCAL,
+                         command="python", args=[str(script)])
+    client = AcpClient(config)
+    client.initialize()
+    assert client.new_session(cwd="") == "sess_42"
+    client.close()
+
+
+def test_new_session_times_out_when_agent_slow(tmp_path):
+    """A short explicit timeout must raise the 'timed out' AcpError."""
+    script = make_session_agent(tmp_path / "slow_agent.py", new_delay=0.5)
+    config = AgentConfig(name="sess", transport=AgentTransport.LOCAL,
+                         command="python", args=[str(script)])
+    client = AcpClient(config)
+    client.initialize()
+    with pytest.raises(AcpError, match="timed out"):
+        client.new_session(cwd="", timeout=0.05)
+    client.close()
+
+
+def test_new_session_skips_leading_notification(tmp_path):
+    """An id-less notification before the response must be skipped, not crash."""
+    script = make_session_agent(tmp_path / "notify_agent.py", notify_first=True)
+    config = AgentConfig(name="sess", transport=AgentTransport.LOCAL,
+                         command="python", args=[str(script)])
+    client = AcpClient(config)
+    client.initialize()
+    assert client.new_session(cwd="") == "sess_42"
+    client.close()

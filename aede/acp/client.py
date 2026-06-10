@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 from .registry import AgentConfig
 
@@ -66,13 +67,17 @@ class AcpClient:
         self,
         cwd: str = "",
         mcp_servers: Optional[list] = None,
+        timeout: float = 60.0,
     ) -> str:
+        # session/new legitimately takes ~10s (subprocess spawn + agent
+        # handshake), straddling the 10s _send_request default.  Give it ample
+        # headroom — matching the spirit of initialize()'s explicit 120s.
         if mcp_servers is None:
             mcp_servers = []
         result = self._send_request("session/new", {
             "cwd": cwd,
             "mcpServers": mcp_servers,
-        })
+        }, timeout=timeout)
         return result["sessionId"]
 
     def prompt(
@@ -203,20 +208,35 @@ class AcpClient:
         self._process.stdin.write(msg + "\n")
         self._process.stdin.flush()
 
-        box: dict[str, Any] = {}
-        def _read():
-            box["line"] = self._process.stdout.readline()
-        t = threading.Thread(target=_read, daemon=True)
-        t.start()
-        t.join(timeout)
-        if t.is_alive():
-            raise AcpError(-1, f"Agent '{self._config.name}' timed out after {timeout}s")
+        # Read lines until the response matching req_id arrives, skipping any
+        # id-less notifications (e.g. session/update) the agent may emit first.
+        # The total wall-clock wait is bounded by ``timeout`` so a silent agent
+        # still raises rather than hanging forever.
+        deadline = time.monotonic() + timeout
 
-        line = box["line"]
-        if not line:
-            raise AcpError(-1, f"Agent '{self._config.name}' closed connection before responding")
-        response = json.loads(line)
-        assert response["id"] == req_id
+        def _read_one(box: dict[str, Any]) -> None:
+            box["line"] = self._process.stdout.readline()
+
+        response: Any = None
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AcpError(-1, f"Agent '{self._config.name}' timed out after {timeout}s")
+            box: dict[str, Any] = {}
+            t = threading.Thread(target=_read_one, args=(box,), daemon=True)
+            t.start()
+            t.join(remaining)
+            if t.is_alive():
+                raise AcpError(-1, f"Agent '{self._config.name}' timed out after {timeout}s")
+            line = box.get("line")
+            if not line:
+                raise AcpError(-1, f"Agent '{self._config.name}' closed connection before responding")
+            parsed = json.loads(line)
+            # Skip JSON-RPC notifications and any response for a different id.
+            if parsed.get("id") != req_id:
+                continue
+            response = parsed
+            break
 
         if "error" in response:
             raise AcpError(
