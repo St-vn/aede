@@ -172,6 +172,13 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 rollout = Rollout(cfg.data_dir / "sessions", session.id)
 
                 print(f"[WS#{hid}] Creating AgentLoop...", flush=True)
+
+                async def _acp_chunk(text: str):
+                    try:
+                        await websocket.send_json({"type": "text_delta", "text": text})
+                    except Exception:
+                        pass
+
                 agent = AgentLoop(
                     cfg=cfg,
                     session=session,
@@ -184,6 +191,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     project_dir=Path.cwd(),
                     gate_backend=gate_backend,
                     acp_manager=getattr(app.state, "acp_manager", None),
+                    stream_callback=_acp_chunk,
                 )
 
                 # Load prior messages for context
@@ -256,6 +264,8 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
     except WebSocketDisconnect:
         print(f"[WS#{hid}] WebSocket disconnected", flush=True)
+        if 'turn_task' in locals() and not turn_task.done():
+            turn_task.cancel()
     except Exception as e:
         print(f"[WS#{hid}] UNHANDLED EXCEPTION: {e}", flush=True)
         import traceback
@@ -760,7 +770,7 @@ async def create_credential(request: Request, payload: dict):
                     except ValueError:
                         pass
                 try:
-                    mgr.connect(provider)
+                    await mgr.connect(provider)
                     acp_connected = True
                 except Exception:
                     pass
@@ -782,7 +792,7 @@ async def delete_credential(request: Request, name: str):
     if provider:
         mgr = getattr(request.app.state, "acp_manager", None)
         if mgr and provider in ACP_COMMANDS:
-            mgr.disconnect(provider)
+            await mgr.disconnect(provider)
             try:
                 mgr._registry.remove(provider)
             except (KeyError, ValueError):
@@ -1179,7 +1189,7 @@ async def acp_delete(request: Request, name: str):
     mgr = getattr(request.app.state, "acp_manager", None)
     if not mgr:
         raise HTTPException(status_code=500, detail="ACP manager not initialized")
-    mgr.disconnect(name)
+    await mgr.disconnect(name)
     try:
         mgr._registry.remove(name)
     except KeyError:
@@ -1214,7 +1224,7 @@ async def acp_connect(request: Request, payload: dict):
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
     try:
-        session_id = mgr.connect(name)
+        session_id = await mgr.connect(name)
         return {"status": "connected", "name": name, "session_id": session_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1229,7 +1239,7 @@ async def acp_disconnect(request: Request, payload: dict):
     name = payload.get("name")
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
-    mgr.disconnect(name)
+    await mgr.disconnect(name)
     return {"status": "disconnected", "name": name}
 
 

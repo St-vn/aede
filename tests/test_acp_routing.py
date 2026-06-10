@@ -58,20 +58,21 @@ def test_prompt_result_has_text_field():
     assert result.stop_reason == "end_turn"
 
 
-def test_prompt_accumulates_message_chunks(tmp_path):
+async def test_prompt_accumulates_message_chunks(tmp_path):
     """AcpClient.prompt() should return accumulated text from agent_message_chunk notifications."""
     script = _make_chunk_agent(tmp_path, ["Hello ", "world"])
     config = AgentConfig(name="c", transport=AgentTransport.LOCAL, command="python", args=[str(script)])
     client = AcpClient(config)
-    client.initialize()
+    await client.initialize()
     session = AcpSession(client)
-    session.create(cwd=str(tmp_path))
-    result = session.prompt("test")
+    await session.create(cwd=str(tmp_path))
+    result = await session.prompt("test")
     assert result.text == "Hello world"
     assert result.stop_reason == "end_turn"
+    await client.aclose()
 
 
-def test_prompt_no_chunks_returns_empty_text(tmp_path):
+async def test_prompt_no_chunks_returns_empty_text(tmp_path):
     """When agent sends no message chunks, text should be empty string."""
     script = tmp_path / "no_chunk_agent.py"
     script.write_text("""
@@ -96,24 +97,26 @@ write({"jsonrpc":"2.0","id":req["id"],"result":{"stopReason":"end_turn"}})
 """)
     config = AgentConfig(name="nochunk", transport=AgentTransport.LOCAL, command="python", args=[str(script)])
     client = AcpClient(config)
-    client.initialize()
+    await client.initialize()
     session = AcpSession(client)
-    session.create(cwd=str(tmp_path))
-    result = session.prompt("test")
+    await session.create(cwd=str(tmp_path))
+    result = await session.prompt("test")
     assert result.text == ""
     assert result.stop_reason == "end_turn"
+    await client.aclose()
 
 
-def test_prompt_multiple_chunks_concatenated(tmp_path):
+async def test_prompt_multiple_chunks_concatenated(tmp_path):
     """Multiple chunks should be concatenated in order."""
     script = _make_chunk_agent(tmp_path, ["a", "b", "c", "d"])
     config = AgentConfig(name="multi", transport=AgentTransport.LOCAL, command="python", args=[str(script)])
     client = AcpClient(config)
-    client.initialize()
+    await client.initialize()
     session = AcpSession(client)
-    session.create(cwd=str(tmp_path))
-    result = session.prompt("test")
+    await session.create(cwd=str(tmp_path))
+    result = await session.prompt("test")
     assert result.text == "abcd"
+    await client.aclose()
 
 
 # ---------------------------------------------------------------------------
@@ -181,116 +184,79 @@ def test_get_provider_returns_acp_provider_for_acp_model():
     assert isinstance(result, AcpProvider)
 
 
-def test_acp_provider_auto_connects():
+async def test_acp_provider_auto_connects():
     """AcpProvider.stream_turn should auto-connect if not already connected."""
-    import asyncio
     from aede.provider import AcpProvider, NormalizedResponse
     from unittest.mock import MagicMock, AsyncMock
     manager = MagicMock()
     manager.list_connected.return_value = []
-    manager.connect.return_value = "sess_1"
+    manager.connect = AsyncMock(return_value="sess_1")
     mock_session = MagicMock()
     mock_result = MagicMock()
     mock_result.text = "Hello from ACP"
     mock_result.stop_reason = "end_turn"
-    mock_session.session.prompt.return_value = mock_result
+    mock_session.session.prompt = AsyncMock(return_value=mock_result)
     manager.active_session.return_value = mock_session
 
     provider = AcpProvider(model="codex", acp_manager=manager)
     console = MagicMock()
-    resp = asyncio.get_event_loop().run_until_complete(
-        provider.stream_turn(
-            model="codex", system="sys", tools=[],
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1000, console=console,
-        )
+    resp = await provider.stream_turn(
+        model="codex", system="sys", tools=[],
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1000, console=console,
     )
     assert isinstance(resp, NormalizedResponse)
     assert resp.text == "Hello from ACP"
     manager.connect.assert_called_once_with("codex")
 
 
-def test_acp_provider_reconnects_on_model_change():
+async def test_acp_provider_reconnects_on_model_change():
     """Switching ACP models should disconnect old and connect new."""
-    import asyncio
     from aede.provider import AcpProvider
-    from unittest.mock import MagicMock
+    from unittest.mock import MagicMock, AsyncMock
     manager = MagicMock()
     manager.list_connected.return_value = ["codex"]
-    manager.connect.return_value = "sess_2"
+    manager.connect = AsyncMock(return_value="sess_2")
+    manager.disconnect = AsyncMock()
     mock_session = MagicMock()
     mock_result = MagicMock()
     mock_result.text = "response"
     mock_result.stop_reason = "end_turn"
-    mock_session.session.prompt.return_value = mock_result
+    mock_session.session.prompt = AsyncMock(return_value=mock_result)
     manager.active_session.return_value = mock_session
 
     provider = AcpProvider(model="codex", acp_manager=manager)
     provider._current_agent = "codex"  # simulate already connected to codex
     console = MagicMock()
-    asyncio.get_event_loop().run_until_complete(
-        provider.stream_turn(
-            model="claude-code", system="sys", tools=[],
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1000, console=console,
-        )
+    await provider.stream_turn(
+        model="claude-code", system="sys", tools=[],
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1000, console=console,
     )
     manager.disconnect.assert_called_once_with("codex")
     manager.connect.assert_called_once_with("claude-code")
 
 
-def test_acp_provider_connect_does_not_block_event_loop():
-    """Regression: a slow blocking connect() must not freeze the asyncio loop.
-
-    connect() does blocking subprocess I/O (initialize + new_session, 10-40s).
-    If run on the event loop it freezes the WebSocket handler, the socket goes
-    dead, the browser reconnects, and the in-flight turn is dropped (user sees
-    "nothing happens").  stream_turn must run connect off-loop via to_thread.
-    """
-    import time
-
+async def test_acp_provider_connect_runs_on_event_loop():
+    """ACP connect uses async subprocess I/O — runs directly on the event loop."""
+    from aede.provider import AcpProvider
+    from unittest.mock import MagicMock, AsyncMock
     manager = MagicMock()
     manager.list_connected.return_value = []
-
-    def slow_connect(_name):
-        time.sleep(0.5)  # simulate a blocking subprocess connect
-        return "sess_slow"
-    manager.connect.side_effect = slow_connect
-
+    manager.connect = AsyncMock(return_value="sess_fast")
     mock_session = MagicMock()
     mock_result = MagicMock()
     mock_result.text = "ok"
-    mock_session.session.prompt.return_value = mock_result
+    mock_session.session.prompt = AsyncMock(return_value=mock_result)
     manager.active_session.return_value = mock_session
 
-    from aede.provider import AcpProvider
     provider = AcpProvider(model="codex", acp_manager=manager)
-
-    async def _run():
-        ticks = {"n": 0}
-        stop = {"v": False}
-
-        async def heartbeat():
-            # Ticks every 50ms; if the loop is frozen during the 500ms connect
-            # it will miss most ticks.
-            while not stop["v"]:
-                await asyncio.sleep(0.05)
-                ticks["n"] += 1
-
-        hb = asyncio.create_task(heartbeat())
-        await provider.stream_turn(
-            model="codex", system="sys", tools=[],
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1000, console=MagicMock(),
-        )
-        stop["v"] = True
-        await hb
-        return ticks["n"]
-
-    ticks = asyncio.new_event_loop().run_until_complete(_run())
-    # ~500ms connect at 50ms/tick → expect ~8+ ticks if the loop stayed live.
-    # A frozen loop would yield 0-1 ticks during the connect window.
-    assert ticks >= 5, f"event loop appears frozen during connect (only {ticks} heartbeat ticks)"
+    resp = await provider.stream_turn(
+        model="codex", system="sys", tools=[],
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1000, console=MagicMock(),
+    )
+    assert resp.text == "ok"
 
 
 def test_acp_provider_cloud_auth_stub():
@@ -564,6 +530,35 @@ def test_acp_client_injects_goose_model_override():
     env = client._inject_env()
     assert env.get("GOOSE_PROVIDER") == "anthropic"
     assert env.get("GOOSE_MODEL") == "claude-sonnet-4-6"
+
+
+@pytest.mark.asyncio
+async def test_no_thread_growth_and_loop_responsive_over_many_turns():
+    import threading, asyncio
+    from aede.provider import AcpProvider
+    from unittest.mock import AsyncMock, MagicMock
+    mgr = MagicMock(); mgr.list_connected.return_value = ["codex"]
+    mgr.connect = AsyncMock(return_value="s"); mgr.switch_to = MagicMock()
+    async def _mock_prompt(text, on_update=None):
+        await asyncio.sleep(0)
+        return MagicMock(text="x")
+    sess = MagicMock(); sess.session.prompt = _mock_prompt
+    mgr.active_session.return_value = sess
+    base = threading.active_count()
+    ticks = {"n": 0}; stop = {"v": False}
+    async def hb():
+        while not stop["v"]:
+            await asyncio.sleep(0)
+            ticks["n"] += 1
+    h = asyncio.create_task(hb())
+    for _ in range(100):
+        p = AcpProvider(model="codex", acp_manager=mgr)
+        p._current_agent = "codex"
+        await p.stream_turn(model="codex", system="", tools=[],
+            messages=[{"role":"user","content":"hi"}], max_tokens=10, console=MagicMock())
+    stop["v"] = True; await h
+    assert threading.active_count() <= base + 2
+    assert ticks["n"] > 50
 
 
 def test_acp_client_codex_model_override_in_args():

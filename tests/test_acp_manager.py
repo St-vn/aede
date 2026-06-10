@@ -22,7 +22,7 @@ write({{"jsonrpc":"2.0","id":req["id"],"result":{{"sessionId":"{session_id}"}}}}
     return script
 
 
-def test_switch_between_agents(tmp_path):
+async def test_switch_between_agents(tmp_path):
     """US-ACP-005 AC-1: Connect to two agents and switch between them."""
     alpha_script = make_agent_script(tmp_path, "alpha", "sess_alpha")
     beta_script = make_agent_script(tmp_path, "beta", "sess_beta")
@@ -33,11 +33,11 @@ def test_switch_between_agents(tmp_path):
 
     manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
-    sid_a = manager.connect("alpha")
+    sid_a = await manager.connect("alpha")
     assert sid_a == "sess_alpha"
     assert manager.active_session_id() == "sess_alpha"
 
-    sid_b = manager.connect("beta")
+    sid_b = await manager.connect("beta")
     assert sid_b == "sess_beta"
     assert manager.active_session_id() == "sess_beta"
 
@@ -45,7 +45,7 @@ def test_switch_between_agents(tmp_path):
     assert manager.active_session_id() == "sess_alpha"
 
 
-def test_agent_not_found_error(tmp_path):
+async def test_agent_not_found_error(tmp_path):
     """US-ACP-001 AC-2 + USE-002: Clear error when agent binary not found."""
     registry = AgentRegistry(config_dir=tmp_path)
     registry.add(AgentConfig(
@@ -58,10 +58,10 @@ def test_agent_not_found_error(tmp_path):
     manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
     with pytest.raises(AcpConnectionError, match="not found"):
-        manager.connect("missing")
+        await manager.connect("missing")
 
 
-def test_agent_crash_isolated(tmp_path):
+async def test_agent_crash_isolated(tmp_path):
     """AVAIL-002: Crash of one agent does not crash aede or affect other sessions."""
     stable_script = make_agent_script(tmp_path, "stable", "sess_stable")
 
@@ -74,22 +74,22 @@ def test_agent_crash_isolated(tmp_path):
 
     manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
-    sid_stable = manager.connect("stable")
+    sid_stable = await manager.connect("stable")
     assert sid_stable == "sess_stable"
 
-    with pytest.raises(AcpConnectionError, match="crash"):
-        manager.connect("crash")
+    with pytest.raises(AcpConnectionError, match="closed"):
+        await manager.connect("crash")
 
     assert manager.active_session_id() == "sess_stable"
 
 
-def test_connect_unknown_agent(tmp_path):
+async def test_connect_unknown_agent(tmp_path):
     """Connecting to an unregistered agent raises KeyError."""
     registry = AgentRegistry(config_dir=tmp_path)
     manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
     with pytest.raises(KeyError, match="not found"):
-        manager.connect("unknown")
+        await manager.connect("unknown")
 
 
 def test_switch_to_not_connected(tmp_path):
@@ -101,7 +101,7 @@ def test_switch_to_not_connected(tmp_path):
         manager.switch_to("never-connected")
 
 
-def test_list_connected_agents(tmp_path):
+async def test_list_connected_agents(tmp_path):
     """List which agents currently have active connections."""
     alpha_script = make_agent_script(tmp_path, "alpha", "sess_alpha")
     beta_script = make_agent_script(tmp_path, "beta", "sess_beta")
@@ -114,8 +114,8 @@ def test_list_connected_agents(tmp_path):
 
     assert manager.list_connected() == []
 
-    manager.connect("alpha")
+    await manager.connect("alpha")
     assert manager.list_connected() == ["alpha"]
 
-    manager.connect("beta")
+    await manager.connect("beta")
     assert set(manager.list_connected()) == {"alpha", "beta"}

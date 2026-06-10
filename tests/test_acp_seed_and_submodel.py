@@ -11,7 +11,7 @@ Covers:
 import asyncio
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, AsyncMock, patch, call
 
 from aede.acp.registry import AgentRegistry, AgentConfig, AgentTransport, seed_default_agents
 from aede.acp.credentials import CredentialProvider
@@ -117,7 +117,7 @@ def test_registry_get_all_base_agents_after_seed(tmp_path):
         assert cfg.name == name
 
 
-def test_connect_without_seed_raises_key_error(tmp_path):
+async def test_connect_without_seed_raises_key_error(tmp_path):
     """Without seeding, connect('claude-code') raises KeyError (regression guard)."""
     from aede.acp.manager import AcpManager
 
@@ -125,7 +125,7 @@ def test_connect_without_seed_raises_key_error(tmp_path):
     manager = AcpManager(registry, CredentialProvider(home=tmp_path))
 
     with pytest.raises(KeyError, match="not found"):
-        manager.connect("claude-code")
+        await manager.connect("claude-code")
 
 
 # ---------------------------------------------------------------------------
@@ -136,13 +136,14 @@ def _make_mock_manager(connected=None):
     """Build a MagicMock that stands in for AcpManager."""
     manager = MagicMock()
     manager.list_connected.return_value = list(connected or [])
-    manager.connect.return_value = "sess_1"
+    manager.connect = AsyncMock(return_value="sess_1")
+    manager.disconnect = AsyncMock()
 
     mock_session = MagicMock()
     mock_result = MagicMock()
     mock_result.text = "response from agent"
     mock_result.stop_reason = "end_turn"
-    mock_session.session.prompt.return_value = mock_result
+    mock_session.session.prompt = AsyncMock(return_value=mock_result)
     manager.active_session.return_value = mock_session
 
     # Registry mock: get() returns a writable AgentConfig
@@ -159,7 +160,7 @@ def _make_mock_manager(connected=None):
     return manager, base_config
 
 
-def test_acp_provider_submodel_resolves_base_agent():
+async def test_acp_provider_submodel_resolves_base_agent():
     """stream_turn with 'claude-code/opus-4-8' should connect to 'claude-code'."""
     from aede.provider import AcpProvider
 
@@ -167,22 +168,20 @@ def test_acp_provider_submodel_resolves_base_agent():
     provider = AcpProvider(model="claude-code/opus-4-8", acp_manager=manager)
     console = MagicMock()
 
-    asyncio.get_event_loop().run_until_complete(
-        provider.stream_turn(
-            model="claude-code/opus-4-8",
-            system="sys",
-            tools=[],
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1000,
-            console=console,
-        )
+    await provider.stream_turn(
+        model="claude-code/opus-4-8",
+        system="sys",
+        tools=[],
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1000,
+        console=console,
     )
 
     # Must connect to the BASE agent, not the sub-model id
     manager.connect.assert_called_once_with("claude-code")
 
 
-def test_acp_provider_submodel_sets_model_override():
+async def test_acp_provider_submodel_sets_model_override():
     """stream_turn with 'claude-code/opus-4-8' must set model_override on the config."""
     from aede.provider import AcpProvider
 
@@ -190,15 +189,13 @@ def test_acp_provider_submodel_sets_model_override():
     provider = AcpProvider(model="claude-code/opus-4-8", acp_manager=manager)
     console = MagicMock()
 
-    asyncio.get_event_loop().run_until_complete(
-        provider.stream_turn(
-            model="claude-code/opus-4-8",
-            system="sys",
-            tools=[],
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1000,
-            console=console,
-        )
+    await provider.stream_turn(
+        model="claude-code/opus-4-8",
+        system="sys",
+        tools=[],
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1000,
+        console=console,
     )
 
     # model_override should be set to the resolved string
@@ -207,7 +204,7 @@ def test_acp_provider_submodel_sets_model_override():
     manager._registry.upsert.assert_called_once()
 
 
-def test_acp_provider_base_model_no_override():
+async def test_acp_provider_base_model_no_override():
     """stream_turn with bare 'claude-code' should not touch model_override."""
     from aede.provider import AcpProvider
 
@@ -215,15 +212,13 @@ def test_acp_provider_base_model_no_override():
     provider = AcpProvider(model="claude-code", acp_manager=manager)
     console = MagicMock()
 
-    asyncio.get_event_loop().run_until_complete(
-        provider.stream_turn(
-            model="claude-code",
-            system="sys",
-            tools=[],
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1000,
-            console=console,
-        )
+    await provider.stream_turn(
+        model="claude-code",
+        system="sys",
+        tools=[],
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1000,
+        console=console,
     )
 
     # No model_override interaction for base model
@@ -232,7 +227,7 @@ def test_acp_provider_base_model_no_override():
     manager.connect.assert_called_once_with("claude-code")
 
 
-def test_acp_provider_override_change_triggers_reconnect():
+async def test_acp_provider_override_change_triggers_reconnect():
     """Switching from opus-4-8 to sonnet-4-6 sub-models should disconnect+reconnect."""
     from aede.provider import AcpProvider
 
@@ -243,7 +238,7 @@ def test_acp_provider_override_change_triggers_reconnect():
     base_config.model_override = "claude-opus-4-8"
 
     # Make list_connected reflect the actual state (updated by disconnect side-effect)
-    def _disconnect(name):
+    async def _disconnect(name):
         connected_set.discard(name)
     manager.disconnect.side_effect = _disconnect
     manager.list_connected.side_effect = lambda: list(connected_set)
@@ -253,15 +248,13 @@ def test_acp_provider_override_change_triggers_reconnect():
     console = MagicMock()
 
     # Now switch to sonnet-4-6 — should disconnect to restart subprocess with new env
-    asyncio.get_event_loop().run_until_complete(
-        provider.stream_turn(
-            model="claude-code/sonnet-4-6",
-            system="sys",
-            tools=[],
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1000,
-            console=console,
-        )
+    await provider.stream_turn(
+        model="claude-code/sonnet-4-6",
+        system="sys",
+        tools=[],
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1000,
+        console=console,
     )
 
     # Must have disconnected (because override changed) then reconnected
@@ -271,7 +264,7 @@ def test_acp_provider_override_change_triggers_reconnect():
     assert base_config.model_override == "claude-sonnet-4-6"
 
 
-def test_acp_provider_same_override_no_unnecessary_reconnect():
+async def test_acp_provider_same_override_no_unnecessary_reconnect():
     """Same sub-model on second turn must NOT disconnect/reconnect."""
     from aede.provider import AcpProvider
 
@@ -283,15 +276,13 @@ def test_acp_provider_same_override_no_unnecessary_reconnect():
     provider._current_agent = "claude-code"
     console = MagicMock()
 
-    asyncio.get_event_loop().run_until_complete(
-        provider.stream_turn(
-            model="claude-code/opus-4-8",
-            system="sys",
-            tools=[],
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1000,
-            console=console,
-        )
+    await provider.stream_turn(
+        model="claude-code/opus-4-8",
+        system="sys",
+        tools=[],
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1000,
+        console=console,
     )
 
     # No disconnect — override unchanged
@@ -300,7 +291,7 @@ def test_acp_provider_same_override_no_unnecessary_reconnect():
     manager.switch_to.assert_called_once_with("claude-code")
 
 
-def test_acp_provider_current_agent_tracks_base():
+async def test_acp_provider_current_agent_tracks_base():
     """_current_agent should be set to base agent name, not sub-model id."""
     from aede.provider import AcpProvider
 
@@ -314,15 +305,13 @@ def test_acp_provider_current_agent_tracks_base():
     manager._registry.get.return_value = agy_config
 
     console = MagicMock()
-    asyncio.get_event_loop().run_until_complete(
-        provider.stream_turn(
-            model="agy/gemini-3-5-flash",
-            system="sys",
-            tools=[],
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1000,
-            console=console,
-        )
+    await provider.stream_turn(
+        model="agy/gemini-3-5-flash",
+        system="sys",
+        tools=[],
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1000,
+        console=console,
     )
 
     assert provider._current_agent == "agy"

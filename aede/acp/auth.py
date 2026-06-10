@@ -70,14 +70,14 @@ def _first_method_of_type(methods, type_):
     return None
 
 
-def drive_auth(agent_name, client, vault, registry):
+async def drive_auth(agent_name, client, vault, registry):
     try:
-        client._init_result = client.initialize(credential_provider=vault)
+        client._init_result = await client.initialize(credential_provider=vault)
     except AcpError as err:
         yield Failed(reason=err.message)
         return
     try:
-        session_id = client.new_session(cwd="")
+        session_id = await client.new_session(cwd="")
         yield Connected(session_id=session_id)
         return
     except AcpError as err:
@@ -95,7 +95,7 @@ def drive_auth(agent_name, client, vault, registry):
         if key:
             yield Progress(message=f"Using stored key for {agent_name}")
             try:
-                yield Connected(session_id=client.new_session(cwd=""))
+                yield Connected(session_id=await client.new_session(cwd=""))
                 return
             except AcpError as e2:
                 err = e2
@@ -104,9 +104,9 @@ def drive_auth(agent_name, client, vault, registry):
         if agent_method:
             yield NeedsBrowser(method_id=agent_method)
             yield Progress(message="Opening browser to log in...")
-            client.authenticate(agent_method)
+            await client.authenticate(agent_method)
             try:
-                yield Connected(session_id=client.new_session(cwd=""))
+                yield Connected(session_id=await client.new_session(cwd=""))
                 return
             except AcpError as e3:
                 yield Failed(reason=e3.message)

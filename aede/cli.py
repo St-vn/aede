@@ -537,7 +537,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
             elif cmd.name == "config":
                 handle_config_edit(cmd.args, cfg, console, home, Path.cwd())
             elif cmd.name == "setkey":
-                handle_setkey(cmd.args, console, home, acp_manager)
+                await handle_setkey(cmd.args, console, home, acp_manager)
             elif cmd.name == "compact":
                 result = await agent.compact()
                 console.print(
@@ -551,7 +551,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
             elif cmd.name == "mcp":
                 handle_mcp(mcp_servers, console)
             elif cmd.name == "acp":
-                handle_acp(cmd.args, acp_manager, console)
+                await handle_acp(cmd.args, acp_manager, console)
             elif cmd.name in ("delete-session", "rm"):
                 handle_delete_session(cmd.args, db, console, cfg.data_dir)
             elif cmd.name == "resume":

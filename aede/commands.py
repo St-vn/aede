@@ -159,7 +159,7 @@ def handle_mcp(mcp_servers: dict[str, Any], console: Any) -> None:
     console.print("\n".join(lines))
 
 
-def handle_acp(args: list[str], acp_manager: Any, console: Any) -> str | None:
+async def handle_acp(args: list[str], acp_manager: Any, console: Any) -> str | None:
     """Handle ACP agent lifecycle commands.
 
     Subcommands:
@@ -212,7 +212,7 @@ def handle_acp(args: list[str], acp_manager: Any, console: Any) -> str | None:
             console.print(f"[green]Already connected to '{name}'[/green]")
             return "connected"
         try:
-            session_id = acp_manager.connect(name)
+            session_id = await acp_manager.connect(name)
             console.print(f"[green]✓[/green] Connected to '{name}' (ACP session {session_id[:8]})")
             return "connected"
         except Exception as e:
@@ -222,7 +222,7 @@ def handle_acp(args: list[str], acp_manager: Any, console: Any) -> str | None:
     if sub == "disconnect":
         active = acp_manager.active_session()
         if active:
-            acp_manager.disconnect(active.name)
+            await acp_manager.disconnect(active.name)
             console.print(f"[green]✓[/green] Disconnected from '{active.name}'")
             return "disconnected"
         console.print("[yellow]Not connected to any ACP agent[/yellow]")
@@ -437,25 +437,17 @@ def _masked_prompt(label: str, password: bool = False) -> str:
     return Prompt.ask(label, password=password)
 
 
-def run_acp_connect(agent_name, vault, registry, console):
+async def run_acp_connect(agent_name, vault, registry, console):
     from aede.acp.auth import (
         drive_auth, NeedsKey, NeedsBrowser, NeedsTerminal, Progress, Connected, Failed)
     from aede.acp.client import AcpClient
     client = AcpClient(registry.get(agent_name)) if registry else None
-    gen = drive_auth(agent_name, client=client, vault=vault, registry=registry)
-    to_send = None
-    while True:
-        try:
-            step = gen.send(to_send)
-        except StopIteration:
-            return None
-        to_send = None
+    async for step in drive_auth(agent_name, client=client, vault=vault, registry=registry):
         if isinstance(step, Progress):
             console.print(step.message)
         elif isinstance(step, NeedsKey):
             val = _masked_prompt(f"Enter {step.env_var}", password=True)
             vault.set(step.env_var, val)
-            to_send = val
         elif isinstance(step, NeedsBrowser):
             console.print("Complete the login in your browser...")
         elif isinstance(step, NeedsTerminal):
@@ -468,7 +460,7 @@ def run_acp_connect(agent_name, vault, registry, console):
             return None
 
 
-def handle_setkey(args: list[str], console: Any, home: Path, acp_manager: Any = None) -> None:
+async def handle_setkey(args: list[str], console: Any, home: Path, acp_manager: Any = None) -> None:
     """Persist a credential to the vault and inject it into the current process environment.
 
     Args:
@@ -512,7 +504,7 @@ def handle_setkey(args: list[str], console: Any, home: Path, acp_manager: Any = 
                 except ValueError:
                     pass
             try:
-                acp_manager.connect(provider)
+                await acp_manager.connect(provider)
                 console.print(f"[green]✓[/green] Connected to ACP agent '{provider}'")
             except Exception as e:
                 console.print(f"[yellow]Could not connect ACP agent '{provider}': {e}[/yellow]")

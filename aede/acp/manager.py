@@ -31,7 +31,7 @@ class AcpManager:
         self._sessions: dict[str, AgentSession] = {}
         self._active_name: Optional[str] = None
 
-    def connect(self, agent_name: str) -> str:
+    async def connect(self, agent_name: str) -> str:
         config = self._registry.get(agent_name)
         if agent_name in self._sessions:
             self._active_name = agent_name
@@ -40,8 +40,8 @@ class AcpManager:
         from .auth import drive_auth, Connected, Failed, NeedsKey, NeedsBrowser, NeedsTerminal
         client = AcpClient(config)
         try:
-            for step in drive_auth(agent_name, client=client,
-                                   vault=self._credential_provider, registry=self._registry):
+            async for step in drive_auth(agent_name, client=client,
+                                         vault=self._credential_provider, registry=self._registry):
                 if isinstance(step, Connected):
                     session = AcpSession(client)
                     # The ACP session was already created during the auth
@@ -55,7 +55,7 @@ class AcpManager:
                     self._active_name = agent_name
                     return step.session_id
                 if isinstance(step, Failed):
-                    client.close()
+                    await client.aclose()
                     raise AcpConnectionError(step.reason)
         except FileNotFoundError:
             hint = f"Install Node.js from https://nodejs.org" if config.command in ("npx", "node") else f"Make sure '{config.command}' is installed and in PATH"
@@ -70,10 +70,10 @@ class AcpManager:
             )
         self._active_name = agent_name
 
-    def disconnect(self, agent_name: str) -> None:
+    async def disconnect(self, agent_name: str) -> None:
         if agent_name not in self._sessions:
             return
-        self._sessions[agent_name].client.close()
+        await self._sessions[agent_name].client.aclose()
         del self._sessions[agent_name]
         if self._active_name == agent_name:
             self._active_name = next(iter(self._sessions), None)

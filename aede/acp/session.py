@@ -21,12 +21,12 @@ class AcpSession:
     def session_id(self) -> Optional[str]:
         return self._session_id
 
-    def create(
+    async def create(
         self,
         cwd: str = "",
         mcp_servers: Optional[list] = None,
     ) -> str:
-        self._session_id = self._client.new_session(cwd=cwd, mcp_servers=mcp_servers)
+        self._session_id = await self._client.new_session(cwd=cwd, mcp_servers=mcp_servers)
         return self._session_id
 
     def adopt(self, session_id: str) -> None:
@@ -38,7 +38,7 @@ class AcpSession:
         """
         self._session_id = session_id
 
-    def prompt(
+    async def prompt(
         self,
         text: str,
         message_id: str = "msg_1",
@@ -46,7 +46,7 @@ class AcpSession:
     ) -> PromptResult:
         if not self._session_id:
             raise RuntimeError("Session not created yet. Call create() first.")
-        raw = self._client.prompt(
+        raw = await self._client.prompt(
             session_id=self._session_id,
             text=text,
             message_id=message_id,

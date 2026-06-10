@@ -511,11 +511,13 @@ class AcpProvider:
         model: str,
         acp_manager: Any,
         credential_provider: Any = None,
+        on_chunk: Any = None,
     ) -> None:
         self._model = model
         self._acp_manager = acp_manager
         self._credential_provider = credential_provider
         self._current_agent: str | None = None
+        self._on_chunk = on_chunk
 
     async def stream_turn(
         self,
@@ -545,56 +547,37 @@ class AcpProvider:
         agent = base_agent
         prev_agent = self._current_agent
 
-        def _ensure_connected() -> Any:
-            """Blocking: apply override, (dis)connect, return the active session.
-
-            Runs entirely off the event loop via asyncio.to_thread — connect()
-            does blocking subprocess I/O (initialize + new_session) that can take
-            10–40s; running it on the event loop freezes the WebSocket handler,
-            making the socket appear dead and triggering client reconnects that
-            drop the in-flight turn.
-            """
-            # Apply model_override to the registry config so AcpClient._inject_env
-            # picks it up at subprocess spawn time.  If the override changed from
-            # the last turn we must disconnect and reconnect so the new env takes
-            # effect (the env is injected at spawn, not at runtime).
+        async def _ensure_connected() -> Any:
             if model_override is not None:
                 try:
                     config = manager._registry.get(base_agent)
                     if config.model_override != model_override:
                         if base_agent in manager.list_connected():
-                            manager.disconnect(base_agent)
+                            await manager.disconnect(base_agent)
                         config.model_override = model_override
                         manager._registry.upsert(config)
                 except KeyError:
-                    pass  # registry lookup will fail at connect() with a clear message
+                    pass
 
-            # Disconnect previous agent if model (base) changed
             if prev_agent and prev_agent != agent:
-                manager.disconnect(prev_agent)
+                await manager.disconnect(prev_agent)
 
-            # Auto-connect if not already connected
             if agent not in manager.list_connected():
-                manager.connect(agent)
+                await manager.connect(agent)
             else:
                 manager.switch_to(agent)
 
             return manager.active_session()
 
-        session_wrapper = await asyncio.to_thread(_ensure_connected)
+        session_wrapper = await _ensure_connected()
         self._current_agent = agent
 
         if session_wrapper is None:
             raise RuntimeError(f"ACP session for '{agent}' is not active")
 
-        # Build prompt text from messages
         prompt_text = _build_prompt_text(messages)
 
-        # Run prompt synchronously (blocking — streaming TBD)
-        result = await asyncio.to_thread(
-            session_wrapper.session.prompt,
-            prompt_text,
-        )
+        result = await session_wrapper.session.prompt(prompt_text, on_update=self._make_on_update())
 
         # Print response to console
         if result.text:
@@ -613,6 +596,16 @@ class AcpProvider:
             cached_tokens=0,
             assistant_content_blocks=anthropic_content_blocks,
         )
+
+    def _make_on_update(self):
+        if not self._on_chunk:
+            return None
+        def on_update(update: dict):
+            if update.get("sessionUpdate") == "agent_message_chunk":
+                content = update.get("content", {})
+                if isinstance(content, dict) and content.get("type") == "text":
+                    self._on_chunk(content.get("text", ""))
+        return on_update
 
 
 def _build_prompt_text(messages: list[dict]) -> str:

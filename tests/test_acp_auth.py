@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 from aede.acp.client import AcpError
 from aede.acp.auth import (
     NeedsBrowser, NeedsTerminal, NeedsKey, Progress, Connected, Failed, AuthStep,
@@ -62,38 +62,36 @@ def test_terminal_auth_for_unknown():
 
 def _mock_client(auth_methods=None, init_ok=True, session_ok=True, init_error=None, session_error=None):
     client = MagicMock()
+    result = MagicMock()
+    result.auth_methods = auth_methods or []
+    client.initialize = AsyncMock(return_value=result)
     if init_error:
-        client.initialize.side_effect = init_error
-    else:
-        result = MagicMock()
-        result.auth_methods = auth_methods or []
-        client.initialize.return_value = result
+        client.initialize = AsyncMock(side_effect=init_error)
+    client.new_session = AsyncMock(return_value="sess_000")
     if session_error:
-        client.new_session.side_effect = session_error
-    else:
-        client.new_session.return_value = "sess_000"
+        client.new_session = AsyncMock(side_effect=session_error)
     if init_ok and not init_error:
-        client._init_result = client.initialize()
+        client._init_result = result
     return client
 
 
-def test_drive_auth_happy_path():
+async def test_drive_auth_happy_path():
     client = _mock_client()
-    steps = list(drive_auth("codex", client=client, vault=None, registry=None))
+    steps = [step async for step in drive_auth("codex", client=client, vault=None, registry=None)]
     assert len(steps) == 1
     assert isinstance(steps[0], Connected)
     assert steps[0].session_id == "sess_000"
 
 
-def test_drive_auth_initialize_error():
+async def test_drive_auth_initialize_error():
     client = _mock_client(init_error=AcpError(-1, "command not found"))
-    steps = list(drive_auth("codex", client=client, vault=None, registry=None))
+    steps = [step async for step in drive_auth("codex", client=client, vault=None, registry=None)]
     assert len(steps) == 1
     assert isinstance(steps[0], Failed)
     assert "command not found" in steps[0].reason
 
 
-def test_drive_auth_session_auth_required_with_key():
+async def test_drive_auth_session_auth_required_with_key():
     vault = MagicMock()
     vault.get_for_agent.return_value = "sk-abc123"
     config = AgentConfig(name="codex", transport=AgentTransport.LOCAL,
@@ -103,11 +101,10 @@ def test_drive_auth_session_auth_required_with_key():
     client = MagicMock()
     result = MagicMock()
     result.auth_methods = []
-    client.initialize.return_value = result
+    client.initialize = AsyncMock(return_value=result)
     client._init_result = result
-    # First new_session fails with AUTH_REQUIRED, second succeeds
-    client.new_session.side_effect = [AcpError(-32000, "auth required"), "sess_retry"]
-    steps = list(drive_auth("codex", client=client, vault=vault, registry=registry))
+    client.new_session = AsyncMock(side_effect=[AcpError(-32000, "auth required"), "sess_retry"])
+    steps = [step async for step in drive_auth("codex", client=client, vault=vault, registry=registry)]
     assert len(steps) == 2
     assert isinstance(steps[0], Progress)
     assert isinstance(steps[1], Connected)
@@ -115,7 +112,7 @@ def test_drive_auth_session_auth_required_with_key():
     assert client.new_session.call_count == 2
 
 
-def test_drive_auth_auth_required_no_key_no_terminal():
+async def test_drive_auth_auth_required_no_key_no_terminal():
     vault = MagicMock()
     vault.get_for_agent.side_effect = KeyError("not found")
     config = AgentConfig(name="codex", transport=AgentTransport.LOCAL,
@@ -125,15 +122,15 @@ def test_drive_auth_auth_required_no_key_no_terminal():
     client = MagicMock()
     result = MagicMock()
     result.auth_methods = []
-    client.initialize.return_value = result
+    client.initialize = AsyncMock(return_value=result)
     client._init_result = result
-    client.new_session.side_effect = AcpError(-32000, "auth required")
-    steps = list(drive_auth("codex", client=client, vault=vault, registry=registry))
+    client.new_session = AsyncMock(side_effect=AcpError(-32000, "auth required"))
+    steps = [step async for step in drive_auth("codex", client=client, vault=vault, registry=registry)]
     assert len(steps) == 1
     assert isinstance(steps[0], Failed)
 
 
-def test_drive_auth_auth_required_terminal_fallback():
+async def test_drive_auth_auth_required_terminal_fallback():
     vault = MagicMock()
     vault.get_for_agent.side_effect = KeyError("not found")
     config = AgentConfig(name="claude-code", transport=AgentTransport.LOCAL,
@@ -143,10 +140,10 @@ def test_drive_auth_auth_required_terminal_fallback():
     client = MagicMock()
     result = MagicMock()
     result.auth_methods = []
-    client.initialize.return_value = result
+    client.initialize = AsyncMock(return_value=result)
     client._init_result = result
-    client.new_session.side_effect = AcpError(-32000, "auth required")
-    steps = list(drive_auth("claude-code", client=client, vault=vault, registry=registry))
+    client.new_session = AsyncMock(side_effect=AcpError(-32000, "auth required"))
+    steps = [step async for step in drive_auth("claude-code", client=client, vault=vault, registry=registry)]
     assert len(steps) == 1
     assert isinstance(steps[0], NeedsTerminal)
     assert steps[0].command == "claude"

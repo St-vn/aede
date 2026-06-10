@@ -18,11 +18,15 @@ interface GateRequest { gateId: string; toolName: string; args: Record<string, u
 
 interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void; onOpenSettings?: (tab?: string) => void; onOpenHelp?: () => void }
 
+const _stripRich = (text: string): string =>
+  text.replace(/\[\/?\w+(?:[ \t]\w+)*\]/g, '').replace(/\r/g, '')
+
 export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp }: Props) {
   const [streamingText, setStreamingText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([])
   const [gate, setGate] = useState<GateRequest | null>(null)
+  const [pendingMessages, setPendingMessages] = useState<{ content: string; id: string }[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const prevMessagesLenRef = useRef(messages.length)
@@ -34,13 +38,21 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     prevMessagesLenRef.current = messages.length
   }, [messages.length, streamingText, isStreaming])
 
+  useEffect(() => {
+    if (!isStreaming && messages.length > 0) {
+      setPendingMessages([])
+    }
+  }, [isStreaming, messages.length])
+
   const onEvent = useCallback((ev: WSEvent) => {
     if (ev.type === 'text_delta') {
       setIsStreaming(true)
       setStreamingText(t => t + (ev.text as string))
     } else if (ev.type === 'console_message') {
       setIsStreaming(true)
-      setStreamingText(t => t + (ev.content as string) + '\n')
+      const content = _stripRich(ev.content as string || '')
+      if (!content.trim()) return
+      setStreamingText(t => t + content + '\n')
     } else if (ev.type === 'tool_call') {
       setToolCalls(tc => [...tc, { id: ev.id as string, name: ev.name as string,
         args: ev.args as Record<string, unknown>, status: 'running' }])
@@ -70,6 +82,8 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   useEffect(() => {
     if (initialMessage && !initialSentRef.current) {
       initialSentRef.current = true
+      const id = `pending-${Date.now()}`
+      setPendingMessages(p => [...p, { content: initialMessage, id }])
       send({ type: 'user_turn', content: initialMessage })
       setIsStreaming(true)
       onClearInitialMessage?.()
@@ -88,6 +102,8 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   }, [messages, streamingText])
 
   const handleSend = (content: string, model?: string) => {
+    const id = `pending-${Date.now()}`
+    setPendingMessages(p => [...p, { content, id }])
     send({ type: 'user_turn', content, model })
     setStreamingText('')
     setIsStreaming(true)
@@ -106,6 +122,9 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
       <ScrollArea className="flex-1 min-h-0 px-4">
         <div className="max-w-[760px] mx-auto py-4 space-y-1">
+          {pendingMessages.map(pm => (
+            <UserMessage key={pm.id} content={pm.content} timestamp={new Date().toISOString()} />
+          ))}
           {messages.map(m =>
             m.is_branch_point
               ? <div key={m.id} className="flex items-center gap-3 py-4 px-4 select-none">
