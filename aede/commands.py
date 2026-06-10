@@ -366,8 +366,11 @@ def handle_config_edit(
 ACP_COMMANDS = {
     "codex": ("codex-acp", []),
     "claude-code": ("claude-agent-acp", []),
-    "gemini": ("gemini", ["--experimental-acp"]),
-    "agy": ("agy", ["--acp"]),
+    "gemini": ("gemini", ["--acp"]),
+    "cline": ("cline", ["--acp"]),
+    "cursor": ("cursor-agent", ["--acp"]),
+    "goose": ("goose", ["acp"]),
+    "opencode": ("opencode", ["--acp"]),
 }
 
 

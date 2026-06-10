@@ -8,6 +8,7 @@ from .client import AcpClient
 @dataclass
 class PromptResult:
     stop_reason: str
+    text: str
     raw: dict
 
 
@@ -44,5 +45,6 @@ class AcpSession:
         )
         return PromptResult(
             stop_reason=raw.get("stopReason", "end_turn"),
+            text=raw.get("text", ""),
             raw=raw,
         )

@@ -482,14 +482,129 @@ class OpenAIProvider:
 
 
 # ---------------------------------------------------------------------------
+# ACP provider (routes to local/remote ACP agents)
+# ---------------------------------------------------------------------------
+
+# Models that should be routed through ACP rather than LLM API
+ACP_MODEL_IDS: frozenset[str] = frozenset({
+    "codex", "claude-code", "gemini",
+    "cline", "cursor", "goose", "opencode",
+})
+
+
+class AcpProvider:
+    """Routes chat turns through ACP subprocess agents.
+
+    Handles auto-connect, model-switch disconnect/reconnect, and
+    cloud auth (OAuth) for future remote ACP agents.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        acp_manager: Any,
+        credential_provider: Any = None,
+    ) -> None:
+        self._model = model
+        self._acp_manager = acp_manager
+        self._credential_provider = credential_provider
+        self._current_agent: str | None = None
+
+    async def stream_turn(
+        self,
+        *,
+        model: str,
+        system: Any,
+        tools: list[dict],
+        messages: list[dict],
+        max_tokens: int,
+        console: Any,
+        reasoning_effort: str = "auto",
+        thinking_budget: int = 0,
+    ) -> NormalizedResponse:
+        agent = model
+        manager = self._acp_manager
+
+        # Disconnect previous agent if model changed
+        if self._current_agent and self._current_agent != agent:
+            manager.disconnect(self._current_agent)
+
+        # Auto-connect if not already connected
+        if agent not in manager.list_connected():
+            manager.connect(agent)
+        else:
+            manager.switch_to(agent)
+        self._current_agent = agent
+
+        # Get active session
+        session_wrapper = manager.active_session()
+        if session_wrapper is None:
+            raise RuntimeError(f"ACP session for '{agent}' is not active")
+
+        # Build prompt text from messages
+        prompt_text = _build_prompt_text(messages)
+
+        # Run prompt synchronously (blocking — streaming TBD)
+        import asyncio
+        result = await asyncio.to_thread(
+            session_wrapper.session.prompt,
+            prompt_text,
+        )
+
+        # Print response to console
+        if result.text:
+            console.print(result.text, highlight=False)
+
+        # Build assistant content blocks for history
+        anthropic_content_blocks: list[Any] = []
+        if result.text:
+            anthropic_content_blocks.append({"type": "text", "text": result.text})
+
+        return NormalizedResponse(
+            text=result.text,
+            tool_calls=[],
+            input_tokens=0,
+            output_tokens=0,
+            cached_tokens=0,
+            assistant_content_blocks=anthropic_content_blocks,
+        )
+
+
+def _build_prompt_text(messages: list[dict]) -> str:
+    """Convert Anthropic-format message history to a single prompt string for ACP.
+
+    For multi-turn conversations, we reconstruct the conversation as a text
+    prompt that the ACP agent can process.
+    """
+    parts: list[str] = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            parts.append(f"[{role}]: {content}")
+        elif isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "text":
+                        text_parts.append(block.get("text", ""))
+                    elif block.get("type") == "tool_result":
+                        text_parts.append(f"[tool result]: {block.get('content', '')}")
+            if text_parts:
+                parts.append(f"[{role}]: {' '.join(text_parts)}")
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
-def get_provider(cfg: Any) -> AnthropicProvider | OpenAIProvider:
+def get_provider(cfg: Any, acp_manager: Any = None) -> AnthropicProvider | OpenAIProvider | AcpProvider:
     """
     Select and return the appropriate provider based on config.
 
     Rules:
+    - If model is in ACP_MODEL_IDS → AcpProvider (requires acp_manager).
     - If cfg.api_base_url is set AND the model is NOT an Anthropic model
       (does not start with "claude-" and does not start with "anthropic/")
       → OpenAIProvider using OPENROUTER_API_KEY (fallback OPENAI_API_KEY).
@@ -499,6 +614,17 @@ def get_provider(cfg: Any) -> AnthropicProvider | OpenAIProvider:
 
     base_url: str | None = getattr(cfg, "api_base_url", None)
     model: str = getattr(cfg, "model", "")
+
+    # ACP routing — intercept before other provider logic
+    if model in ACP_MODEL_IDS:
+        if acp_manager is None:
+            raise RuntimeError(
+                f"Model '{model}' requires ACP routing but no acp_manager was provided."
+            )
+        return AcpProvider(
+            model=model,
+            acp_manager=acp_manager,
+        )
 
     is_anthropic_model = (
         model.startswith("claude-") or model.startswith("anthropic/")

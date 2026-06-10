@@ -153,6 +153,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     console=ws_console,
                     project_dir=Path.cwd(),
                     gate_backend=gate_backend,
+                    acp_manager=getattr(app.state, "acp_manager", None),
                 )
 
                 # Load prior messages for context
@@ -654,8 +655,11 @@ async def list_credentials(request: Request):
 ACP_COMMANDS = {
     "codex": ("codex-acp", []),
     "claude-code": ("claude-agent-acp", []),
-    "gemini": ("gemini", ["--experimental-acp"]),
-    "agy": ("agy", ["--acp"]),
+    "gemini": ("gemini", ["--acp"]),
+    "cline": ("cline", ["--acp"]),
+    "cursor": ("cursor-agent", ["--acp"]),
+    "goose": ("goose", ["acp"]),
+    "opencode": ("opencode", ["--acp"]),
 }
 
 

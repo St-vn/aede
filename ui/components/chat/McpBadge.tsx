@@ -1,6 +1,6 @@
 'use client'
 import React from 'react'
-import { Puzzle } from 'lucide-react'
+import { Plug } from 'lucide-react'
 
 interface Props {
   serverName: string
@@ -13,7 +13,7 @@ export function McpBadge({ serverName, toolName }: Props) {
       bg-primary/10 text-primary/80 border border-primary/20"
       title={`MCP server: ${serverName}${toolName ? ` · tool: ${toolName}` : ''}`}
     >
-      <Puzzle className="w-2.5 h-2.5" />
+      <Plug className="w-2.5 h-2.5" />
       {serverName}
     </span>
   )

@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { ScopeSelector } from '@/components/settings/ScopeSelector'
 import { useMcpServers, useAddMcpServer, useUpdateMcpServer, useDeleteMcpServer, useRestartMcpServers, type McpToolInfo } from '@/hooks/useMcpServers'
-import { Puzzle, RefreshCw, Wifi, WifiOff, Plus, Trash2, X, Check, ExternalLink, Globe, ChevronRight, Code, Power, ShieldCheck } from 'lucide-react'
+import { Plug, RefreshCw, Wifi, WifiOff, Plus, Trash2, X, Check, ExternalLink, Globe, ChevronRight, Code, Power, ShieldCheck } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 
 function ToolRow({ tool, disabledTools, onToggle }: {
@@ -121,7 +121,7 @@ export function McpTab() {
             </div>
             <div className="flex items-end gap-1">
               <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => setUseUrl(!useUrl)}>
-                {useUrl ? <Globe className="w-3 h-3" /> : <Puzzle className="w-3 h-3" />}
+                {useUrl ? <Globe className="w-3 h-3" /> : <Plug className="w-3 h-3" />}
                 {useUrl ? 'URL mode' : 'Stdio mode'}
               </Button>
             </div>
@@ -181,7 +181,7 @@ export function McpTab() {
                 >
                   <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                 </button>
-                <Puzzle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <Plug className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
                   <span className="text-xs font-mono truncate block">{name}</span>
                   <span className="text-[10px] text-muted-foreground truncate block">

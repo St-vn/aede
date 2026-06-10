@@ -95,6 +95,8 @@ class AcpClient:
         self._process.stdin.write(msg + "\n")
         self._process.stdin.flush()
 
+        accumulated_text = ""
+
         while True:
             line = self._process.stdout.readline()
             if not line:
@@ -107,14 +109,18 @@ class AcpClient:
                         response["error"]["code"],
                         response["error"]["message"],
                     )
-                return response["result"]
+                result = response["result"]
+                result["text"] = accumulated_text
+                return result
 
-            if on_update and "method" not in response:
-                if on_update and "method" not in response:
-                    continue
-
-            if on_update and response.get("method") == "session/update":
-                on_update(response["params"]["update"])
+            if response.get("method") == "session/update":
+                update = response.get("params", {}).get("update", {})
+                if update.get("sessionUpdate") == "agent_message_chunk":
+                    content = update.get("content", {})
+                    if isinstance(content, dict) and content.get("type") == "text":
+                        accumulated_text += content.get("text", "")
+                if on_update:
+                    on_update(update)
 
     def close(self) -> None:
         if self._process:

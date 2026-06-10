@@ -422,7 +422,6 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         registry=acp_registry,
         credential_provider=acp_credential_provider,
     )
-    acp_active = False
 
     router = ToolRouter(
         shell=cfg.shell,
@@ -475,6 +474,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
             global_config_path=cfg.home / "config.yml",
             console=console,
         ),
+        acp_manager=acp_manager,
     )
     agent.initialize(
         is_resume=is_resume,
@@ -552,11 +552,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
             elif cmd.name == "mcp":
                 handle_mcp(mcp_servers, console)
             elif cmd.name == "acp":
-                result = handle_acp(cmd.args, acp_manager, console)
-                if result == "connected":
-                    acp_active = True
-                elif result == "disconnected":
-                    acp_active = False
+                handle_acp(cmd.args, acp_manager, console)
             elif cmd.name in ("delete-session", "rm"):
                 handle_delete_session(cmd.args, db, console, cfg.data_dir)
             elif cmd.name == "resume":
@@ -567,25 +563,6 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
                     break
             elif cmd.name == "import":
                 handle_import(cmd.args, console, home)
-            continue
-
-        if acp_active:
-            acp_sesh = acp_manager.active_session()
-            if acp_sesh:
-                console.print(f"[dim]→ ACP: {acp_sesh.name}[/dim]")
-                try:
-                    result = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: acp_sesh.session.prompt(text=user_input)
-                    )
-                    text = result.raw.get("content", "")
-                    if isinstance(text, list):
-                        text = " ".join(
-                            b.get("text", "") for b in text if isinstance(b, dict)
-                        )
-                    if text:
-                        console.print(text)
-                except Exception as e:
-                    console.print(f"[red]ACP error: {e}[/red]")
             continue
 
         _maybe_set_title(session, db, user_input)

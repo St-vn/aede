@@ -208,6 +208,7 @@ class AgentLoop:
         console: Any,
         project_dir: Any,
         gate_backend: Any = None,
+        acp_manager: Any = None,
     ) -> None:
         self._cfg = cfg
         self._session = session
@@ -218,6 +219,7 @@ class AgentLoop:
         self._tracker = tracker
         self._console = console
         self._project_dir = project_dir
+        self._acp_manager = acp_manager
 
         from aede.gate import TerminalGateBackend
         self._gate_backend = gate_backend or TerminalGateBackend(
@@ -281,7 +283,7 @@ class AgentLoop:
         """Lazily instantiate and cache the provider selected by config."""
         if self._provider is None:
             from aede.provider import get_provider
-            self._provider = get_provider(self._cfg)
+            self._provider = get_provider(self._cfg, acp_manager=self._acp_manager)
         return self._provider
 
     def _get_trace_logger(self) -> Any:

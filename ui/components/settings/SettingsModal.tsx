@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  Cog, Key, Puzzle, BarChart3, BrainCircuit, Bot, Sparkles, Keyboard, FolderOpen, Download,
+  Cog, Key, Plug, BarChart3, BrainCircuit, Bot, Sparkles, Keyboard, FolderOpen, Download,
 } from 'lucide-react'
 import { ConfigTab } from './tabs/ConfigTab'
 import { ModelsTab } from './tabs/ModelsTab'
@@ -19,14 +19,14 @@ import { ImportTab } from './tabs/ImportTab'
 const TABS = [
   { id: 'config', label: 'Config', icon: Cog },
   { id: 'models', label: 'Models', icon: Key },
-  { id: 'mcp', label: 'MCP', icon: Puzzle },
+  { id: 'mcp', label: 'MCP', icon: Plug },
   { id: 'context', label: 'Context', icon: BarChart3 },
   { id: 'memory', label: 'Memory', icon: BrainCircuit },
   { id: 'agents', label: 'Agents', icon: Bot },
   { id: 'skills', label: 'Skills', icon: Sparkles },
-  { id: 'import', label: 'Import', icon: Download },
   { id: 'keybinds', label: 'Keybinds', icon: Keyboard },
   { id: 'projects', label: 'Projects', icon: FolderOpen },
+  { id: 'import', label: 'Import', icon: Download },
 ] as const
 
 export type SettingsTabId = (typeof TABS)[number]['id']
@@ -96,14 +96,14 @@ export function SettingsModal({ open, onOpenChange, initialTab }: Props) {
                 <TabsContent value="skills" className="mt-0">
                   <SkillsTab />
                 </TabsContent>
-                <TabsContent value="import" className="mt-0">
-                  <ImportTab />
-                </TabsContent>
                 <TabsContent value="keybinds" className="mt-0">
                   <KeybindsTab />
                 </TabsContent>
                 <TabsContent value="projects" className="mt-0">
                   <ProjectsTab />
+                </TabsContent>
+                <TabsContent value="import" className="mt-0">
+                  <ImportTab />
                 </TabsContent>
               </div>
             </ScrollArea>

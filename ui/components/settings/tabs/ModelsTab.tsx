@@ -26,8 +26,11 @@ const AUTH_CATEGORIES = [
   { value: 'google-ai', label: 'Google AI' },
   { value: 'claude-code', label: 'Claude Code (ACP)' },
   { value: 'gemini', label: 'Gemini (ACP)' },
-  { value: 'agy', label: 'Agy (ACP)' },
   { value: 'codex', label: 'Codex (ACP)' },
+  { value: 'cline', label: 'Cline (ACP)' },
+  { value: 'cursor', label: 'Cursor (ACP)' },
+  { value: 'goose', label: 'Goose (ACP)' },
+  { value: 'opencode', label: 'OpenCode (ACP)' },
 ]
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -39,7 +42,10 @@ const PROVIDER_LABELS: Record<string, string> = {
   codex: 'Codex (ACP)',
   'claude-code': 'Claude Code (ACP)',
   gemini: 'Gemini (ACP)',
-  agy: 'Agy (ACP)',
+  cline: 'Cline (ACP)',
+  cursor: 'Cursor (ACP)',
+  goose: 'Goose (ACP)',
+  opencode: 'OpenCode (ACP)',
 }
 
 const PROVIDER_BADGE_COLORS: Record<string, string> = {
@@ -51,7 +57,10 @@ const PROVIDER_BADGE_COLORS: Record<string, string> = {
   codex: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
   'claude-code': 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
   gemini: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
-  agy: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
+  cline: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
+  cursor: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
+  goose: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
+  opencode: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
 }
 
 interface ModelSuggestion {
@@ -61,6 +70,7 @@ interface ModelSuggestion {
 }
 
 const MODEL_SUGGESTIONS: ModelSuggestion[] = [
+  { label: "Claude Fable 5", id: "claude-fable-5", provider: "anthropic" },
   { label: 'Claude Opus 4.8', id: 'claude-opus-4-8', provider: 'anthropic' },
   { label: 'Claude Sonnet 4.6', id: 'claude-sonnet-4-6', provider: 'anthropic' },
   { label: 'Claude Haiku 4.5', id: 'claude-haiku-4-5-20251001', provider: 'anthropic' },
@@ -90,7 +100,10 @@ const MODEL_SUGGESTIONS: ModelSuggestion[] = [
   { label: 'Codex', id: 'codex', provider: 'codex' },
   { label: 'Claude Code', id: 'claude-code', provider: 'claude-code' },
   { label: 'Gemini', id: 'gemini', provider: 'gemini' },
-  { label: 'Agy', id: 'agy', provider: 'agy' },
+  { label: 'Cline', id: 'cline', provider: 'cline' },
+  { label: 'Cursor', id: 'cursor', provider: 'cursor' },
+  { label: 'Goose', id: 'goose', provider: 'goose' },
+  { label: 'OpenCode', id: 'opencode', provider: 'opencode' },
 ]
 
 function autoLabel(modelId: string, provider: string): string {
@@ -363,7 +376,7 @@ export function ModelsTab() {
   }
 
   const isAcpProvider = (provider: string | null) =>
-    provider && ['codex', 'claude-code', 'gemini', 'agy'].includes(provider)
+    provider && ['codex', 'claude-code', 'gemini', 'cline', 'cursor', 'goose', 'opencode'].includes(provider)
 
   const handleAddCred = async () => {
     if (!newName || !newValue) return

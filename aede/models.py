@@ -6,6 +6,7 @@ import json
 
 MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
     "anthropic": [
+        {"id": "claude-fable-5", "label": "Claude Fable 5"},
         {"id": "claude-opus-4-8", "label": "Claude Opus 4.8"},
         {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6"},
     ],
@@ -24,7 +25,10 @@ MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
     "codex": [{"id": "codex", "label": "Codex"}],
     "claude-code": [{"id": "claude-code", "label": "Claude Code"}],
     "gemini": [{"id": "gemini", "label": "Gemini"}],
-    "agy": [{"id": "agy", "label": "Agy"}],
+    "cline": [{"id": "cline", "label": "Cline"}],
+    "cursor": [{"id": "cursor", "label": "Cursor"}],
+    "goose": [{"id": "goose", "label": "Goose"}],
+    "opencode": [{"id": "opencode", "label": "OpenCode"}],
 }
 
 
