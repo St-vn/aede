@@ -1055,6 +1055,16 @@ Sends gate requests via WebSocket JSON, waits for response via `asyncio.Future`.
 
 Redirects `console.print()` output to Web UI via JSON messages.
 
+### Dynamic Slash Commands (`ui/components/input/SlashCommandPicker.tsx`)
+
+The web UI's slash command autocomplete dynamically includes:
+- **Static commands** — `/sessions`, `/compact`, `/clear`, `/resume`, `/skills`, `/agents`, `/tools`, `/tokens`, `/mcp`, `/help`, `/config`, `/settings*`
+- **Skills** — `/skill <name>` for each loaded skill
+- **Agents** — `/agent <name>` for each loaded agent
+- **MCP servers** — `/mcp <server>` for each enabled server (shows tool count and trust status)
+
+Data fetched via `useSkills()`, `useAgents()`, `useMcpServers()` hooks from `/api/skills`, `/api/agents`, `/api/mcp/servers`.
+
 ---
 
 ## 23. Model Presets
