@@ -2,16 +2,18 @@
 import React, { useMemo } from 'react'
 import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent } from '@/components/ui/popover'
-import { Terminal, Cog, Compass, FlaskConical, Puzzle } from 'lucide-react'
+import { Terminal, Cog, Compass, FlaskConical, Plug } from 'lucide-react'
+import { useSkills, SkillInfo } from '@/hooks/useSkills'
+import { useAgents, AgentInfo } from '@/hooks/useAgents'
+import { useMcpServers, McpServerInfo } from '@/hooks/useMcpServers'
 
 interface SlashCommand {
   trigger: string
   description: string
-  category: 'session' | 'discovery' | 'config' | 'skills' | 'mcp'
-  disabled?: boolean
+  category: 'session' | 'discovery' | 'config' | 'skills' | 'mcp' | 'agents'
 }
 
-const ALL_COMMANDS: SlashCommand[] = [
+const STATIC_COMMANDS: SlashCommand[] = [
   { trigger: '/sessions', description: 'List and switch between sessions', category: 'session' },
   { trigger: '/compact', description: 'Compact session history', category: 'session' },
   { trigger: '/clear', description: 'Clear the current conversation', category: 'session' },
@@ -20,6 +22,7 @@ const ALL_COMMANDS: SlashCommand[] = [
   { trigger: '/agents', description: 'List available agents', category: 'discovery' },
   { trigger: '/tools', description: 'List available tools', category: 'discovery' },
   { trigger: '/tokens', description: 'View token budget and usage', category: 'discovery' },
+  { trigger: '/mcp', description: 'List MCP servers and tools', category: 'discovery' },
   { trigger: '/help', description: 'Show help and all available commands', category: 'discovery' },
   { trigger: '/config', description: 'View and edit configuration', category: 'config' },
   { trigger: '/settings', description: 'Open settings modal', category: 'config' },
@@ -32,9 +35,51 @@ const ALL_COMMANDS: SlashCommand[] = [
   { trigger: '/settings:skills', description: 'Open settings → Skills tab', category: 'config' },
   { trigger: '/settings:keybinds', description: 'Open settings → Keybinds tab', category: 'config' },
   { trigger: '/settings:projects', description: 'Open settings → Projects tab', category: 'config' },
-  { trigger: '/skills run', description: 'Run a skill — coming soon', category: 'skills', disabled: true },
-  { trigger: '/mcp', description: 'List and use MCP tools — coming soon', category: 'mcp', disabled: true },
+  { trigger: '/settings:import', description: 'Open settings → Import tab', category: 'config' },
 ]
+
+function buildDynamicCommands(
+  skills: SkillInfo[] | undefined,
+  agents: AgentInfo[] | undefined,
+  mcpServers: Record<string, McpServerInfo> | undefined,
+): SlashCommand[] {
+  const cmds: SlashCommand[] = []
+
+  if (skills) {
+    for (const s of skills) {
+      cmds.push({
+        trigger: `/skill ${s.name}`,
+        description: s.description.slice(0, 60),
+        category: 'skills',
+      })
+    }
+  }
+
+  if (agents) {
+    for (const a of agents) {
+      cmds.push({
+        trigger: `/agent ${a.name}`,
+        description: a.description.slice(0, 60),
+        category: 'agents',
+      })
+    }
+  }
+
+  if (mcpServers) {
+    for (const [name, srv] of Object.entries(mcpServers)) {
+      if (srv.enabled === false) continue
+      const toolCount = srv.tools?.length ?? 0
+      const label = toolCount > 0 ? `${toolCount} tools` : srv.command || 'configured'
+      cmds.push({
+        trigger: `/mcp ${name}`,
+        description: `${label} — ${srv.trusted ? 'trusted' : 'gated'}`,
+        category: 'mcp',
+      })
+    }
+  }
+
+  return cmds
+}
 
 interface Props {
   open: boolean
@@ -45,13 +90,22 @@ interface Props {
 }
 
 export function SlashCommandPicker({ open, onOpenChange, onSelect, searchQuery, triggerRef }: Props) {
+  const { data: skills } = useSkills()
+  const { data: agents } = useAgents()
+  const { data: mcpServers } = useMcpServers()
+
+  const allCommands = useMemo(() => {
+    const dynamic = buildDynamicCommands(skills, agents, mcpServers)
+    return [...STATIC_COMMANDS, ...dynamic]
+  }, [skills, agents, mcpServers])
+
   const filtered = useMemo(() => {
-    if (!searchQuery) return ALL_COMMANDS
+    if (!searchQuery) return allCommands
     const q = searchQuery.toLowerCase()
-    return ALL_COMMANDS.filter(
+    return allCommands.filter(
       cmd => cmd.trigger.toLowerCase().includes(q) || cmd.description.toLowerCase().includes(q)
     )
-  }, [searchQuery])
+  }, [searchQuery, allCommands])
 
   const grouped = useMemo(() => {
     const groups: Record<string, SlashCommand[]> = {}
@@ -63,6 +117,15 @@ export function SlashCommandPicker({ open, onOpenChange, onSelect, searchQuery, 
   }, [filtered])
 
   const hasResults = filtered.length > 0
+
+  const categoryLabels: Record<string, string> = {
+    session: 'Session',
+    discovery: 'Discovery',
+    config: 'Config',
+    skills: 'Skills',
+    agents: 'Agents',
+    mcp: 'MCP Servers',
+  }
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -82,17 +145,13 @@ export function SlashCommandPicker({ open, onOpenChange, onSelect, searchQuery, 
           <Command className="bg-transparent">
             <CommandList className="max-h-[220px] overflow-y-auto p-1">
               {Object.entries(grouped).map(([category, cmds]) => (
-                <CommandGroup key={category} heading={category === 'skills' ? 'Skills' : category === 'mcp' ? 'MCP Tools' : category === 'session' ? 'Session' : category === 'discovery' ? 'Discovery' : 'Config'}>
+                <CommandGroup key={category} heading={categoryLabels[category] || category}>
                   {cmds.map(cmd => (
                     <CommandItem
                       key={cmd.trigger}
                       value={cmd.trigger}
-                      disabled={cmd.disabled}
-                      onSelect={() => {
-                        if (!cmd.disabled) onSelect(cmd.trigger)
-                      }}
-                      className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-sm
-                        ${cmd.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-accent hover:text-accent-foreground'}`}
+                      onSelect={() => onSelect(cmd.trigger)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-sm cursor-pointer hover:bg-accent hover:text-accent-foreground"
                     >
                       {category === 'session' ? (
                         <Terminal className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
@@ -102,16 +161,13 @@ export function SlashCommandPicker({ open, onOpenChange, onSelect, searchQuery, 
                         <Cog className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       ) : category === 'skills' ? (
                         <FlaskConical className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      ) : category === 'agents' ? (
+                        <FlaskConical className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       ) : (
-                        <Puzzle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <Plug className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       )}
                       <span className="font-mono">{cmd.trigger}</span>
                       <span className="flex-1 truncate text-muted-foreground">{cmd.description}</span>
-                      {cmd.disabled && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
-                          coming soon
-                        </span>
-                      )}
                     </CommandItem>
                   ))}
                 </CommandGroup>
