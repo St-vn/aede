@@ -1065,6 +1065,25 @@ The web UI's slash command autocomplete dynamically includes:
 
 Data fetched via `useSkills()`, `useAgents()`, `useMcpServers()` hooks from `/api/skills`, `/api/agents`, `/api/mcp/servers`.
 
+### Settings Modal (`ui/components/settings/SettingsModal.tsx`)
+
+Vertical tab layout with 10 tabs:
+
+| Tab | Component | Description |
+|-----|-----------|-------------|
+| Config | `ConfigTab` | View/edit config.yml, edit file button |
+| Models | `ModelsTab` | Model selector, add/edit/delete models |
+| MCP | `McpTab` | Add/delete servers, enable/disable toggle, trusted toggle, collapsible tool browser with per-tool toggles |
+| Context | `ContextTab` | Token budget, compaction settings |
+| Memory | `MemoryTab` | Learnings management |
+| Agents | `AgentsTab` | Scope selector (global/project), CRUD, upload, edit file |
+| Skills | `SkillsTab` | Scope selector (global/project), CRUD, upload, edit file |
+| Import | `ImportTab` | Import instructions, supported sources table, CLI/REPL commands |
+| Keybinds | `KeybindsTab` | Keyboard shortcut reference |
+| Projects | `ProjectsTab` | Project management |
+
+All forms use `FormModal` (portaled to `document.body` to escape parent transform containing block).
+
 ---
 
 ## 23. Model Presets
