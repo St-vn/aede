@@ -15,7 +15,7 @@ from typing import Any
 COMMANDS = {
     "help", "keybinds", "resume", "sessions", "tools", "config",
     "compact", "tokens", "clear", "exit", "setkey",
-    "skills", "agents", "delete-session", "rm", "acp", "import",
+    "skills", "agents", "mcp", "delete-session", "rm", "acp", "import",
 }
 
 
@@ -58,6 +58,7 @@ def handle_help(console: Any) -> None:
             "  /tools                        — list tools and approval status",
             "  /skills                       — list loaded skills",
             "  /agents                       — list loaded agents",
+            "  /mcp                          — list MCP servers and tools",
             "  /config [scope] [key] [value] — view or set config",
             "  /compact                      — manually compact context",
             "  /tokens                       — show token usage and cost",
@@ -140,6 +141,21 @@ def handle_agents(agent_registry: dict[str, Any], console: Any) -> None:
         desc = (agent.description[:60] + "...") if len(agent.description) > 60 else agent.description
         model_str = agent.model if agent.model != "inherit" else "inherit"
         lines.append(f"  {name:<25} {desc:<62} {model_str}")
+    console.print("\n".join(lines))
+
+
+def handle_mcp(mcp_servers: dict[str, Any], console: Any) -> None:
+    """Print all configured MCP servers with status and tool count."""
+    if not mcp_servers:
+        console.print("No MCP servers configured.")
+        return
+    lines = ["MCP Servers:"]
+    for name, srv in sorted(mcp_servers.items()):
+        status = "enabled" if srv.enabled else "disabled"
+        cmd = srv.command or ""
+        args_str = " ".join(srv.args[:2]) if srv.args else ""
+        tool_hint = f" ({len(srv.disabled_tools)} disabled)" if srv.disabled_tools else ""
+        lines.append(f"  {name:<25} [{status}] {cmd} {args_str}{tool_hint}")
     console.print("\n".join(lines))
 
 
