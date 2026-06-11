@@ -6,6 +6,7 @@ Heavy imports (anthropic, openai) are lazy — loaded inside methods, not at mod
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 from dataclasses import dataclass, field
@@ -44,6 +45,7 @@ class Provider(Protocol):
         console: Any,
         reasoning_effort: str = "auto",
         thinking_budget: int = 0,
+        stream_text: Any = None,  # async Callable[[str], None] — per-token callback
     ) -> NormalizedResponse:
         ...
 
@@ -80,6 +82,7 @@ class AnthropicProvider:
         console: Any,
         reasoning_effort: str = "auto",
         thinking_budget: int = 0,
+        stream_text: Any = None,
     ) -> NormalizedResponse:
         client = self._get_client()
 
@@ -140,8 +143,12 @@ class AnthropicProvider:
             **stream_kwargs,
         ) as stream:
             async for text in stream.text_stream:
-                console.print(text, end="", highlight=False)
-            console.print()
+                if stream_text is not None:
+                    await stream_text(text)
+                else:
+                    console.print(text, end="", highlight=False)
+            if stream_text is None:
+                console.print()
             final = await stream.get_final_message()
 
         usage = final.usage
@@ -338,6 +345,7 @@ class OpenAIProvider:
         console: Any,
         reasoning_effort: str = "auto",
         thinking_budget: int = 0,
+        stream_text: Any = None,
     ) -> NormalizedResponse:
         client = self._get_client()
 
@@ -407,7 +415,10 @@ class OpenAIProvider:
 
             if delta.content:
                 full_text_parts.append(delta.content)
-                console.print(delta.content, end="", highlight=False)
+                if stream_text is not None:
+                    await stream_text(delta.content)
+                else:
+                    console.print(delta.content, end="", highlight=False)
 
             if delta.tool_calls:
                 for tc_delta in delta.tool_calls:
@@ -425,7 +436,8 @@ class OpenAIProvider:
                     if tc_delta.function and tc_delta.function.arguments:
                         tool_calls_acc[idx]["arguments_parts"].append(tc_delta.function.arguments)
 
-        console.print()
+        if stream_text is None:
+            console.print()
 
         text_response = "".join(full_text_parts)
 
@@ -511,13 +523,13 @@ class AcpProvider:
         model: str,
         acp_manager: Any,
         credential_provider: Any = None,
-        on_chunk: Any = None,
+        stream_text: Any = None,
     ) -> None:
         self._model = model
         self._acp_manager = acp_manager
         self._credential_provider = credential_provider
         self._current_agent: str | None = None
-        self._on_chunk = on_chunk
+        self._stream_text = stream_text
 
     async def stream_turn(
         self,
@@ -531,7 +543,6 @@ class AcpProvider:
         reasoning_effort: str = "auto",
         thinking_budget: int = 0,
     ) -> NormalizedResponse:
-        import asyncio
         manager = self._acp_manager
 
         # Resolve base agent and optional sub-model override.
@@ -579,8 +590,7 @@ class AcpProvider:
 
         result = await session_wrapper.session.prompt(prompt_text, on_update=self._make_on_update())
 
-        # Print response to console
-        if result.text:
+        if result.text and not self._stream_text:
             console.print(result.text, highlight=False)
 
         # Build assistant content blocks for history
@@ -598,13 +608,14 @@ class AcpProvider:
         )
 
     def _make_on_update(self):
-        if not self._on_chunk:
+        stream_text = self._stream_text
+        if not stream_text:
             return None
         def on_update(update: dict):
             if update.get("sessionUpdate") == "agent_message_chunk":
                 content = update.get("content", {})
                 if isinstance(content, dict) and content.get("type") == "text":
-                    self._on_chunk(content.get("text", ""))
+                    asyncio.ensure_future(stream_text(content.get("text", "")))
         return on_update
 
 

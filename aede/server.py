@@ -57,37 +57,37 @@ class WebSocketGateBackend:
 
 
 class WebSocketConsole:
-    """Mock-like console that redirects prints to the Web UI over WebSocket."""
+    """Console that redirects prints to the Web UI over WebSocket.
+
+    Streaming tokens (end="") are sent as ``text_delta`` events so the UI
+    renders them incrementally.  Full lines (default end="\\n") and other
+    formatting are sent as ``console_message`` events.
+    """
 
     def __init__(self, websocket: WebSocket):
         self._websocket = websocket
 
-    def print(self, *args, **kwargs):
-        """Sends the message as a JSON object to the UI."""
-        # Join all args as strings (simple version of rich.console.print)
-        text = " ".join(str(a) for a in args)
+    def _send(self, obj: dict) -> None:
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # print is sync, so we must fire-and-forget the async send
-                loop.create_task(self._websocket.send_json({
-                    "type": "console_message",
-                    "content": text
-                }))
+                # print is sync, so we fire-and-forget the async send
+                asyncio.ensure_future(self._websocket.send_json(obj))
         except Exception:
             pass
 
+    def print(self, *args, **kwargs):
+        text = " ".join(str(a) for a in args)
+        end = kwargs.get("end", "\n")
+        if not text and end == "\n":
+            return
+        if end == "":
+            self._send({"type": "text_delta", "text": text})
+        else:
+            self._send({"type": "console_message", "content": text})
+
     def error(self, message: str):
-        """Sends an error message to the UI as a toast."""
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(self._websocket.send_json({
-                    "type": "error",
-                    "message": message,
-                }))
-        except Exception:
-            pass
+        self._send({"type": "error", "message": message})
 
 
 @app.get("/health")
@@ -173,7 +173,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
                 print(f"[WS#{hid}] Creating AgentLoop...", flush=True)
 
-                async def _acp_chunk(text: str):
+                async def _stream_text(text: str):
                     try:
                         await websocket.send_json({"type": "text_delta", "text": text})
                     except Exception:
@@ -191,7 +191,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     project_dir=Path.cwd(),
                     gate_backend=gate_backend,
                     acp_manager=getattr(app.state, "acp_manager", None),
-                    stream_callback=_acp_chunk,
+                    stream_text=_stream_text,
                 )
 
                 # Load prior messages for context

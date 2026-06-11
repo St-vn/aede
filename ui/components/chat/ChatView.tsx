@@ -122,9 +122,6 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
       <ScrollArea className="flex-1 min-h-0 px-4">
         <div className="max-w-[760px] mx-auto py-4 space-y-1">
-          {pendingMessages.map(pm => (
-            <UserMessage key={pm.id} content={pm.content} timestamp={new Date().toISOString()} />
-          ))}
           {messages.map(m =>
             m.is_branch_point
               ? <div key={m.id} className="flex items-center gap-3 py-4 px-4 select-none">
@@ -136,6 +133,9 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
                 ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} />
                 : <AssistantMessage key={m.id} content={m.content} isStreaming={false} />
           )}
+          {pendingMessages.map(pm => (
+            <UserMessage key={pm.id} content={pm.content} timestamp={new Date().toISOString()} />
+          ))}
           {toolCalls.map(tc => (
             <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
               args={tc.args} output={tc.output} durationMs={tc.durationMs} />
