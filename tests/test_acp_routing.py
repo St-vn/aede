@@ -168,7 +168,7 @@ def test_model_presets_includes_acp_agents():
 def test_acp_model_ids_set():
     """ACP_MODEL_IDS should include all known ACP agents."""
     from aede.provider import ACP_MODEL_IDS
-    for name in ["codex", "claude-code", "gemini", "agy", "cline", "cursor", "goose", "opencode"]:
+    for name in ["codex", "claude-code", "gemini", "cline", "cursor", "goose", "opencode"]:
         assert name in ACP_MODEL_IDS, f"{name} missing from ACP_MODEL_IDS"
 
 
@@ -437,11 +437,7 @@ def test_acp_model_ids_includes_sub_model_entries():
     assert "goose/anthropic-claude-sonnet-4-6" in ACP_MODEL_IDS
     assert "goose/openai-gpt-4o" in ACP_MODEL_IDS
     
-    # Agy sub-models
-    assert "agy/gemini-3-5-flash" in ACP_MODEL_IDS
-    assert "agy/gemini-3-1-pro" in ACP_MODEL_IDS
-    assert "agy/claude-sonnet-4-6" in ACP_MODEL_IDS
-    assert "agy/claude-opus-4-6" in ACP_MODEL_IDS
+        # No agy sub-models — agy has no official ACP support
 
 
 def test_agent_config_has_model_override_field():

@@ -13,6 +13,7 @@ import { WorkspaceMentionPicker } from './WorkspaceMentionPicker'
 import { ContextButton, type FileAttachment } from './ContextButton'
 import { SlashCommandPicker } from './SlashCommandPicker'
 import { ImagePreviewBar, type ImageAttachment } from './ImagePreviewBar'
+import { FileChipBar } from './FileChipBar'
 
 interface Props {
   onSend: (content: string, model?: string) => void
@@ -43,6 +44,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
   const [urlPromptOpen, setUrlPromptOpen] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([])
+  const [mentionedFiles, setMentionedFiles] = useState<string[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const ref = useRef<HTMLTextAreaElement>(null)
   const urlInputRef = useRef<HTMLInputElement>(null)
@@ -71,6 +73,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
     setMentionOpen(false)
     setSlashOpen(false)
     setImageAttachments([])
+    setMentionedFiles([])
   }
 
   // --- File injection ---
@@ -292,6 +295,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
       const newText = before + replacement + after
       setText(newText)
       setMentionOpen(false)
+      setMentionedFiles(prev => [...prev, file])
       setTimeout(() => {
         if (ref.current) {
           ref.current.focus()
@@ -300,6 +304,20 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
       }, 0)
     }
   }
+
+  const handleRemoveMentionedFile = useCallback((filename: string) => {
+    const pattern = `@[${filename}] `
+    const newText = text.replace(pattern, '')
+    setText(newText)
+    setMentionedFiles(prev => prev.filter(f => f !== filename))
+  }, [text])
+
+  // Sync mentionedFiles from text content
+  useEffect(() => {
+    const mentioned = text.match(/@\[([^\]]+)\]/g) || []
+    const names = mentioned.map(m => m.slice(2, -1))
+    setMentionedFiles(prev => prev.filter(f => names.includes(f)))
+  }, [text])
 
   // Track text changes for slash query updates
   useEffect(() => {
@@ -367,6 +385,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
           </div>
         )}
         <ImagePreviewBar images={imageAttachments} onRemove={removeImage} />
+        <FileChipBar files={mentionedFiles} onRemove={handleRemoveMentionedFile} />
         <textarea
           ref={ref}
           aria-label="Message"

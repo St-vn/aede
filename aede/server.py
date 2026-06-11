@@ -86,6 +86,9 @@ class WebSocketConsole:
         else:
             self._send({"type": "console_message", "content": text})
 
+    def stream_tool_output(self, call_id: str, text: str):
+        self._send({"type": "tool_output_delta", "call_id": call_id, "text": text})
+
     def error(self, message: str):
         self._send({"type": "error", "message": message})
 
@@ -155,6 +158,18 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     from aede.session import make_title
                     session.set_title(db, make_title(content))
 
+                _thinking_started = False
+
+                async def _stream_thinking(text: str):
+                    nonlocal _thinking_started
+                    try:
+                        if not _thinking_started:
+                            _thinking_started = True
+                            await websocket.send_json({"type": "thinking_start"})
+                        await websocket.send_json({"type": "thinking_delta", "text": text})
+                    except Exception:
+                        pass
+
                 gate_store = PermissionStore()
                 gate_store.load_from_config(cfg.auto_approve)
 
@@ -192,6 +207,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     gate_backend=gate_backend,
                     acp_manager=getattr(app.state, "acp_manager", None),
                     stream_text=_stream_text,
+                    stream_thinking=_stream_thinking,
                 )
 
                 # Load prior messages for context
@@ -685,8 +701,9 @@ async def update_config(request: Request, payload: dict):
 
     if scope == "project" and not project_dir:
         raise HTTPException(status_code=400, detail="project_dir required for project scope")
-    from aede.config import write_config_value
+    from aede.config import write_config_value, load_config
     write_config_value(scope=scope, key=key, value=value, project_dir=Path(project_dir) if project_dir else None)
+    request.app.state.cfg = load_config()
 
     return {"status": "ok", "key": key, "scope": scope}
 

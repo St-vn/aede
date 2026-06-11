@@ -167,6 +167,12 @@ class DB:
             self.con.commit()
         except Exception:
             pass
+        # TH-01 migration: add thinking column to messages if missing.
+        try:
+            self.con.execute("ALTER TABLE messages ADD COLUMN thinking TEXT")
+            self.con.commit()
+        except Exception:
+            pass
         # Set row_factory after schema is created
         self.con.row_factory = _row_factory
 
@@ -282,11 +288,12 @@ class DB:
         role: str,
         content: str,
         token_count: int | None,
+        thinking: str | None = None,
     ) -> None:
         """Persist one conversation message (user or assistant) to the DB."""
         self.con.execute(
-            "INSERT INTO messages (id, session_id, role, content, created_at, token_count) VALUES (?,?,?,?,?,?)",
-            (id, session_id, role, content, _now_ms(), token_count),
+            "INSERT INTO messages (id, session_id, role, content, created_at, token_count, thinking) VALUES (?,?,?,?,?,?,?)",
+            (id, session_id, role, content, _now_ms(), token_count, thinking),
         )
         self.con.commit()
 

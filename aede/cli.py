@@ -318,7 +318,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     from aede.gate import PermissionStore, TerminalGateBackend
     from aede.tokens import TokenTracker, PriceCache
     from aede.agent import AgentLoop
-    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_agents, handle_mcp, handle_acp, _load_session_notes, handle_delete_session, handle_import
+    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_agents, handle_mcp, handle_acp, _load_session_notes, handle_delete_session, handle_import, handle_extract
 
     console = Console()
 
@@ -332,6 +332,28 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         console.print(f"[yellow]⚠ Could not load credentials vault: {e}[/yellow]")
 
     cfg = load_config(home=home, project_dir=Path.cwd())
+
+    # Process any pending extractions from previous sessions (deferred queue)
+    try:
+        from aede.memory.extractor import ExtractionQueue
+        from aede.memory.store import LearningsStore
+        from aede.memory.verifier import Verifier
+        _eq = ExtractionQueue(cfg.data_dir)
+        _eq_store = LearningsStore(cfg.data_dir)
+        _eq_verifier = Verifier()
+        _eq_results = _eq.process_all(
+            data_dir=cfg.data_dir,
+            store=_eq_store,
+            verifier=_eq_verifier,
+            model_id=cfg.model,
+            extraction_model_id="claude-haiku-4-5",
+            console=console,
+        )
+        if _eq_results:
+            written = sum(1 for r in _eq_results if r.written)
+            console.print(f"[dim]Extracted {written} learnings from previous session.[/dim]")
+    except Exception:
+        pass  # Non-blocking — startup must not fail on extraction
 
     db = DB(cfg.data_dir / "aede.db")
 
@@ -562,6 +584,15 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
                     break
             elif cmd.name == "import":
                 handle_import(cmd.args, console, home)
+            elif cmd.name == "extract":
+                from aede.memory.store import LearningsStore
+                from aede.memory.verifier import Verifier
+                _store = LearningsStore(cfg.data_dir)
+                _verifier = Verifier()
+                handle_extract(
+                    cmd.args, cfg.data_dir, _store, _verifier, console,
+                    model_id=cfg.model,
+                )
             continue
 
         _maybe_set_title(session, db, user_input)
@@ -573,7 +604,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         except Exception:
             pass
 
-    _shutdown(session, db, rollout, stop_reason)
+    _shutdown(session, db, rollout, stop_reason, data_dir=cfg.data_dir)
 
     if resume_target is not None:
         return await _run(resume_session_id=resume_target)
@@ -587,7 +618,7 @@ async def _run_turn_safe(agent: Any, user_input: str, console: Any) -> None:
         console.print(f"[red]Error: {e}[/red]")
 
 
-def _shutdown(session: Any, db: Any, rollout: Any, reason: str) -> None:
+def _shutdown(session: Any, db: Any, rollout: Any, reason: str, data_dir: Path | None = None) -> None:
     """Persist session status, write the session-end rollout record, and close the DB.
 
     Sessions that exit via /exit or EOF are archived; Ctrl-C leaves them active
@@ -595,6 +626,9 @@ def _shutdown(session: Any, db: Any, rollout: Any, reason: str) -> None:
 
     If a session has no messages, it is deleted entirely from the DB and rollout
     logs to avoid cluttering history with empty runs.
+
+    When *data_dir* is provided, the session is enqueued for deferred extraction
+    (processed on the next startup).
     """
     try:
         # Check if the session is empty
@@ -617,6 +651,16 @@ def _shutdown(session: Any, db: Any, rollout: Any, reason: str) -> None:
         else:
             session.set_active(db)
         rollout.write({"type": "session_end", "status": status})
+
+        # Enqueue for deferred extraction (only for completed sessions)
+        if data_dir and status == "archived":
+            try:
+                from aede.memory.extractor import ExtractionQueue
+                q = ExtractionQueue(data_dir)
+                q.enqueue(session.id)
+            except Exception:
+                pass  # Non-blocking — shutdown must not fail on extraction enqueue
+
         db.close()
     except Exception:
         pass

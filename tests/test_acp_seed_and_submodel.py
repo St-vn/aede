@@ -1,7 +1,7 @@
 """Tests for ACP registry seeding and sub-model resolution in AcpProvider.
 
 Covers:
-- seed_default_agents registers the 7 base agents and is idempotent
+- seed_default_agents registers the 6 base agents and is idempotent
 - seeding does NOT overwrite pre-existing user configs (only-add-if-missing)
 - After seeding, connect('claude-code') no longer raises KeyError (registry side)
 - AcpProvider.stream_turn with sub-model resolves base agent + sets model_override
@@ -21,11 +21,11 @@ from aede.acp.credentials import CredentialProvider
 # seed_default_agents — registration
 # ---------------------------------------------------------------------------
 
-BASE_AGENT_NAMES = {"codex", "claude-code", "gemini", "agy", "cline", "cursor", "goose"}
+BASE_AGENT_NAMES = {"codex", "claude-code", "gemini", "cline", "cursor", "goose"}
 
 
-def test_seed_default_agents_registers_all_7(tmp_path):
-    """seed_default_agents should register exactly the 7 base ACP agents."""
+def test_seed_default_agents_registers_all_6(tmp_path):
+    """seed_default_agents should register exactly the 6 base ACP agents."""
     registry = AgentRegistry(config_dir=tmp_path)
     seed_default_agents(registry)
     names = {a.name for a in registry.list_all()}
@@ -37,7 +37,7 @@ def test_seed_idempotent_no_raise(tmp_path):
     registry = AgentRegistry(config_dir=tmp_path)
     seed_default_agents(registry)
     seed_default_agents(registry)  # second call — must be silent
-    assert len(registry.list_all()) == 7
+    assert len(registry.list_all()) == 6
 
 
 def test_seed_does_not_overwrite_user_config(tmp_path):
@@ -70,8 +70,7 @@ def test_seed_credentials_ref_for_known_agents(tmp_path):
     assert registry.get("claude-code").credentials_ref == "ANTHROPIC_API_KEY"
     assert registry.get("gemini").credentials_ref == "GEMINI_API_KEY"
     assert registry.get("cursor").credentials_ref == "CURSOR_API_KEY"
-    # agy, cline, goose have no credentials_ref
-    assert registry.get("agy").credentials_ref is None
+    # cline, goose have no credentials_ref
     assert registry.get("cline").credentials_ref is None
     assert registry.get("goose").credentials_ref is None
 

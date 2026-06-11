@@ -1,6 +1,6 @@
 'use client'
 import React from 'react'
-import { Check, Settings } from 'lucide-react'
+import { Brain, Check, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -111,12 +111,17 @@ export function ModelSelector({ currentModel, onModelChange, onOpenSettings }: P
   const updateConfig = useUpdateConfig()
 
   const [localEffort, setLocalEffort] = React.useState('auto')
+  const [localThinking, setLocalThinking] = React.useState(false)
 
   React.useEffect(() => {
     if (config?.reasoning_effort) {
       setLocalEffort(config.reasoning_effort)
     }
   }, [config?.reasoning_effort])
+
+  React.useEffect(() => {
+    setLocalThinking((config?.thinking_budget ?? 0) > 0)
+  }, [config?.thinking_budget])
 
   const groupedModels: Record<string, typeof models> = {}
   for (const m of models) {
@@ -136,6 +141,11 @@ export function ModelSelector({ currentModel, onModelChange, onOpenSettings }: P
   const handleEffortChange = (value: string) => {
     setLocalEffort(value)
     updateConfig.mutate({ key: 'reasoning_effort', value, scope: 'global' })
+  }
+
+  const handleThinkingChange = (on: boolean) => {
+    setLocalThinking(on)
+    updateConfig.mutate({ key: 'thinking_budget', value: on ? 4096 : 0, scope: 'global' })
   }
 
   const providers = Object.keys(groupedModels)
@@ -183,6 +193,20 @@ export function ModelSelector({ currentModel, onModelChange, onOpenSettings }: P
             </DropdownMenuSub>
           </>
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="text-xs gap-2">
+            <Brain className="w-3 h-3" />
+            <span>Thinking</span>
+            <span className="text-muted-foreground ml-auto">{localThinking ? 'On (4k)' : 'Off'}</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="min-w-[100px]">
+            <DropdownMenuRadioGroup value={localThinking ? 'on' : 'off'} onValueChange={(v) => handleThinkingChange(v === 'on')}>
+              <DropdownMenuRadioItem value="off" className="text-xs">Off</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="on" className="text-xs">On (4k)</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onOpenSettings} className="text-xs text-muted-foreground">
           <Settings className="w-3 h-3 mr-2" />

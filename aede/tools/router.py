@@ -279,7 +279,7 @@ class ToolRouter:
         """Mark a set of tools as pre-approved for the session (no gate prompt)."""
         self._session_auto_approve.update(tools)
 
-    def execute_sync(self, name: str, args: dict[str, Any]) -> ToolResult:
+    def execute_sync(self, name: str, args: dict[str, Any], stream_callback: Any = None) -> ToolResult:
         """Dispatch a tool call synchronously and return a ``ToolResult``.
 
         Any exception raised by the tool implementation is caught and returned
@@ -292,7 +292,7 @@ class ToolRouter:
         start = time.monotonic()
         try:
             if name == "powershell":
-                result = fn(args, shell=self._shell, wsl_distro=self._wsl_distro)
+                result = fn(args, shell=self._shell, wsl_distro=self._wsl_distro, stream_callback=stream_callback)
             elif name == "web_search":
                 result = fn(args)
             else:

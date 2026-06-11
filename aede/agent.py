@@ -221,6 +221,7 @@ class AgentLoop:
         gate_backend: Any = None,
         acp_manager: Any = None,
         stream_text: Any = None,
+        stream_thinking: Any = None,
     ) -> None:
         self._cfg = cfg
         self._session = session
@@ -233,6 +234,8 @@ class AgentLoop:
         self._project_dir = project_dir
         self._acp_manager = acp_manager
         self._stream_text = stream_text
+        self._stream_thinking = stream_thinking
+        self._accumulated_thinking = ""
 
         from aede.gate import TerminalGateBackend
         self._gate_backend = gate_backend or TerminalGateBackend(
@@ -379,6 +382,7 @@ class AgentLoop:
                     role="assistant",
                     content=text_response,
                     token_count=resp.output_tokens,
+                    thinking=self._accumulated_thinking or None,
                 )
                 self._rollout.write({
                     "type": "assistant_message",
@@ -502,7 +506,13 @@ class AgentLoop:
                 self._console.print(f"⚡ {tool_name} · running...")
                 self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id})
 
-                result = self._router.execute_sync(tool_name, tool_input)
+                call_key = f"{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
+                was_retry = call_key in retry_count
+
+                _tool_stream_cb = None
+                if hasattr(self._console, 'stream_tool_output'):
+                    _tool_stream_cb = lambda line, _tid=tool_use_id: self._console.stream_tool_output(_tid, line)
+                result = self._router.execute_sync(tool_name, tool_input, stream_callback=_tool_stream_cb)
 
                 self._rollout.write({
                     "type": "tool_result",
@@ -512,15 +522,26 @@ class AgentLoop:
                     "duration_ms": result.duration_ms,
                 })
 
+                if result.status == "error":
+                    score = 0.0
+                    passed = False
+                elif was_retry:
+                    score = 0.5
+                    passed = True
+                else:
+                    score = 1.0
+                    passed = True
+
                 # T-13x — record tool call for trace
                 _trace_tool_calls.append({
                     "name": tool_name,
                     "args": tool_input,
                     "result": result.output[:200],
                     "duration_ms": result.duration_ms,
+                    "score": score,
+                    "passed": passed,
                 })
 
-                call_key = f"{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
                 if result.status == "error":
                     retry_count[call_key] = retry_count.get(call_key, 0) + 1
                     if retry_count[call_key] >= 3:
@@ -589,11 +610,17 @@ class AgentLoop:
         seconds between attempts.  Non-transient errors (e.g. 400, 401) are
         surfaced immediately without retry.
         """
-        self._console.print("[dim]thinking...[/dim]", end="\r")
         provider = self._get_provider()
         last_exc: Exception | None = None
         for attempt in range(self._MAX_ATTEMPTS):
             try:
+                self._accumulated_thinking = ""
+
+                async def _accumulate_thinking(text: str):
+                    self._accumulated_thinking += text
+                    if self._stream_thinking:
+                        await self._stream_thinking(text)
+
                 return await provider.stream_turn(
                     model=self._cfg.model,
                     system=self._system_prompt,
@@ -603,6 +630,8 @@ class AgentLoop:
                     console=self._console,
                     reasoning_effort=self._cfg.reasoning_effort,
                     thinking_budget=self._cfg.thinking_budget,
+                    stream_text=self._stream_text,
+                    stream_thinking=_accumulate_thinking,
                 )
             except Exception as e:
                 status_code: int | None = getattr(e, "status_code", None)

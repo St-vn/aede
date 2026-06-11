@@ -58,6 +58,9 @@ class LearningsStore:
         lower_trust: bool = False,
         verifier_outcome: str | None = None,
         embedding: bytes | None = None,
+        provenance: dict[str, Any] | None = None,
+        importance_count: int = 2,
+        conflicting_rule_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Validate and append one learning to the JSONL file.
 
@@ -98,6 +101,9 @@ class LearningsStore:
             "trusted": trusted,
             "lower_trust": lower_trust,
             "verifier_outcome": verifier_outcome,
+            "provenance": provenance,
+            "importance_count": importance_count,
+            "conflicting_rule_ids": conflicting_rule_ids or [],
         }
 
         self._path.parent.mkdir(parents=True, exist_ok=True)

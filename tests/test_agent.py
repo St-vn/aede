@@ -240,6 +240,9 @@ def _make_agent_loop_for_gate_test(batch_approval_max: int) -> "AgentLoop":
     loop._turn = 0
     loop._provider = MagicMock()
     loop._system_prompt = ""
+    loop._stream_text = None
+    loop._stream_thinking = None
+    loop._accumulated_thinking = ""
     loop._tracker = MagicMock()
     loop._tracker.record = MagicMock()
 

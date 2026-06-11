@@ -433,4 +433,7 @@ class AcpClient:
             elif agent_name.startswith("codex"):
                 pass
 
+        if self._config.thinking_budget > 0 and self._config.name == "claude-code":
+            env["MAX_THINKING_TOKENS"] = str(self._config.thinking_budget)
+
         return env

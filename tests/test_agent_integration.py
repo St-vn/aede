@@ -61,6 +61,9 @@ def _make_loop(tmp_path: Path):
     loop._turn = 0
     loop._provider = None
     loop._system_prompt = None
+    loop._stream_text = None
+    loop._stream_thinking = None
+    loop._accumulated_thinking = ""
     loop._trace_logger = None  # will be lazily set
     return loop
 

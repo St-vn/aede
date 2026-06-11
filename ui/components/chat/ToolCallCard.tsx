@@ -6,7 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 type Status = 'running' | 'success' | 'error' | 'denied'
 interface Props {
   toolName: string; status: Status; args: Record<string, unknown>
-  output?: string; durationMs?: number
+  output?: string; durationMs?: number; streamingOutput?: string
 }
 
 const STATUS_CONFIG: Record<Status, { icon: React.ReactNode; label: string; color: string }> = {
@@ -16,7 +16,7 @@ const STATUS_CONFIG: Record<Status, { icon: React.ReactNode; label: string; colo
   denied:  { icon: <Ban className="w-3 h-3" />,                             label: 'denied', color: 'text-muted-foreground' },
 }
 
-export function ToolCallCard({ toolName, status, args, output, durationMs }: Props) {
+export function ToolCallCard({ toolName, status, args, output, durationMs, streamingOutput }: Props) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.running
   const canExpand = status === 'success' || status === 'error'
 
@@ -27,6 +27,11 @@ export function ToolCallCard({ toolName, status, args, output, durationMs }: Pro
         <span className="font-mono">{toolName}</span>
         {cfg.icon}
         {cfg.label && <span>{cfg.label}</span>}
+        {status === 'running' && streamingOutput && (
+          <span className="text-xs text-muted-foreground/60 truncate max-w-[200px] ml-2">
+            {streamingOutput.split('\n').pop()}
+          </span>
+        )}
       </div>
     )
   }
@@ -45,6 +50,11 @@ export function ToolCallCard({ toolName, status, args, output, durationMs }: Pro
         <pre className="text-xs bg-muted rounded p-2 overflow-x-auto font-mono">
           {JSON.stringify(args, null, 2)}
         </pre>
+        {streamingOutput && (
+          <pre className="text-xs bg-muted/50 rounded p-2 overflow-x-auto font-mono text-muted-foreground">
+            {streamingOutput}
+          </pre>
+        )}
         {output && <pre className="text-xs bg-muted rounded p-2 overflow-x-auto font-mono">{output}</pre>}
       </CollapsibleContent>
     </Collapsible>

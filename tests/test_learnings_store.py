@@ -164,3 +164,46 @@ def test_all_valid_sources_accepted(tmp_home):
     valid_sources = ["user", "auto_learned", "test_failure", "tool_error"]
     for s in valid_sources:
         store.write_learning(type="anti-pattern", content=f"Content for {s}", source=s, source_session_id="S1")
+
+
+def test_write_learning_with_provenance(tmp_home):
+    """write_learning accepts optional provenance, importance_count, conflicting_rule_ids."""
+    from aede.config import bootstrap
+    from aede.memory.store import LearningsStore
+
+    bootstrap(tmp_home)
+    data_dir = tmp_home / "data"
+    store = LearningsStore(data_dir)
+
+    provenance = {"model_id": "sonnet-4", "extraction_model_id": "haiku", "session_tool_call_count": 6}
+    record = store.write_learning(
+        type="anti-pattern",
+        content="Use pathlib not os.path",
+        source="auto_learned",
+        source_session_id="S1",
+        provenance=provenance,
+        importance_count=2,
+        conflicting_rule_ids=[],
+    )
+
+    assert record.get("provenance") == provenance
+    assert record.get("importance_count") == 2
+    assert record.get("conflicting_rule_ids") == []
+
+
+def test_write_learning_provenance_defaults(tmp_home):
+    """When provenance fields are omitted, they get safe defaults."""
+    from aede.config import bootstrap
+    from aede.memory.store import LearningsStore
+
+    bootstrap(tmp_home)
+    data_dir = tmp_home / "data"
+    store = LearningsStore(data_dir)
+
+    record = store.write_learning(
+        type="root-cause", content="Bug in parser", source="user", source_session_id="S1",
+    )
+
+    assert record.get("provenance") is None
+    assert record.get("importance_count") == 2
+    assert record.get("conflicting_rule_ids") == []

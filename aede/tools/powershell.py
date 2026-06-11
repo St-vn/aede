@@ -8,9 +8,10 @@ it to the model as a tool error.
 """
 from __future__ import annotations
 import subprocess
+from typing import Any
 
 
-def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "") -> str:
+def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "", stream_callback: Any = None) -> str:
     """Execute a shell command and return its combined stdout+stderr output.
 
     Args:
@@ -39,17 +40,21 @@ def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "") 
         command = ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd]
 
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             command,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=120,
         )
-        output = result.stdout
-        if result.stderr:
-            output += result.stderr
-        if result.returncode != 0:
-            raise RuntimeError(f"Exit code {result.returncode}:\n{output}")
+        output_parts = []
+        for line in iter(proc.stdout.readline, ''):
+            output_parts.append(line)
+            if stream_callback:
+                stream_callback(line)
+        proc.wait(timeout=120)
+        output = ''.join(output_parts)
+        if proc.returncode != 0:
+            raise RuntimeError(f"Exit code {proc.returncode}:\n{output}")
         return output
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("Command timed out after 120 seconds")
+    except FileNotFoundError:
+        raise RuntimeError(f"Command not found: {command[0]}")

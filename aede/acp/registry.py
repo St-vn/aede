@@ -25,7 +25,6 @@ _BASE_AGENTS: list[tuple[str, str, list[str]]] = [
     ("codex",       "npx",          ["-y", "@agentclientprotocol/codex-acp"]),
     ("claude-code", "npx",          ["-y", "@agentclientprotocol/claude-agent-acp"]),
     ("gemini",      "gemini",       ["--acp"]),
-    ("agy",         "agy",          ["--acp"]),
     ("cline",       "cline",        ["--acp"]),
     ("cursor",      "cursor-agent", ["--acp"]),
     ("goose",       "goose",        ["acp"]),
@@ -40,6 +39,7 @@ class AgentConfig:
     args: list[str] = field(default_factory=list)
     credentials_ref: Optional[str] = None
     model_override: Optional[str] = None
+    thinking_budget: int = 0
 
 
 class AgentRegistry:
@@ -82,6 +82,7 @@ class AgentRegistry:
                 "args": a.args,
                 "credentials_ref": a.credentials_ref,
                 "model_override": a.model_override,
+                "thinking_budget": a.thinking_budget,
             }
             for name, a in self._agents.items()
         }
@@ -97,11 +98,12 @@ class AgentRegistry:
                 args=cfg.get("args", []),
                 credentials_ref=cfg.get("credentials_ref"),
                 model_override=cfg.get("model_override"),
+                thinking_budget=cfg.get("thinking_budget", 0),
             )
 
 
 def seed_default_agents(registry: "AgentRegistry") -> None:
-    """Register the 7 built-in ACP agents if they are not already present.
+    """Register the 6 built-in ACP agents if they are not already present.
 
     Only adds entries that are missing — user-edited configs in agents.json
     are never overwritten.  Safe to call multiple times (idempotent).

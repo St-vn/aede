@@ -12,8 +12,8 @@ import { LearningsChip } from './LearningsChip'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean }
-interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number }
+interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean; thinking?: string }
+interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number; streamingOutput?: string }
 interface GateRequest { gateId: string; toolName: string; args: Record<string, unknown> }
 
 interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void; onOpenSettings?: (tab?: string) => void; onOpenHelp?: () => void }
@@ -23,7 +23,11 @@ const _stripRich = (text: string): string =>
 
 export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp }: Props) {
   const [streamingText, setStreamingText] = useState('')
+  const [streamingThinking, setStreamingThinking] = useState('')
+  const streamingThinkingRef = useRef('')
+  streamingThinkingRef.current = streamingThinking
   const [isStreaming, setIsStreaming] = useState(false)
+  const [isThinkingActive, setIsThinkingActive] = useState(false)
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([])
   const [gate, setGate] = useState<GateRequest | null>(null)
   const [pendingMessages, setPendingMessages] = useState<{ content: string; id: string }[]>([])
@@ -56,6 +60,13 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     } else if (ev.type === 'tool_call') {
       setToolCalls(tc => [...tc, { id: ev.id as string, name: ev.name as string,
         args: ev.args as Record<string, unknown>, status: 'running' }])
+    } else if (ev.type === 'thinking_delta') {
+      setIsStreaming(true)
+      setStreamingThinking(t => t + (ev.text as string))
+    } else if (ev.type === 'tool_output_delta') {
+      setToolCalls(tc => tc.map(c => c.id === (ev.call_id as string)
+        ? { ...c, streamingOutput: (c.streamingOutput || '') + (ev.text as string) }
+        : c))
     } else if (ev.type === 'tool_result') {
       setToolCalls(tc => tc.map(c => c.id === ev.id
         ? { ...c, status: ev.status as string, output: ev.output as string, durationMs: ev.duration_ms as number }
@@ -65,6 +76,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
       setIsStreaming(false)
       setGate(null)
+      setStreamingThinking('')
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
     } else if (ev.type === 'error') {
       toast.error(ev.message as string, { duration: 8000 })
@@ -131,17 +143,17 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
                 </div>
               : m.role === 'user'
                 ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} />
-                : <AssistantMessage key={m.id} content={m.content} isStreaming={false} />
+                : <AssistantMessage key={m.id} content={m.content} isStreaming={false} thinking={m.thinking} />
           )}
           {pendingMessages.map(pm => (
             <UserMessage key={pm.id} content={pm.content} timestamp={new Date().toISOString()} />
           ))}
           {toolCalls.map(tc => (
             <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
-              args={tc.args} output={tc.output} durationMs={tc.durationMs} />
+              args={tc.args} output={tc.output} durationMs={tc.durationMs} streamingOutput={tc.streamingOutput} />
           ))}
-          {streamingText && (
-            <AssistantMessage content={streamingText} isStreaming={isStreaming} />
+          {(streamingText || streamingThinking) && (
+            <AssistantMessage content={streamingText} isStreaming={isStreaming} thinking={streamingThinking} />
           )}
           {gate && (
             <GateCard gateId={gate.gateId} toolName={gate.toolName}

@@ -16,6 +16,7 @@ COMMANDS = {
     "help", "keybinds", "resume", "sessions", "tools", "config",
     "compact", "tokens", "clear", "exit", "setkey",
     "skills", "agents", "mcp", "delete-session", "rm", "acp", "import",
+    "extract",
 }
 
 
@@ -72,6 +73,7 @@ def handle_help(console: Any) -> None:
             "  /acp disconnect                — disconnect from the ACP agent, return to normal mode",
             "  /acp list                      — show connected ACP agents",
             "  /acp configs                   — show registered ACP agent configs",
+            "  /extract [id]                 — extract learnings from a session trace",
             "  /clear                        — start a new session",
             "  /exit                         — end session cleanly",
         ])
@@ -1176,3 +1178,104 @@ def _handle_import_all(args: list[str], console: Any, home: Path) -> None:
         f"\nImport complete ({label}): [green]{imported_count} imported[/green], "
         f"[yellow]{skipped_count} skipped[/yellow]"
     )
+
+
+def handle_extract(
+    args: list[str],
+    data_dir: Path,
+    store: Any,
+    verifier: Any,
+    console: Any,
+    admissibility_llm: Any | None = None,
+    model_id: str = "",
+    extraction_model_id: str = "",
+) -> str | None:
+    """Handle ``/extract [session_id]`` — run gated extraction on a past session.
+
+    When called with no arguments, processes the most recent archived session.
+    Returns a one-line status string for display.
+    """
+    from aede.memory.extractor import (
+        TraceExtractor, normalize_rollout, gate_candidate,
+        _load_rollout,
+    )
+    from aede.memory.store import LearningsStore
+
+    resolved_store = store or LearningsStore(data_dir)
+
+    # Determine session ID
+    session_id: str | None = None
+    if args and args[0].strip():
+        session_id = args[0].strip()
+    else:
+        # Find most recent archived session with a rollout file
+        sessions_dir = data_dir / "sessions"
+        if sessions_dir.exists():
+            candidates = []
+            for year_dir in sessions_dir.iterdir():
+                if not year_dir.is_dir():
+                    continue
+                for month_dir in year_dir.iterdir():
+                    if not month_dir.is_dir():
+                        continue
+                    for day_dir in month_dir.iterdir():
+                        if not day_dir.is_dir():
+                            continue
+                        for f in day_dir.iterdir():
+                            if f.name.startswith("rollout-") and f.suffix == ".jsonl":
+                                sid = f.name[len("rollout-"):-len(".jsonl")]
+                                candidates.append((f.stat().st_mtime, sid, f))
+            if candidates:
+                candidates.sort(reverse=True)
+                _, session_id, rollout_path = candidates[0]
+
+    if not session_id:
+        console.print("[yellow]No session found to extract.[/yellow]")
+        return None
+
+    # Find rollout file
+    from aede.memory.extractor import ExtractionQueue
+    rollout_path = ExtractionQueue._find_rollout(data_dir, session_id)
+    if rollout_path is None:
+        console.print(f"[yellow]Rollout file not found for session {session_id}.[/yellow]")
+        return None
+
+    records = _load_rollout(rollout_path)
+    trace = normalize_rollout(records)
+
+    extractor = TraceExtractor(llm=admissibility_llm, model=extraction_model_id or "claude-haiku-4-5")
+    candidates = extractor.extract(trace)
+
+    if not candidates:
+        console.print(f"[dim]No learnings extracted from {session_id}.[/dim]")
+        return f"extracted 0 from {session_id}"
+
+    for cand in candidates:
+        if cand.get("provenance") is None:
+            cand["provenance"] = {}
+        cand["provenance"]["source_session_id"] = session_id
+
+    try:
+        existing = resolved_store.list_all() if hasattr(resolved_store, "list_all") else []
+    except Exception:
+        existing = []
+
+    written = 0
+    for cand in candidates:
+        result = gate_candidate(
+            cand, existing,
+            verifier=verifier,
+            store=resolved_store,
+            admissibility_llm=admissibility_llm,
+            model_id=model_id,
+            extraction_model_id=extraction_model_id or "claude-haiku-4-5",
+        )
+        if result.written:
+            written += 1
+            trust_mark = " (trusted)" if result.trusted else ""
+            console.print(f"  [green]✓[/green] {cand['prescriptive_rule'][:80]}{trust_mark}")
+        else:
+            console.print(f"  [dim]✗ {result.reason}[/dim]")
+
+    console.print(f"[dim]Extracted {written}/{len(candidates)} learnings from {session_id}.[/dim]")
+    return f"extracted {written} from {session_id}"

@@ -211,3 +211,33 @@ class TestTraceLogger:
         record = json.loads((traces_dir / "empty_test.jsonl").read_text(encoding="utf-8"))
         assert record["tool_calls"] == []
         assert record["reasoning_text"] == ""
+
+    def test_tool_calls_carry_score_and_passed(self, tmp_path):
+        """Each tool-call record in the trace carries score and passed fields for GEPA compat."""
+        traces_dir = tmp_path / "traces"
+        logger = TraceLogger(traces_dir=traces_dir)
+
+        tool_calls = [
+            {"name": "read_file", "args": {"path": "/x"}, "result": "ok", "duration_ms": 10, "score": 1.0, "passed": True},
+            {"name": "powershell", "args": {"cmd": "rm"}, "result": "error", "duration_ms": 5, "score": 0.0, "passed": False},
+            {"name": "read_file", "args": {"path": "/x"}, "result": "ok", "duration_ms": 10, "score": 0.5, "passed": True},
+        ]
+
+        logger.write_turn_trace(
+            session_id="gepa_test",
+            turn_number=1,
+            input_tokens=100, output_tokens=50, cached_tokens=0,
+            tool_calls=tool_calls,
+            reasoning_text="retried",
+            outcome="tool_use",
+        )
+
+        record = json.loads((traces_dir / "gepa_test.jsonl").read_text(encoding="utf-8"))
+        stored = record["tool_calls"]
+        assert len(stored) == 3
+        assert stored[0]["score"] == 1.0
+        assert stored[0]["passed"] is True
+        assert stored[1]["score"] == 0.0
+        assert stored[1]["passed"] is False
+        assert stored[2]["score"] == 0.5
+        assert stored[2]["passed"] is True

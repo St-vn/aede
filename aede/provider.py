@@ -46,6 +46,7 @@ class Provider(Protocol):
         reasoning_effort: str = "auto",
         thinking_budget: int = 0,
         stream_text: Any = None,  # async Callable[[str], None] — per-token callback
+        stream_thinking: Any = None,  # async Callable[[str], None] — per-thinking-delta callback
     ) -> NormalizedResponse:
         ...
 
@@ -83,6 +84,7 @@ class AnthropicProvider:
         reasoning_effort: str = "auto",
         thinking_budget: int = 0,
         stream_text: Any = None,
+        stream_thinking: Any = None,
     ) -> NormalizedResponse:
         client = self._get_client()
 
@@ -142,11 +144,25 @@ class AnthropicProvider:
             messages=api_messages,
             **stream_kwargs,
         ) as stream:
-            async for text in stream.text_stream:
-                if stream_text is not None:
-                    await stream_text(text)
-                else:
-                    console.print(text, end="", highlight=False)
+            thinking_content = ""
+            async for event in stream:
+                if event.type == "content_block_start":
+                    if event.content_block and getattr(event.content_block, "type", None) == "thinking":
+                        thinking_content = getattr(event.content_block, "thinking", "") or ""
+                        if stream_thinking:
+                            await stream_thinking(thinking_content)
+                elif event.type == "content_block_delta":
+                    delta = event.delta
+                    if getattr(delta, "type", None) == "thinking_delta":
+                        thinking_content = getattr(delta, "thinking", "") or ""
+                        if stream_thinking:
+                            await stream_thinking(thinking_content)
+                    elif getattr(delta, "type", None) == "text_delta":
+                        text = getattr(delta, "text", "") or ""
+                        if stream_text:
+                            await stream_text(text)
+                        else:
+                            console.print(text, end="", highlight=False)
             if stream_text is None:
                 console.print()
             final = await stream.get_final_message()
@@ -346,6 +362,7 @@ class OpenAIProvider:
         reasoning_effort: str = "auto",
         thinking_budget: int = 0,
         stream_text: Any = None,
+        stream_thinking: Any = None,
     ) -> NormalizedResponse:
         client = self._get_client()
 
@@ -354,17 +371,23 @@ class OpenAIProvider:
         is_deepseek_inner = model.startswith("deepseek-")
         is_gemini = self._base_url and "googleapis.com" in self._base_url
 
-        if reasoning_effort != "auto":
+        # thinking_budget > 0 implies user wants reasoning enabled even when
+        # reasoning_effort is "auto" — derive a sensible default.
+        effective_effort = reasoning_effort
+        if reasoning_effort == "auto" and thinking_budget > 0:
+            effective_effort = "high"
+
+        if effective_effort != "auto":
             if is_deepseek_inner:
                 # DeepSeek only accepts "high" and "max"
                 deepseek_map: dict[str, str] = {
                     "low": "high", "medium": "high", "high": "high",
                     "xhigh": "max", "max": "max",
                 }
-                if reasoning_effort == "none":
+                if effective_effort == "none":
                     stream_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
                 else:
-                    mapped = deepseek_map.get(reasoning_effort, "high")
+                    mapped = deepseek_map.get(effective_effort, "high")
                     stream_kwargs["reasoning_effort"] = mapped
                     stream_kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
             elif is_gemini:
@@ -373,11 +396,11 @@ class OpenAIProvider:
                     "none": "minimal", "low": "low", "medium": "medium",
                     "high": "high", "xhigh": "high", "max": "high",
                 }
-                level = level_map.get(reasoning_effort, "medium")
+                level = level_map.get(effective_effort, "medium")
                 stream_kwargs["extra_body"] = {"thinking_config": {"thinking_level": level}}
             else:
                 # OpenAI / OpenRouter — pass through
-                stream_kwargs["reasoning_effort"] = reasoning_effort
+                stream_kwargs["reasoning_effort"] = effective_effort
 
         # Flatten SystemPrompt to a plain string — OpenAI does not support cache_control.
         if hasattr(system, "stable") and hasattr(system, "dynamic"):
@@ -412,6 +435,11 @@ class OpenAIProvider:
                 continue
 
             delta = chunk.choices[0].delta
+
+            if hasattr(delta, 'reasoning_content') and delta.reasoning_content and stream_thinking:
+                await stream_thinking(str(delta.reasoning_content))
+            elif hasattr(delta, 'reasoning') and delta.reasoning and stream_thinking:
+                await stream_thinking(str(delta.reasoning))
 
             if delta.content:
                 full_text_parts.append(delta.content)
@@ -499,14 +527,14 @@ class OpenAIProvider:
 
 # Models that should be routed through ACP rather than LLM API
 ACP_MODEL_IDS: frozenset[str] = frozenset({
-    "codex", "claude-code", "gemini", "agy",
+    "codex", "claude-code", "gemini",
     "cline", "cursor", "goose", "opencode",
     # Sub-model entries
     "codex/gpt-5.5", "codex/gpt-5.3-codex", "codex/o3", "codex/o4-mini",
     "claude-code/fable-5", "claude-code/opus-4-8",
     # "claude-code/opus-4-7",
     "claude-code/sonnet-4-6", "claude-code/haiku-4-5",
-    "agy/gemini-3-5-flash", "agy/gemini-3-1-pro", "agy/claude-sonnet-4-6", "agy/claude-opus-4-6",
+
     "goose/anthropic-claude-sonnet-4-6", "goose/openai-gpt-4o",
 })
 
@@ -530,6 +558,7 @@ class AcpProvider:
         self._credential_provider = credential_provider
         self._current_agent: str | None = None
         self._stream_text = stream_text
+        self._stream_thinking = None
 
     async def stream_turn(
         self,
@@ -542,7 +571,13 @@ class AcpProvider:
         console: Any,
         reasoning_effort: str = "auto",
         thinking_budget: int = 0,
+        stream_text: Any = None,
+        stream_thinking: Any = None,
     ) -> NormalizedResponse:
+        if stream_text is not None:
+            self._stream_text = stream_text
+        if stream_thinking is not None:
+            self._stream_thinking = stream_thinking
         manager = self._acp_manager
 
         # Resolve base agent and optional sub-model override.
@@ -566,6 +601,17 @@ class AcpProvider:
                         if base_agent in manager.list_connected():
                             await manager.disconnect(base_agent)
                         config.model_override = model_override
+                        manager._registry.upsert(config)
+                except KeyError:
+                    pass
+
+            if thinking_budget > 0:
+                try:
+                    config = manager._registry.get(base_agent)
+                    if config.thinking_budget != thinking_budget:
+                        if base_agent in manager.list_connected():
+                            await manager.disconnect(base_agent)
+                        config.thinking_budget = thinking_budget
                         manager._registry.upsert(config)
                 except KeyError:
                     pass
@@ -609,13 +655,21 @@ class AcpProvider:
 
     def _make_on_update(self):
         stream_text = self._stream_text
-        if not stream_text:
+        stream_thinking = self._stream_thinking
+        if not stream_text and not stream_thinking:
             return None
         def on_update(update: dict):
-            if update.get("sessionUpdate") == "agent_message_chunk":
-                content = update.get("content", {})
+            update_type = update.get("sessionUpdate")
+            content = update.get("content", {})
+            if update_type == "agent_thought_chunk":
+                text = content.get("text", "") if isinstance(content, dict) else ""
+                if text and stream_thinking:
+                    asyncio.ensure_future(stream_thinking(text))
+            elif update_type == "agent_message_chunk":
                 if isinstance(content, dict) and content.get("type") == "text":
-                    asyncio.ensure_future(stream_text(content.get("text", "")))
+                    text = content.get("text", "")
+                    if text and stream_text:
+                        asyncio.ensure_future(stream_text(text))
         return on_update
 
 
