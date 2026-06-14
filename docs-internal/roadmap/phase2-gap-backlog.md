@@ -246,16 +246,20 @@ British butler. Dry wit. Gets to the point. Never apologetic.
 
 | Sprint | Items | Approx size |
 |---|---|---|
-| Sprint 1 (DONE) | P0.1: OpenCode providers + LLM routing + curated MCP configs (commits `8000c40` + `6c40742`) | 1-2 days |
+| Sprint 1 (DONE 2026-06-14) | P0.1: OpenCode providers + LLM routing + curated MCP configs (commits `8000c40` + `6c40742`) | 1-2 days |
 | Sprint 2 | P0.4: Context selection tool | 0.5 day |
-| Sprint 3 | P0.2: Sandboxing | 2-3 days |
-| Sprint 4 | P0.5: Background Runtime (daemon) | 2-3 days |
-| Sprint 5 | P0.3: Skills and Plugins block (or import from Claude Code) | 3-4 days |
-| Sprint 6 | P0.6: Observability (OTel) | 1 day |
-| Sprint 7 | P0.7: FDE opt-in capture | 1-2 days |
-| Sprint 8 | P1.1: UI polish | 1-2 days |
+| Sprint 3 | P0.8: SOUL.md loader with phonemes | 0.5-1 day |
+| Sprint 4 | P0.9: Voice input (push-to-talk + browser continuous wake word) | 2-3 days |
+| Sprint 5 | P0.2: Sandboxing (Docker + file set + prompt injection filter) | 2-3 days |
+| Sprint 6 | P0.5: Background Runtime (daemon + timers + cron + events) | 2-3 days |
+| Sprint 7 | P0.3: Skills and Plugins block (or import from Claude Code) | 3-4 days |
+| Sprint 8 | P0.6: Observability (OTel) | 1 day |
+| Sprint 9 | P0.7: FDE opt-in capture + redaction | 1-2 days |
+| Sprint 10 | P1.1: UI polish | 1-2 days |
 
-**Sprint 1 done (2026-06-14).** The next step is Sprint 2 (P0.4 Context selection — smallest remaining P0) or Sprint 3 (P0.2 Sandboxing — most critical for SaaS multi-tenant). Pick based on whether you want momentum (P0.4) or the highest-leverage piece (P0.2).
+**Sprint 1 done (2026-06-14).** The recommended order puts the small/medium items first (P0.4, P0.8, P0.9 — momentum builders) before the large ones (P0.2, P0.5, P0.3). Voice (P0.9) is positioned right after SOUL.md (P0.8) because the voice subsystem reads the wake word from SOUL.md — they're tightly coupled and cheapest to build together.
+
+**Alternative order:** P0.2 (Sandboxing) right after P0.4 — put the most critical-for-SaaS-multi-tenant piece first. P0.9 can wait until after P0.5 (daemon) since the daemon could be a useful runtime target for the voice subsystem (e.g., aede daemon exposes a WebSocket that the web UI's voice input pipes audio into for server-side STT). Pick based on whether you want to ship more SaaS-critical features first (alt order) or more personal-UX features first (recommended order).
 
 ---
 

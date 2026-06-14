@@ -191,7 +191,8 @@ For each Phase 3 block, four destinations:
 | Cross-harness interop | Distinct from ACP (which is already in). Build when a user actually needs to drive Claude Code from aede live. v0.3+. |
 | Local TTS for voice responses | The input side (Web Speech API → text) is in aede. The output side (text → speech) needs a TTS engine. Defer to v0.4+ — pair with a chosen TTS engine (piper, OpenAI TTS, etc.). |
 | Native cross-platform wake word (Porcupine/openWakeWord) | Browser-based wake word covers "any device with a browser". Native bindings per-OS are a large lift; defer to v0.4+ unless user feedback demands. |
-| iOS Shortcut / Android Tasker integrations | Zero aede code needed (just a stable HTTP endpoint, which the daemon provides). Built as separate iOS/Android apps post-divergence. |
+| **iOS Shortcut (always-listening via OS-level custom phrase)** | **The user noted (2026-06-14) that iOS Shortcuts with a custom phrase is the genuine always-listening path — uses the OS speech recognition, not the browser, no page-lifecycle constraints. Zero aede code needed beyond a stable HTTP endpoint (the daemon provides it).** Built as a separate iOS app / published Shortcut recipe post-divergence. |
+| Android Tasker / other-platform equivalents | iOS path is known. Android Tasker / other OS equivalents are unknown at this stage — research deferred to when we actually build the iOS path. If the iOS path proves out, the same research pattern likely has an Android analog (e.g., Tasker + AutoVoice, or native Android `VoiceInteractionService`). |
 | Other Tools (Full Browser Use, image gen) | Playwright MCP covers browser; image gen is niche. v0.4+. |
 | Workflow Automation | The pattern is clear; the actual n8n integration is large. Build when there's a real use case. v0.3+. |
 | Self-Improvement — Executable skill bodies | **Locked: "v1 self-improvement writes typed *learnings* only, never code"** (defer note line 26). v0.4+ at earliest. |
