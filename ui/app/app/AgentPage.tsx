@@ -7,12 +7,14 @@ import { ChatView } from '@/components/chat/ChatView'
 import { useSessions, useSessionMessages, useCreateSession, useDeleteSession } from '@/hooks/useSession'
 import { InputBar } from '@/components/input/InputBar'
 import { useQueryClient } from '@tanstack/react-query'
+import { useConfig } from '@/hooks/useConfig'
 import { SettingsModal, type SettingsTabId } from '@/components/settings/SettingsModal'
 
 export function AgentPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [initialMessage, setInitialMessage] = useState<string>('')
   const [activeProjectDir, setActiveProjectDir] = useState<string | null>(null)
+  const [currentModel, setCurrentModel] = useState('claude-sonnet-4')
   const [mounted, setMounted] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTabId | undefined>(undefined)
@@ -20,8 +22,16 @@ export function AgentPage() {
 
   const { data: sessions = [] } = useSessions()
   const { data: messages = [] } = useSessionMessages(activeId)
+  const { data: config } = useConfig()
   const createSession = useCreateSession()
   const deleteSession = useDeleteSession()
+
+  // Sync model from persisted config on load
+  React.useEffect(() => {
+    if (config?.model && config.model !== currentModel) {
+      setCurrentModel(config.model)
+    }
+  }, [config?.model])
 
   React.useEffect(() => {
     setMounted(true)
@@ -98,13 +108,14 @@ export function AgentPage() {
             onOpenProject={handleOpenProject} onOpenSettings={() => setSettingsOpen(true)} />
         }
         centerPane={activeId ? (
-          <ChatView
-            sessionId={activeId}
-            messages={messages}
-            initialMessage={initialMessage}
-            onClearInitialMessage={() => setInitialMessage('')}
-            onOpenSettings={(tab) => { setSettingsTab(tab as SettingsTabId); setSettingsOpen(true) }}
-          />
+            <ChatView
+              sessionId={activeId}
+              messages={messages}
+              initialMessage={initialMessage}
+              onClearInitialMessage={() => setInitialMessage('')}
+              onOpenSettings={(tab) => { setSettingsTab(tab as SettingsTabId); setSettingsOpen(true) }}
+              defaultModel={currentModel} onModelChange={setCurrentModel}
+            />
         ) : (
           <div className="flex-1 flex flex-col min-h-0 justify-between">
             <div className="flex-1 overflow-y-auto min-h-0">
@@ -112,7 +123,8 @@ export function AgentPage() {
             </div>
             <div className="max-w-[760px] mx-auto w-full">
               <InputBar onSend={handleSendNewSession} disabled={createSession.isPending} sessionId={activeId} projectDir={activeProjectDir}
-                onOpenSettings={(tab) => { setSettingsTab(tab as SettingsTabId); setSettingsOpen(true) }} />
+                onOpenSettings={(tab) => { setSettingsTab(tab as SettingsTabId); setSettingsOpen(true) }}
+                model={currentModel} onModelChange={setCurrentModel} />
             </div>
           </div>
         )}

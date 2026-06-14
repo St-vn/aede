@@ -23,6 +23,8 @@ interface Props {
   projectDir?: string | null
   onOpenSettings?: (tab?: string) => void
   onOpenHelp?: () => void
+  model?: string
+  onModelChange?: (model: string) => void
 }
 
 let imageIdCounter = 0
@@ -34,9 +36,11 @@ function buildMessageText(text: string, images: ImageAttachment[]): string {
   return text + imageMarkdown
 }
 
-export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', sessionId, projectDir, onOpenSettings, onOpenHelp }: Props) {
+export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', sessionId, projectDir, onOpenSettings, onOpenHelp, model: modelProp, onModelChange: onModelChangeProp }: Props) {
   const [text, setText] = useState('')
-  const [model, setModel] = useState(defaultModel)
+  const [modelState, setModelState] = useState(defaultModel)
+  const model = modelProp ?? modelState
+  const setModel = onModelChangeProp ?? setModelState
   const [mentionOpen, setMentionOpen] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
   const [slashOpen, setSlashOpen] = useState(false)

@@ -7,12 +7,12 @@ import rehypeKatex from 'rehype-katex'
 import { CodeBlock } from './CodeBlock'
 import { ThinkingBlock } from './ThinkingBlock'
 
-interface Props { content: string; isStreaming: boolean; thinking?: string }
+interface Props { content: string; isStreaming: boolean; thinking?: string; isThinkingActive?: boolean }
 
-export function AssistantMessage({ content, isStreaming, thinking }: Props) {
+export function AssistantMessage({ content, isStreaming, thinking, isThinkingActive }: Props) {
   return (
     <div className="group px-4 py-2 text-sm" aria-live={isStreaming ? 'polite' : undefined}>
-      {thinking && <ThinkingBlock thinking={thinking} isStreaming={isStreaming} />}
+      {(thinking || isThinkingActive) && <ThinkingBlock thinking={thinking ?? ''} isStreaming={isStreaming} isThinkingActive={isThinkingActive} />}
       <div className="prose prose-invert prose-sm max-w-none">
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}

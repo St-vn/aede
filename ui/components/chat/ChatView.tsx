@@ -16,12 +16,12 @@ interface Message { id: string; role: 'user' | 'assistant'; content: string; cre
 interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number; streamingOutput?: string }
 interface GateRequest { gateId: string; toolName: string; args: Record<string, unknown> }
 
-interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void; onOpenSettings?: (tab?: string) => void; onOpenHelp?: () => void }
+interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void; onOpenSettings?: (tab?: string) => void; onOpenHelp?: () => void; defaultModel?: string; onModelChange?: (model: string) => void }
 
 const _stripRich = (text: string): string =>
   text.replace(/\[\/?\w+(?:[ \t]\w+)*\]/g, '').replace(/\r/g, '')
 
-export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp }: Props) {
+export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp, defaultModel, onModelChange }: Props) {
   const [streamingText, setStreamingText] = useState('')
   const [streamingThinking, setStreamingThinking] = useState('')
   const streamingThinkingRef = useRef('')
@@ -60,6 +60,9 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     } else if (ev.type === 'tool_call') {
       setToolCalls(tc => [...tc, { id: ev.id as string, name: ev.name as string,
         args: ev.args as Record<string, unknown>, status: 'running' }])
+    } else if (ev.type === 'thinking_start') {
+      setIsStreaming(true)
+      setIsThinkingActive(true)
     } else if (ev.type === 'thinking_delta') {
       setIsStreaming(true)
       setStreamingThinking(t => t + (ev.text as string))
@@ -75,6 +78,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       setGate({ gateId: ev.gate_id as string, toolName: ev.tool_name as string, args: ev.args as Record<string, unknown> })
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
       setIsStreaming(false)
+      setIsThinkingActive(false)
       setGate(null)
       setStreamingThinking('')
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
@@ -119,6 +123,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     send({ type: 'user_turn', content, model })
     setStreamingText('')
     setIsStreaming(true)
+    setIsThinkingActive(true)
   }
 
   const handleGateDecision = ({ gateId, decision, message }: { gateId: string; decision: string; message?: string }) => {
@@ -127,6 +132,20 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     send(payload)
     setGate(null)
   }
+
+  const handleModelChange = useCallback((model: string) => {
+    onModelChange?.(model)
+    const acpPrefixes = ['claude-code', 'codex', 'gemini', 'cline', 'cursor', 'goose', 'opencode', 'agy']
+    const isAcp = acpPrefixes.some(p => model === p || model.startsWith(p + '/'))
+    if (isAcp) {
+      const baseAgent = model.split('/')[0]
+      fetch('/api/acp/warmup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: baseAgent }),
+      }).catch(() => {})
+    }
+  }, [onModelChange])
 
   const inputDisabled = isStreaming || !!gate
 
@@ -152,8 +171,8 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
             <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
               args={tc.args} output={tc.output} durationMs={tc.durationMs} streamingOutput={tc.streamingOutput} />
           ))}
-          {(streamingText || streamingThinking) && (
-            <AssistantMessage content={streamingText} isStreaming={isStreaming} thinking={streamingThinking} />
+          {(streamingText || streamingThinking || isThinkingActive || isStreaming) && (
+            <AssistantMessage content={streamingText} isStreaming={isStreaming} thinking={streamingThinking} isThinkingActive={isThinkingActive} />
           )}
           {gate && (
             <GateCard gateId={gate.gateId} toolName={gate.toolName}
@@ -166,7 +185,8 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
         <LearningsChip sessionId={sessionId} />
       </div>
       <div className="max-w-[760px] mx-auto w-full">
-        <InputBar onSend={handleSend} disabled={inputDisabled} sessionId={sessionId} />
+        <InputBar onSend={handleSend} disabled={inputDisabled} sessionId={sessionId}
+          defaultModel={defaultModel} onModelChange={handleModelChange} />
       </div>
     </div>
   )

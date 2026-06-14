@@ -144,3 +144,16 @@
   .cursor-blink { animation: blink 1s step-end infinite; }
   @keyframes blink { 50% { opacity: 0; } }
 }
+
+/* ── Collapsible slide animation (sidebar projects, chats) ── */
+@keyframes collapsible-slide {
+  from { opacity: 0; clip-path: inset(0 0 100% 0); }
+  to   { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+[data-slot="collapsible-content"] {
+  overflow: hidden;
+  animation-name: collapsible-slide !important;
+  animation-duration: 0.2s !important;
+  animation-timing-function: ease-out !important;
+  animation-fill-mode: both !important;
+}
