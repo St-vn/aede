@@ -120,9 +120,15 @@ date_updated: 2026-06-14
 - `532c84d` `feat(ui): model persistence, ACP warmup trigger, thinking_start handler, collapsible animation`
 - `2a78110` `feat(acp+server): session persistence, npx package cache, new_session, warmup`
 
+### New commits — P0.1 batch (2026-06-14)
+- `6c40742` `feat(ui): docs landing page + per-task model wiring`
+- `8000c40` `feat(providers): OpenCode Zen + Go providers, per-provider config, compaction_model, curated MCP server configs`
+- `ba12e8a` `docs(roadmap): extend divergence with Phase 3 triage + add P0.5/0.6/0.7 to gap backlog`
+- `8a489a5` `docs(status): refresh handoff section (2026-06-14 snapshot for next session)`
+
 ### New planning docs
-- `docs-internal/roadmap/divergence.md` — the seam between aede (open-core) and the commercial SaaS. Defines what's in aede (§1), what's in the SaaS (§2), the import-surface contract (§3), three personal-vs-SaaS relationship options (§4), and a 10-step MVP→beta→launch path (§6).
-- `docs-internal/roadmap/phase2-gap-backlog.md` — 4 P0 items + 1 P1 item needed to finish Phase 2 of `aede-roadmap.md`. P0s: (1) LLM routing + OpenCode providers + curated MCP configs, (2) Sandboxing, (3) Skills/Plugins block, (4) Context selection tool.
+- `docs-internal/roadmap/divergence.md` — the seam between aede (open-core) and the commercial SaaS. §1-§5: what's in aede, what's in the SaaS, the import-surface contract, three personal-vs-SaaS relationship options, Phase 2 land-down. **§6 (NEW): Phase 3 triage** — aede vs SaaS vs defer vs ignore. §7: 10-step MVP→beta→launch path.
+- `docs-internal/roadmap/phase2-gap-backlog.md` — 7 P0 items + 1 P1 item. P0s: (1) **DONE** OpenCode routing/providers/MCP configs, (2) Sandboxing, (3) Skills/Plugins, (4) Context selection, **(5) Background Runtime daemon (NEW)**, **(6) OTel observability (NEW)**, **(7) FDE opt-in capture (NEW)**.
 
 ### Abandoned work (archived 2026-06-14)
 Moved to `%TEMP%\opencode\aede-abandoned-20260614-095331\` and gitignored:
@@ -144,11 +150,11 @@ See `docs-internal/roadmap/phase2-gap-backlog.md` for the prioritized list.
 
 ### How to pick up
 1. Read this section
-2. Read `docs-internal/roadmap/divergence.md` (§3, §6 are the load-bearing parts)
+2. Read `docs-internal/roadmap/divergence.md` (§3, §6, §7 are the load-bearing parts)
 3. Read `docs-internal/roadmap/phase2-gap-backlog.md` for the backlog
-4. `git log --oneline 3b83999..merge-phase2` to see all 36 Phase 2 commits
-5. `uv run pytest` to confirm 658 green
-6. Start P0.1 from the backlog (OpenCode providers + LLM routing + curated MCP server configs)
+4. `git log --oneline 3b83999..merge-phase2` to see all 40+ Phase 2 commits
+5. `uv run pytest` to confirm 668 green
+6. Start P0.4 (Context selection — smallest) or P0.2 (Sandboxing — most critical for SaaS)
 
 ### Open strategic decisions (not yet pinned down)
 - Personal aede vs SaaS relationship: user picked "not sure" (3 options in `divergence.md` §4)
