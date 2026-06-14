@@ -8,8 +8,9 @@ import logging
 import os
 import shutil
 import sys
+from pathlib import Path
 
-from .registry import AgentConfig
+from .registry import AgentConfig, ensure_acp_package
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,12 @@ class AcpClient:
         cmd = [self._config.command] + list(self._config.args)
         if self._config.model_override and self._config.name == "codex":
             cmd.extend(["--model", self._config.model_override])
+
+        home_dir = Path.home() / ".aede"
+        cached = ensure_acp_package(home_dir, self._config.command, self._config.args)
+        if cached is not None:
+            cmd = cached
+
         if sys.platform == 'win32':
             resolved = shutil.which(cmd[0])
             if resolved and resolved.lower().endswith(('.cmd', '.bat')):
@@ -125,15 +132,19 @@ class AcpClient:
         cwd: str = "",
         mcp_servers: Optional[list] = None,
         timeout: float = 60.0,
+        _meta: Optional[dict] = None,
     ) -> str:
         if mcp_servers is None:
             mcp_servers = []
+        params: dict = {
+            "cwd": cwd,
+            "mcpServers": mcp_servers,
+        }
+        if _meta is not None:
+            params["_meta"] = _meta
         try:
             result = await asyncio.wait_for(
-                self.send_request("session/new", {
-                    "cwd": cwd,
-                    "mcpServers": mcp_servers,
-                }),
+                self.send_request("session/new", params),
                 timeout=timeout,
             )
         except TimeoutError:

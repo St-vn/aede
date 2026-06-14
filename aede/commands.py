@@ -7,9 +7,13 @@ tokens, config, setkey).  The CLI loop in ``cli.py`` calls these handlers
 directly.
 """
 from __future__ import annotations
+import asyncio
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 COMMANDS = {
@@ -707,6 +711,29 @@ def handle_serve(
             console.print(f"[yellow]⚠ MCP bridge error: {e}[/yellow]")
     else:
         app.state.mcp_bridge = None
+
+    # Pre-warm ACP agents in parallel if enabled (B3).
+    acp_warmup = getattr(cfg, "acp_warmup", True)
+    if acp_warmup:
+        mgr = app.state.acp_manager
+        if mgr:
+            from aede.acp.registry import _BASE_AGENTS
+
+            async def _warm_acp():
+                tasks = []
+                for name, _, _ in _BASE_AGENTS:
+                    tasks.append(mgr.connect(name))
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for name, result in zip([n for n, _, _ in _BASE_AGENTS], results):
+                    if isinstance(result, Exception):
+                        logger.debug("ACP warmup failed for %s: %s", name, result)
+                        if console:
+                            console.print(f"[dim]ACP warmup: {name} — {result}[/dim]")
+                    else:
+                        if console:
+                            console.print(f"[dim]ACP warmup: {name} connected[/dim]")
+
+            asyncio.create_task(_warm_acp())
 
     console.print(f"[green]Starting aede backend server at http://{host}:{port}[/green]")
     console.print("[dim]Press Ctrl+C to stop.[/dim]")

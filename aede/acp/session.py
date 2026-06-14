@@ -25,8 +25,11 @@ class AcpSession:
         self,
         cwd: str = "",
         mcp_servers: Optional[list] = None,
+        _meta: Optional[dict] = None,
     ) -> str:
-        self._session_id = await self._client.new_session(cwd=cwd, mcp_servers=mcp_servers)
+        self._session_id = await self._client.new_session(
+            cwd=cwd, mcp_servers=mcp_servers, _meta=_meta,
+        )
         return self._session_id
 
     def adopt(self, session_id: str) -> None:

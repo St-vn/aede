@@ -609,10 +609,18 @@ class AcpProvider:
                 try:
                     config = manager._registry.get(base_agent)
                     if config.thinking_budget != thinking_budget:
-                        if base_agent in manager.list_connected():
-                            await manager.disconnect(base_agent)
                         config.thinking_budget = thinking_budget
                         manager._registry.upsert(config)
+                        _meta = {
+                            "claudeCode": {
+                                "options": {
+                                    "thinking": {"budget_tokens": thinking_budget},
+                                },
+                            },
+                        }
+                        if agent in manager.list_connected():
+                            await manager.new_session(agent, _meta=_meta)
+                            return manager.active_session()
                 except KeyError:
                     pass
 

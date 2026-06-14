@@ -225,6 +225,13 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 if resolved_content != content:
                     await websocket.send_json({"type": "console_message", "content": "Resolved @ file references"})
 
+                # Send thinking_start immediately for thinking-capable models
+                if getattr(cfg, "thinking_budget", 0) > 0:
+                    try:
+                        await websocket.send_json({"type": "thinking_start"})
+                    except Exception:
+                        pass
+
                 # Run the turn in the background so we can still receive gate responses
                 print(f"[WS#{hid}] Starting agent.run_turn...", flush=True)
                 turn_task = asyncio.create_task(agent.run_turn(resolved_content))
@@ -1258,6 +1265,26 @@ async def acp_disconnect(request: Request, payload: dict):
         raise HTTPException(status_code=400, detail="name is required")
     await mgr.disconnect(name)
     return {"status": "disconnected", "name": name}
+
+
+@app.post("/api/acp/warmup")
+async def acp_warmup(request: Request, payload: dict):
+    """Fire-and-forget warmup of an ACP agent subprocess.
+    
+    The UI calls this when the user selects an ACP model in the dropdown,
+    so the subprocess is already booted by the time they type their first
+    message.  Idempotent — returns immediately if already connected.
+    """
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        return {"status": "skipped", "reason": "no_manager"}
+    name = payload.get("name")
+    if not name:
+        return {"status": "skipped", "reason": "no_name"}
+    if name in mgr.list_connected():
+        return {"status": "already_connected", "name": name}
+    asyncio.create_task(mgr.connect(name))
+    return {"status": "warming_up", "name": name}
 
 
 @app.get("/api/acp/status")
