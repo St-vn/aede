@@ -1,6 +1,6 @@
 ---
 type: internal-doc
-tags: [docs-internal, roadmap, phase2, backlog]
+tags: [docs-internal, roadmap, phase2, backlog, phase3]
 date_updated: 2026-06-14
 ---
 
@@ -107,6 +107,66 @@ date_updated: 2026-06-14
 
 ---
 
+### P0.5 Background Runtime — Daemon + Timers + Cron + Event triggers
+
+**Source spec:** `aede-roadmap.md` lines 338-348 (Phase 3)
+
+**What ships:**
+- **`aede/daemon/`** — long-running host process (`aede daemon`). The foreground CLI attaches to a running daemon instead of being the only runtime. IPC over a Unix socket (POSIX) or named pipe (Windows).
+- **`aede/daemon/timers.py`** — one-shot delays ("in 20 minutes", "at 3pm"). Persisted across daemon restarts.
+- **`aede/daemon/cron.py`** — repeating schedules ("every Monday at 9am"). Persisted; survives restart.
+- **`aede/daemon/events.py`** — fire session on file-watch (path changes) or inbound webhook. The daemon hosts the watchers/listeners.
+- **Client attach API** — `aede --attach` connects to a running daemon; the REPL goes through the daemon.
+
+**Size:** ~600-1000 LOC + tests. Large.
+
+**Dependencies:** APScheduler (or roll our own); `watchfiles` for file-watch; HTTP server for webhooks.
+
+**Verification:** integration tests with the daemon running; restart-survives for persisted timers/cron.
+
+**Why P0 for SaaS:** without a daemon, the SaaS is single-shot (one CLI run per user per request). The SaaS is a daemon that services many concurrent users. **Non-negotiable for multi-tenant.**
+
+---
+
+### P0.6 Observability — OTel adapter for TraceLogger
+
+**Source spec:** `aede-roadmap.md` lines 398-401 (Phase 3)
+
+**What ships:**
+- **`aede/observability/otel.py`** — wraps the existing `aede/trace/logger.py` TraceLogger with OpenTelemetry spans. One span per turn, child spans per tool call, attributes for token counts.
+- **OTel exporter config** — `cfg.otel_endpoint` (default: `localhost:4317` for a local Jaeger/Tempo). When unset, no-op (personal aede doesn't phone home).
+- **Per-process correlation** — trace_id is logged alongside session_id so the SaaS can join traces across user requests.
+
+**Size:** ~200-300 LOC + tests. Medium.
+
+**Dependencies:** `opentelemetry-api`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp` (new deps).
+
+**Verification:** integration test with a local OTel collector; assert spans are emitted with correct attributes.
+
+**Why P0 for SaaS:** the SaaS needs cross-tenant trace aggregation for debugging + SLA. The personal install doesn't need this (the local trace is enough), so it's opt-in via `cfg.otel_endpoint`.
+
+---
+
+### P0.7 FDE — opt-in capture + redaction
+
+**Source spec:** `aede-roadmap.md` lines 405-413 (Phase 3)
+
+**What ships:**
+- **`aede/observability/fde_capture.py`** — opt-in (default OFF) capture of: tool call name + args (redacted), tool result (truncated + redacted), outcome, latency. Persisted to `<data_dir>/fde/<session_id>.jsonl` locally.
+- **`aede/observability/redact.py`** — heuristic PII/secret redaction (API keys, email, paths under `~/`, etc.) before any capture. Tunable allowlist/denylist.
+- **Consent gate** — `cfg.fde_enabled` flag, explicit consent (not silently set). When OFF, capture is a no-op.
+- **Upload path stub** — when `cfg.fde_endpoint` is set, the captured JSONL is POSTed (with re-redaction check) to the endpoint. The SaaS provides the endpoint; aede just ships the client.
+
+**Size:** ~200-400 LOC + tests. Medium.
+
+**Dependencies:** none new (stdlib re + json + httpx already there).
+
+**Verification:** TDD on the redaction patterns; integration test that the upload is a no-op when no endpoint; privacy test that secrets are redacted.
+
+**Why P0 for SaaS:** the SaaS feedback loop depends on real usage data. Without capture, the SaaS is flying blind. **Opt-in + redact-by-default + clear consent** — non-negotiable for ethical reasons.
+
+---
+
 ## P1 — defer to v0.3 (after the SaaS MVP ships)
 
 ### P1.1 Interface Additions gaps (UI polish)
@@ -123,13 +183,16 @@ date_updated: 2026-06-14
 
 | Sprint | Items | Approx size |
 |---|---|---|
-| Sprint 1 (this session?) | P0.1: OpenCode providers + LLM routing + curated MCP configs | 1-2 days |
+| Sprint 1 (DONE) | P0.1: OpenCode providers + LLM routing + curated MCP configs (commits `8000c40` + `6c40742`) | 1-2 days |
 | Sprint 2 | P0.4: Context selection tool | 0.5 day |
 | Sprint 3 | P0.2: Sandboxing | 2-3 days |
-| Sprint 4 | P0.3: Skills and Plugins block | 3-4 days |
-| Sprint 5 | P1.1: UI polish | 1-2 days |
+| Sprint 4 | P0.5: Background Runtime (daemon) | 2-3 days |
+| Sprint 5 | P0.3: Skills and Plugins block (or import from Claude Code) | 3-4 days |
+| Sprint 6 | P0.6: Observability (OTel) | 1 day |
+| Sprint 7 | P0.7: FDE opt-in capture | 1-2 days |
+| Sprint 8 | P1.1: UI polish | 1-2 days |
 
-**Sprint 1 is the right starting point** — it unblocks the SaaS (multiple providers, routing = capacity to handle multiple tenants with different cost/latency needs) and is the smallest of the four P0s.
+**Sprint 1 done (2026-06-14).** The next step is Sprint 2 (P0.4 Context selection — smallest remaining P0) or Sprint 3 (P0.2 Sandboxing — most critical for SaaS multi-tenant). Pick based on whether you want momentum (P0.4) or the highest-leverage piece (P0.2).
 
 ---
 

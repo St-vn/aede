@@ -146,7 +146,72 @@ The SaaS adds **multi-tenant wrappers** around the same modules: per-tenant `Aed
 
 ---
 
-## 6. Concrete next moves for the SaaS
+## 6. Phase 3 triage — aede vs SaaS vs defer vs ignore
+
+**Multi-agent orchestration is explicitly omitted** per the 2026-06-14 decision (the user wants aede to be a single-agent harness, not a multi-agent orchestrator). This removes the "Multi-agent debate" item entirely and keeps the orchestrator/single-agent stance from `aede-roadmap.md`.
+
+For each Phase 3 block, four destinations:
+
+### aede (open-core) — lands in aede regardless
+
+| Block | Why in aede |
+|---|---|
+| Sandboxing Upgrade (microVM) | Gated by Docker→microVM threshold; aede owns the sandboxing primitive. The SaaS reuses via the same import surface. |
+| Memory Upgrade — pgvector | Gated by codebase size threshold; aede owns the memory store. |
+| Memory Upgrade — Learning TTL + pruning | Quality-of-life for any user; the SaaS reuses. |
+| Memory Upgrade — Poisoning guards | Security; required for SaaS users with adversarial inputs. |
+| Self-Improvement — Skill auto-creation | The Hermes pattern; aede owns the loop. |
+| Self-Improvement — Skill curator | Pruning companion to auto-creation. |
+| Self-Improvement — DSPy/GEPA | Locked: needs metric + held-out set first. aede owns the optimization loop when ready. |
+| ACP Chat Integration | Done in P0.1 commit `8000c40` + `6c40742`. |
+| Background Runtime — Daemon | The multi-tenant foundation. The SaaS is a daemon process. **Must-have pre-divergence.** |
+| Background Runtime — Timers / cron / event triggers | The daemon needs these to actually do anything. **Must-have pre-divergence.** |
+| Workflow Automation | n8n-style; aede owns the loop. |
+| Observability (OTel, Langfuse) | The `TraceLogger` is already in aede; OTel is a thin adapter. **Must-have pre-divergence** (the SaaS needs cross-tenant aggregation). |
+| Field Feedback Loop (FDE) — opt-in capture | Aede-side: the capture + redaction primitive. **Must-have pre-divergence** for SaaS feedback loop. |
+
+### SaaS-only — does NOT land in aede
+
+| Block | Why SaaS-only |
+|---|---|
+| Multi-Channel Gateway (Slack, etc.) | Per-tenant channel config + per-channel auth — aede doesn't know what channels exist. SaaS owns. |
+| Field Feedback Loop (FDE) — feedback → spec/evals | The aggregation + privacy gate + consent UI is SaaS-side. The aede-side capture (above) is the seam. |
+| Customer-facing observability dashboards | The SaaS has the users; aede doesn't. |
+| Stripe / billing / pricing tiers | SaaS. |
+
+### Defer (post-divergence, build in either side as needed)
+
+| Block | Why defer |
+|---|---|
+| Visual Agent Builder | UX, not capability gap. v0.3+. |
+| Keybind customization | UX, not core. v0.3+. |
+| Keybind import | Depends on keybind customization. v0.3+. |
+| Cross-harness interop | Distinct from ACP (which is already in). Build when a user actually needs to drive Claude Code from aede live. v0.3+. |
+| Background Runtime — Wake word ("hey aede") | Low priority, niche use case. v0.4+. |
+| Other Tools (Full Browser Use, image gen, TTS) | Playwright MCP covers browser; image/TTS are niche. v0.4+. |
+| Workflow Automation | The pattern is clear; the actual n8n integration is large. Build when there's a real use case. v0.3+. |
+| Self-Improvement — Executable skill bodies | **Locked: "v1 self-improvement writes typed *learnings* only, never code"** (defer note line 26). v0.4+ at earliest. |
+
+### Ignore entirely (do not build)
+
+| Block | Why ignore |
+|---|---|
+| Multi-agent debate | **Locked: research-confirmed loses to self-consistency at equal budget (2.1-3.4×).** Asymmetric critic covers the need. |
+| Executable skill bodies (auto-generated code) | Locked (above). Hard "no" until microVM sandbox + reproducibility gate exist. |
+
+### Net effect on the gap backlog
+
+Adding Phase 3 to the pre-divergence must-haves means P0 expands. New P0 items to add to the gap backlog:
+
+- **P0.5 Background Runtime — Daemon + Timers + Cron + Event triggers** (~600-1000 LOC). The SaaS cannot be multi-tenant without a daemon.
+- **P0.6 Observability — OTel adapter for TraceLogger** (~200-300 LOC). The SaaS needs cross-tenant trace aggregation.
+- **P0.7 FDE — opt-in capture + redaction** (~200-400 LOC). Required for the SaaS feedback loop.
+
+The Memory Upgrade (pgvector, TTL, poisoning) and Self-Improvement (auto-creation, curator) are not pre-divergence must-haves — they can land in aede after the SaaS fork, and the SaaS updates its pin when they ship.
+
+---
+
+## 7. Concrete next moves for the SaaS
 
 In rough dependency order (lowest first):
 
@@ -190,7 +255,7 @@ The MVP doesn't need answers to all four — Q1 and Q4 are the urgent ones.
 ## 8. What this doc is NOT
 
 - Not a product spec for the SaaS. The SaaS design lives in the SaaS repo, not here.
-- Not a roadmap for aede's Phase 3 features. Those are in `overview.md` and `aede-roadmap.md`.
+- Not the canonical Phase 3 backlog for aede. That lives in `phase2-gap-backlog.md` and `aede-roadmap.md`. §6 here is the *triage* (aede vs SaaS vs defer vs ignore), not the full spec.
 - Not a list of features the SaaS should copy from aede. The SaaS picks what it needs.
 
 The sole purpose: **define the seam** so aede can keep evolving freely while the SaaS depends on a stable subset.
