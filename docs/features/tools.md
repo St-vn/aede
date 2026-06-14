@@ -27,6 +27,7 @@ aede provides a set of built-in tools that the agent can invoke during a convers
 |------|-------|-------------|
 | `spawn_subagent` | No | Delegate a task to a loaded subagent |
 | `session_search` | No | FTS5 search over past session messages |
+| `select_context` | No | Pull relevant context from up to 4 sources (learnings, sessions, docs, files) in one call. See [context-selection](context-selection.md). |
 | `write_learning` | Yes | Persist a learning to the memory store |
 
 ## Tool Approval

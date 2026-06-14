@@ -54,6 +54,7 @@ class ToolRouter:
         _agent_registry: dict[str, Any] | None = None,
         _session_id: str | None = None,
         data_dir: "Path | None" = None,
+        project_dir: "Path | None" = None,
         _get_bridge: "Callable[[], Any] | None" = None,
     ) -> None:
         self._shell = shell
@@ -61,6 +62,7 @@ class ToolRouter:
         self._max_tokens = tool_output_max_tokens
         self._db = db
         self._data_dir = data_dir
+        self._project_dir = project_dir
         self._session_auto_approve: set[str] = set()
         self._cfg = _cfg
         self._gate_store = _gate_store
@@ -105,6 +107,12 @@ class ToolRouter:
         from aede.tools.search import session_search
         _db = self._db
         reg["session_search"] = lambda args: session_search(args, db=_db)
+
+        from aede.tools.context import select_context
+        _db, _data_dir, _project_dir = self._db, self._data_dir, self._project_dir
+        reg["select_context"] = lambda args: select_context(
+            args, db=_db, data_dir=_data_dir, project_dir=_project_dir,
+        )
 
         _data_dir = self._data_dir
         reg["write_learning"] = lambda args: _write_learning_tool(args, data_dir=_data_dir)
@@ -518,6 +526,24 @@ _TOOL_SCHEMAS: dict[str, dict] = {
                 },
             },
             "required": ["type", "content", "source"],
+        },
+    },
+    "select_context": {
+        "name": "select_context",
+        "description": ("Pull relevant context from past learnings, sessions, project docs, "
+                        "and source files in one call. Use when the auto-injected prefix is "
+                        "insufficient or you need a non-learnings source."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query":   {"type": "string",  "description": "Natural-language search query."},
+                "sources": {"type": "array",   "items": {"type": "string", "enum": ["learnings","sessions","docs","files"]},
+                            "default": ["learnings","sessions","docs","files"],
+                            "description": "Which sources to query. Default: all four."},
+                "k":       {"type": "integer", "minimum": 1, "maximum": 20, "default": 5,
+                            "description": "Total result count; divided roughly equally across sources."},
+            },
+            "required": ["query"],
         },
     },
 }

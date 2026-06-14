@@ -101,6 +101,28 @@ CREATE TRIGGER IF NOT EXISTS learnings_au AFTER UPDATE ON learnings BEGIN
   INSERT INTO learnings_fts(learnings_fts, rowid, content) VALUES('delete', old.rowid, old.content);
   INSERT INTO learnings_fts(rowid, content) VALUES (new.rowid, new.content);
 END;
+CREATE TABLE IF NOT EXISTS docs (
+    path    TEXT PRIMARY KEY,
+    mtime   INTEGER NOT NULL,
+    size    INTEGER NOT NULL,
+    content TEXT NOT NULL
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(
+    path UNINDEXED,
+    content,
+    content='docs',
+    content_rowid='rowid'
+);
+CREATE TRIGGER IF NOT EXISTS docs_ai AFTER INSERT ON docs BEGIN
+  INSERT INTO docs_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS docs_ad AFTER DELETE ON docs BEGIN
+  INSERT INTO docs_fts(docs_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS docs_au AFTER UPDATE ON docs BEGIN
+  INSERT INTO docs_fts(docs_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+  INSERT INTO docs_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
 """
 
 
@@ -137,6 +159,7 @@ class DB:
         self.con.execute("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')")
         # Rebuild learnings FTS index idempotently (same pattern as messages_fts)
         self.con.execute("INSERT INTO learnings_fts(learnings_fts) VALUES('rebuild')")
+        self.con.execute("INSERT INTO docs_fts(docs_fts) VALUES('rebuild')")
         self.con.commit()
         # BC-06 migration: add role column to token_usage if it is missing.
         # SQLite does not support IF NOT EXISTS on ADD COLUMN — use try/except.
@@ -519,6 +542,14 @@ class DB:
         return self.con.execute(
             "SELECT * FROM learnings ORDER BY created_at ASC"
         ).fetchall()
+
+    def insert_doc(self, path: str, mtime: int, size: int, content: str) -> None:
+        """Insert or replace a single docs row (path is the PK)."""
+        self.con.execute(
+            "INSERT OR REPLACE INTO docs (path, mtime, size, content) VALUES (?,?,?,?)",
+            (path, mtime, size, content),
+        )
+        self.con.commit()
 
     def get_token_usage_detail(self, session_id: str) -> list[dict]:
         """Return per-turn token usage data for a session."""
