@@ -1,7 +1,7 @@
 ---
 type: internal-doc
 tags: [docs-internal, status]
-date_updated: 2026-06-10
+date_updated: 2026-06-14
 ---
 
 # Feature Inventory
@@ -99,3 +99,63 @@ date_updated: 2026-06-10
 | Web UI — real-time collaboration | [ ] | Not started |
 | Graph memory (knowledge graphs) | [ ] | Deferred to Phase 3+ |
 | GRPO-based skill evolution | [ ] | Deferred — GEPA chosen instead |
+
+---
+
+## Handoff — 2026-06-14
+
+**For the next session picking up from here.**
+
+### Branch state
+- Working branch: `merge-phase2`
+- Ahead of `main` by 36 commits (full Phase 2 work: MCP, Memory, Agent System, Basic Correctness, ACP, Import, Web UI)
+- **NOT yet merged to main** (per user instruction — not rushing the merge)
+- Working tree: clean
+- Tests: **658 passing in 22.5s**
+
+### New commits this session (5)
+- `77ce109` `docs(roadmap): add phase2 gap backlog — P0/P1 list for SaaS MVP`
+- `27dae15` `docs(roadmap): add divergence point roadmap (aede open-core vs SaaS seam)`
+- `eb2fddd` `chore: gitignore archived abandoned side-quests (remediation, GTM research)`
+- `532c84d` `feat(ui): model persistence, ACP warmup trigger, thinking_start handler, collapsible animation`
+- `2a78110` `feat(acp+server): session persistence, npx package cache, new_session, warmup`
+
+### New planning docs
+- `docs-internal/roadmap/divergence.md` — the seam between aede (open-core) and the commercial SaaS. Defines what's in aede (§1), what's in the SaaS (§2), the import-surface contract (§3), three personal-vs-SaaS relationship options (§4), and a 10-step MVP→beta→launch path (§6).
+- `docs-internal/roadmap/phase2-gap-backlog.md` — 4 P0 items + 1 P1 item needed to finish Phase 2 of `aede-roadmap.md`. P0s: (1) LLM routing + OpenCode providers + curated MCP configs, (2) Sandboxing, (3) Skills/Plugins block, (4) Context selection tool.
+
+### Abandoned work (archived 2026-06-14)
+Moved to `%TEMP%\opencode\aede-abandoned-20260614-095331\` and gitignored:
+- `aede/skills/remediation/` (SARIF normalizer)
+- `skills/remediation/` (SKILL.md + methodology + k6)
+- `docs/kaizen/2026-06-12-remediation-skill-bootstrap.md`
+- `docs-internal/research/ai-gtm-landscape-analysis.md`
+- `scripts/reddit_wedge_count.py`
+- Reason: "security for vibe coding" market is oversaturated, niche occupied by big companies. Not coming back. The Skills/AGENT.md customization that mattered is already shipped via the Agent System spec.
+
+### Phase 2 of original roadmap — coverage
+~60% on `merge-phase2`. Missing 40%:
+- ❌ Sandboxing (entire block — must-have for SaaS)
+- ❌ Tool Additions (SearXNG, Crawl4AI, Playwright MCP, Docling MCP, GitHub MCP, git/gh typed tools, LLM routing layer)
+- ❌ Skills and Plugins (plugin toggle + sdlc-engineer + configure + research + kaizen)
+- ❌ Interface Additions gaps (session rename, batch approval menu, in-TUI config edit, context selection tool)
+
+See `docs-internal/roadmap/phase2-gap-backlog.md` for the prioritized list.
+
+### How to pick up
+1. Read this section
+2. Read `docs-internal/roadmap/divergence.md` (§3, §6 are the load-bearing parts)
+3. Read `docs-internal/roadmap/phase2-gap-backlog.md` for the backlog
+4. `git log --oneline 3b83999..merge-phase2` to see all 36 Phase 2 commits
+5. `uv run pytest` to confirm 658 green
+6. Start P0.1 from the backlog (OpenCode providers + LLM routing + curated MCP server configs)
+
+### Open strategic decisions (not yet pinned down)
+- Personal aede vs SaaS relationship: user picked "not sure" (3 options in `divergence.md` §4)
+- OpenCode ACP agent: keep as fallback or remove? (user leaning toward remove if API covers it)
+- SaaS MVP surface: Option 1 (multi-tenant cloud harness) or Option 3 (new product on top of aede)? user said "probably 1. or 3."
+
+### OpenCode providers (P0.1)
+- OpenCode Zen: free tier; OpenAI-compatible API
+- OpenCode Go: paid tier; OpenAI-compatible API
+- Need to research the API endpoints + model list before coding (write `.claude/docs/research/opencode-providers.md`)
