@@ -30,3 +30,14 @@ credentials.json
 /docs/plans/
 # sdlc-engineer artifacts (spec/design/tasks scratch — internal only)
 /docs/sdlc-engineer/
+
+# ---------------------------------------------------------------
+# ABANDONED — archived 2026-06-14 to %TEMP%\opencode\aede-abandoned-*
+# (remediation = "security for vibe coding" side-quest; market is
+#  oversaturated, niche occupied by big companies. Not coming back.)
+# ---------------------------------------------------------------
+/aede/skills/remediation/
+/skills/remediation/
+/docs/kaizen/2026-06-12-remediation-skill-bootstrap.md
+/docs-internal/research/ai-gtm-landscape-analysis.md
+/scripts/reddit_wedge_count.py
