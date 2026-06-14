@@ -1,0 +1,33 @@
+# aede MCP server configurations
+# Copy desired blocks into your aede.yml or config.yml under mcp_servers:
+#
+# mcp_servers:
+#   <paste server block here>
+
+# SearXNG — self-hosted metasearch engine
+# Run: docker run -d -p 8080:8080 searxng/searxng
+searxng:
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-searxng"]
+  env:
+    SEARXNG_URL: "http://localhost:8080"
+
+# Playwright — browser automation and testing
+# Requires: npm install -g @playwright/mcp
+playwright:
+  command: npx
+  args: ["-y", "@playwright/mcp"]
+
+# Docling — document parsing (PDF, DOCX, HTML)
+# Requires: pip install docling-mcp
+docling:
+  command: docling-mcp
+  args: ["--transport", "stdio"]
+
+# GitHub — repository and issue management
+# Requires: GITHUB_TOKEN env var (https://github.com/settings/tokens)
+github:
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-github"]
+  env:
+    GITHUB_TOKEN: "${GITHUB_TOKEN}"

@@ -538,6 +538,23 @@ ACP_MODEL_IDS: frozenset[str] = frozenset({
     "goose/anthropic-claude-sonnet-4-6", "goose/openai-gpt-4o",
 })
 
+# Models that route through OpenCode Zen (free + paid chat-completions)
+# All use /v1/chat/completions via OpenAIProvider.
+ZEN_MODEL_IDS: frozenset[str] = frozenset({
+    # Free models
+    "deepseek-v4-flash-free", "nemotron-3-ultra-free", "big-pickle",
+    "mimo-v2.5-free", "qwen3.6-plus-free", "minimax-m3-free", "north-mini-code-free",
+    # Paid chat-completions models
+    "grok-build-0.1", "deepseek-v4-flash", "glm-5.1", "glm-5",
+    "minimax-m2.7", "minimax-m2.5", "kimi-k2.6", "kimi-k2.5",
+})
+
+# Models that route through OpenCode Go ($10/mo subscription)
+GO_MODEL_IDS: frozenset[str] = frozenset({
+    "deepseek-v4-pro", "deepseek-v4-flash", "glm-5.1", "kimi-k2.6",
+    "minimax-m2.7", "minimax-m2.5",
+})
+
 
 class AcpProvider:
     """Routes chat turns through ACP subprocess agents.
@@ -736,6 +753,32 @@ def get_provider(cfg: Any, acp_manager: Any = None) -> AnthropicProvider | OpenA
             model=model,
             acp_manager=acp_manager,
         )
+
+    # OpenCode Zen/Go routing — static model set matching
+    # cfg.providers overrides api_key_env and base_url per provider name.
+    if model in ZEN_MODEL_IDS:
+        providers: dict = getattr(cfg, "providers", {})
+        zen_cfg: dict = providers.get("opencode-zen", {}) if providers else {}
+        env_key: str = zen_cfg.get("api_key_env", "OPENCODE_ZEN_API_KEY")
+        base: str = zen_cfg.get("base_url", "https://opencode.ai/zen/v1")
+        api_key: str | None = os.environ.get(env_key)
+        if not api_key:
+            raise RuntimeError(
+                f"{env_key} is not set. Use /setkey {env_key} <key> first."
+            )
+        return OpenAIProvider(api_key=api_key, base_url=base)
+
+    if model in GO_MODEL_IDS:
+        providers = getattr(cfg, "providers", {})
+        go_cfg: dict = providers.get("opencode-go", {}) if providers else {}
+        env_key = go_cfg.get("api_key_env", "OPENCODE_GO_API_KEY")
+        base = go_cfg.get("base_url", "https://opencode.ai/zen/go")
+        api_key = os.environ.get(env_key)
+        if not api_key:
+            raise RuntimeError(
+                f"{env_key} is not set. Use /setkey {env_key} <key> first."
+            )
+        return OpenAIProvider(api_key=api_key, base_url=base)
 
     is_anthropic_model = (
         model.startswith("claude-") or model.startswith("anthropic/")

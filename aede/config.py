@@ -37,6 +37,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Learnings retrieval settings (Phase 2 Memory)
     "learnings_top_k": 5,
     "learnings_max_tokens": 2000,
+    # Provider configurations (e.g. opencode-zen, opencode-go)
+    "providers": {},
+    # Compaction model override — None means use active model
+    "compaction_model": None,
     # MCP server configurations
     "mcp_servers": {},
 }
@@ -133,6 +137,10 @@ class AedeConfig:
         # Learnings retrieval settings
         self.learnings_top_k: int = data.get("learnings_top_k", DEFAULT_CONFIG["learnings_top_k"])
         self.learnings_max_tokens: int = data.get("learnings_max_tokens", DEFAULT_CONFIG["learnings_max_tokens"])
+        # Provider configurations (e.g. opencode-zen, opencode-go)
+        self.providers: dict[str, Any] = data.get("providers") or {}
+        # Compaction model override — None means use active model
+        self.compaction_model: str | None = data.get("compaction_model") or None
         # MCP server configurations
         raw_mcp = data.get("mcp_servers") or data.get("mcpServers") or {}
         from aede.mcp.client import _parse_mcp_servers

@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, reference]
-date_updated: 2026-06-10
+date_updated: 2026-06-14
 ---
 
 # Config Keys
@@ -30,6 +30,13 @@ date_updated: 2026-06-10
 |-----|------|---------|-------------|
 | `api_base_url` | string | `null` | OpenAI-compatible base URL (e.g., `https://openrouter.ai/api/v1`) |
 | `model_prices` | object | `{}` | Price overrides per model (input/output/cache_read per million tokens) |
+
+## Providers
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `providers` | object | `{}` | Named provider configs with `api_key_env` and `base_url` |
+| `compaction_model` | string | `null` | Model ID for compaction summarization (null = use active model) |
 
 ## Reasoning
 

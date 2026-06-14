@@ -182,6 +182,46 @@ def test_edit_config_file_spawns_editor(tmp_home, tmp_path):
         mock_run.assert_called_once_with(["dummy-editor", str(path)])
 
 
+# ---------------------------------------------------------------------------
+# P01-02 — providers config block
+# ---------------------------------------------------------------------------
+
+def test_providers_block_round_trip(tmp_home, tmp_path):
+    """providers: block round-trips through load_config."""
+    import yaml
+    from aede.config import write_config_value
+
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    (project_dir / "aede.yml").write_text(
+        yaml.dump({
+            "providers": {
+                "opencode-zen": {
+                    "api_key_env": "OPENCODE_ZEN_API_KEY",
+                    "base_url": "https://opencode.ai/zen/v1",
+                },
+                "opencode-go": {
+                    "api_key_env": "OPENCODE_GO_API_KEY",
+                    "base_url": "https://opencode.ai/zen/go",
+                },
+            },
+        })
+    )
+    cfg = load_config(home=tmp_home, project_dir=project_dir)
+    assert "opencode-zen" in cfg.providers
+    assert "opencode-go" in cfg.providers
+    assert cfg.providers["opencode-zen"]["api_key_env"] == "OPENCODE_ZEN_API_KEY"
+    assert cfg.providers["opencode-zen"]["base_url"] == "https://opencode.ai/zen/v1"
+    assert cfg.providers["opencode-go"]["api_key_env"] == "OPENCODE_GO_API_KEY"
+    assert cfg.providers["opencode-go"]["base_url"] == "https://opencode.ai/zen/go"
+
+
+def test_providers_default_empty(tmp_home):
+    """When no providers: block is set, cfg.providers is empty dict."""
+    cfg = load_config(home=tmp_home, project_dir=tmp_home)
+    assert cfg.providers == {}
+
+
 def test_mcp_config_accepts_camelCase(tmp_home):
     """AedeConfig accepts mcpServers (camelCase) as alias for mcp_servers."""
     from aede.config import AedeConfig
@@ -198,4 +238,20 @@ def test_mcp_config_accepts_camelCase(tmp_home):
     cfg = AedeConfig(data=data, home=tmp_home)
     assert "playwright" in cfg.mcp_servers
     assert cfg.mcp_servers["playwright"].command == "npx"
+
+
+def test_compaction_model_in_default_config():
+    from aede.config import DEFAULT_CONFIG
+    assert "compaction_model" in DEFAULT_CONFIG
+    assert DEFAULT_CONFIG["compaction_model"] is None
+
+
+def test_compaction_model_defaults_to_none(tmp_home):
+    cfg = AedeConfig(data={}, home=tmp_home)
+    assert cfg.compaction_model is None
+
+
+def test_compaction_model_round_trip(tmp_home):
+    cfg = AedeConfig(data={"compaction_model": "deepseek-v4-flash-free"}, home=tmp_home)
+    assert cfg.compaction_model == "deepseek-v4-flash-free"
 

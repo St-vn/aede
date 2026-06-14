@@ -1,37 +1,53 @@
 ---
 type: doc
 tags: [docs, publishing]
-date_updated: 2026-06-10
+date_updated: 2026-06-14
 ---
 
-# Publishing docs to GitHub Pages
+# Publishing docs
 
-## Current setup (zero build step)
+## Hosting on Vercel
 
-This repo uses GitHub Pages with the `/docs` folder on `main` branch as source:
+The docs are part of the Next.js app in `ui/`, deployed to Vercel.
 
-1. **GitHub repo → Settings → Pages**
-2. Source: **Deploy from a branch**
-3. Branch: `main`, folder: `/docs`
-4. URL: `https://<org>.github.io/aede/`
+### Vercel configuration
 
-No build step needed — markdown renders natively via GitHub's built-in Pages support. Relative links (`[link](features/tools.md)`) work automatically.
+1. Connect the repo to Vercel (already linked to `aede.dev`)
+2. Framework preset: **Next.js**
+3. Root directory: `ui/`
+4. Build command: `npm run build`
+5. Output directory: `.next` (automatic)
 
-## MkDocs (future polish)
+### Domain
 
-When you want a sidebar, search, and dark mode:
+The docs live at `https://aede.dev/docs/` alongside the web UI at `https://aede.dev/`.
+
+### Local preview
 
 ```bash
-pip install mkdocs mkdocs-material
-mkdocs new .
-# Edit mkdocs.yml with nav structure
-# Deploy via GitHub Action: mhausenblend/mkdocs-deploy-gh-pages
+cd ui
+npm run dev
+# Docs at http://localhost:3000/docs/
 ```
 
-Add `mkdocs.yml` at repo root, a GitHub Action to `deploy.yml`, and switch Pages source to "GitHub Actions".
+## How it works
 
-## Notes
+- Markdown content lives in `docs/` at the repo root
+- The Next.js app in `ui/` reads `../docs/` at build time
+- `generateStaticParams` pre-renders every `.md` file as a static page
+- Syntax highlighting via Shiki (github-dark theme)
+- Sidebar nav is built automatically from the docs directory structure
 
-- `llms.txt` and `llms-full.txt` are for LLM context ingestion — they must be regenerated when docs change
-- Internal docs in `docs-internal/` are **not** published (only `docs/` is)
-- `docs/adr/`, `docs/kaizen/`, `docs/plans/`, `docs/sdlc-engineer/` are internal — they publish because they live under `docs/`, but aren't linked from the index
+### Excluded from nav
+
+- `docs/plans/`, `docs/adr/`, `docs/kaizen/`, `docs/sdlc-engineer/` — internal planning docs, excluded from sidebar
+- `docs/PUBLISHING.md`, `docs/SOURCE_OF_TRUTH.md` — not linked from nav (accessible by direct URL)
+
+### Link format
+
+All internal links use `.md` extensions in source. The build rewrites them to `/docs/slug` routes automatically.
+
+### LLM ingestion
+
+- `llms.txt` and `llms-full.txt` remain in `docs/` — they're accessible at `https://aede.dev/docs/llms.txt`
+- They must be regenerated when docs change (manual for now)

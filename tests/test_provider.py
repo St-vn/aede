@@ -78,6 +78,79 @@ class TestGetProvider:
         with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
             get_provider(cfg)
 
+    # -----------------------------------------------------------------------
+    # P01-03, P01-04 — OpenCode Zen and Go providers
+    # -----------------------------------------------------------------------
+
+    def test_opencode_zen_routes_to_openai_compatible(self, monkeypatch):
+        monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-test-key")
+        from aede.provider import get_provider, OpenAIProvider
+        cfg = _make_cfg(model="deepseek-v4-flash-free")
+        cfg.providers = {
+            "opencode-zen": {
+                "api_key_env": "OPENCODE_ZEN_API_KEY",
+                "base_url": "https://opencode.ai/zen/v1",
+            },
+        }
+        provider = get_provider(cfg)
+        assert isinstance(provider, OpenAIProvider)
+        assert provider._base_url == "https://opencode.ai/zen/v1"
+        assert provider._api_key == "zen-test-key"
+
+    def test_opencode_zen_missing_key_raises(self, monkeypatch):
+        monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
+        from aede.provider import get_provider
+        cfg = _make_cfg(model="deepseek-v4-flash-free")
+        cfg.providers = {
+            "opencode-zen": {
+                "api_key_env": "OPENCODE_ZEN_API_KEY",
+                "base_url": "https://opencode.ai/zen/v1",
+            },
+        }
+        with pytest.raises(RuntimeError, match="OPENCODE_ZEN_API_KEY"):
+            get_provider(cfg)
+
+    def test_opencode_go_routes_to_openai_compatible(self, monkeypatch):
+        monkeypatch.setenv("OPENCODE_GO_API_KEY", "go-test-key")
+        from aede.provider import get_provider, OpenAIProvider
+        cfg = _make_cfg(model="deepseek-v4-pro")
+        cfg.providers = {
+            "opencode-go": {
+                "api_key_env": "OPENCODE_GO_API_KEY",
+                "base_url": "https://opencode.ai/zen/go",
+            },
+        }
+        provider = get_provider(cfg)
+        assert isinstance(provider, OpenAIProvider)
+        assert provider._base_url == "https://opencode.ai/zen/go"
+        assert provider._api_key == "go-test-key"
+
+    def test_opencode_go_missing_key_raises(self, monkeypatch):
+        monkeypatch.delenv("OPENCODE_GO_API_KEY", raising=False)
+        from aede.provider import get_provider
+        cfg = _make_cfg(model="deepseek-v4-pro")
+        cfg.providers = {
+            "opencode-go": {
+                "api_key_env": "OPENCODE_GO_API_KEY",
+                "base_url": "https://opencode.ai/zen/go",
+            },
+        }
+        with pytest.raises(RuntimeError, match="OPENCODE_GO_API_KEY"):
+            get_provider(cfg)
+
+    def test_opencode_zen_not_supported_model_goes_to_anthropic(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        from aede.provider import get_provider, AnthropicProvider
+        cfg = _make_cfg(model="claude-sonnet-4-20250514")
+        cfg.providers = {
+            "opencode-zen": {
+                "api_key_env": "OPENCODE_ZEN_API_KEY",
+                "base_url": "https://opencode.ai/zen/v1",
+            },
+        }
+        provider = get_provider(cfg)
+        assert isinstance(provider, AnthropicProvider)
+
 
 # ---------------------------------------------------------------------------
 # Message conversion: Anthropic → OpenAI

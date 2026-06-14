@@ -53,6 +53,33 @@ MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
         {"id": "goose/openai-gpt-4o", "label": "Goose / GPT-4o"},
     ],
     "opencode": [{"id": "opencode", "label": "OpenCode"}],
+    "opencode-zen": [
+        # Free models (7+)
+        {"id": "deepseek-v4-flash-free", "label": "DeepSeek V4 Flash Free"},
+        {"id": "nemotron-3-ultra-free", "label": "Nemotron 3 Ultra Free"},
+        {"id": "big-pickle", "label": "Big Pickle"},
+        {"id": "mimo-v2.5-free", "label": "MIMO V2.5 Free"},
+        {"id": "qwen3.6-plus-free", "label": "Qwen 3.6 Plus Free"},
+        {"id": "minimax-m3-free", "label": "MiniMax M3 Free"},
+        {"id": "north-mini-code-free", "label": "North Mini Code Free"},
+        # Paid chat-completions models
+        {"id": "grok-build-0.1", "label": "Grok Build 0.1"},
+        {"id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash"},
+        {"id": "glm-5.1", "label": "GLM-5.1"},
+        {"id": "glm-5", "label": "GLM-5"},
+        {"id": "minimax-m2.7", "label": "MiniMax M2.7"},
+        {"id": "minimax-m2.5", "label": "MiniMax M2.5"},
+        {"id": "kimi-k2.6", "label": "Kimi K2.6"},
+        {"id": "kimi-k2.5", "label": "Kimi K2.5"},
+    ],
+    "opencode-go": [
+        {"id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro"},
+        {"id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash"},
+        {"id": "glm-5.1", "label": "GLM-5.1"},
+        {"id": "kimi-k2.6", "label": "Kimi K2.6"},
+        {"id": "minimax-m2.7", "label": "MiniMax M2.7"},
+        {"id": "minimax-m2.5", "label": "MiniMax M2.5"},
+    ],
 }
 
 

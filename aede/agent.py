@@ -761,38 +761,40 @@ class AgentLoop:
         """Execute the full compaction sequence and update message history.
 
         Shared implementation used by both ``_maybe_compact`` (auto) and
-        ``compact`` (manual/forced).  Selects the appropriate Anthropic client,
+        ``compact`` (manual/forced).  Selects the appropriate LLM client,
         calls ``run_compaction``, and persists the result if compaction fired.
 
-        For non-Anthropic providers, falls back to a bare Anthropic client
-        using the default model, because the compaction call goes directly to
-        api.anthropic.com and cannot use an OpenRouter model id.
+        Resolution order:
+          1. If ``cfg.compaction_model`` is set, use it and create an
+             Anthropic client — compaction always goes through the Messages
+             API regardless of the active provider.
+          2. If the active provider is Anthropic, use its ``raw_client`` and
+             the active model.
+          3. Otherwise, fall back to a bare Anthropic client with the default
+             model (requires ANTHROPIC_API_KEY).
 
         Returns:
             The raw ``run_compaction`` result dict.
         """
         self._console.print("[dim]↩ Compacting context...[/dim]")
 
-        # Compaction always uses the active provider's raw client.
-        # For Anthropic this is the AsyncAnthropic client.
-        # For OpenAI-compatible providers we pass the raw client too;
-        # run_compaction uses client.messages.create which only works with
-        # the Anthropic client — so for non-Anthropic providers we fall back
-        # to creating an Anthropic client directly.
-        # TODO: make compaction provider-aware so it works with OpenAI providers.
+        import os
+        import anthropic
+
         provider = self._get_provider()
         from aede.provider import AnthropicProvider
-        if isinstance(provider, AnthropicProvider):
+
+        # Explicit compaction model override — user chose a model for compaction.
+        if self._cfg.compaction_model:
+            compaction_model = self._cfg.compaction_model
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            compaction_client = anthropic.AsyncAnthropic(api_key=api_key) if api_key else None
+        elif isinstance(provider, AnthropicProvider):
             compaction_client = provider.raw_client
-            # Active model is already an Anthropic id — safe to reuse.
             compaction_model = self._cfg.model
         else:
-            # Fall back: create a bare Anthropic client for compaction.
-            # The active model (e.g. google/gemini-2.5-flash) is NOT an Anthropic
-            # id, so it cannot be sent to api.anthropic.com — use a default
-            # Anthropic model for the compaction call instead.
-            import os
-            import anthropic
+            # Non-Anthropic provider, no explicit compaction_model.
+            # Fall back to default model via bare Anthropic client.
             from aede.config import DEFAULT_CONFIG
             api_key = os.environ.get("ANTHROPIC_API_KEY", "")
             compaction_client = anthropic.AsyncAnthropic(api_key=api_key) if api_key else None
