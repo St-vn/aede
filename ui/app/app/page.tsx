@@ -1,5 +1,5 @@
-import { AgentPage } from './AgentPage'
+import { redirect } from 'next/navigation'
 
 export default function Page() {
-  return <AgentPage />
+  redirect('/docs')
 }

@@ -951,7 +951,7 @@ export function ModelsTab() {
           </div>
         )}
         <div className="flex items-center gap-2">
-          <Select value={acpAgent} onValueChange={setAcpAgent}>
+          <Select value={acpAgent} onValueChange={(v) => { if (v !== null) setAcpAgent(v) }}>
             <SelectTrigger className="flex-1 h-8 text-xs">
               <SelectValue placeholder="Select ACP agent..." />
             </SelectTrigger>

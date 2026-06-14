@@ -145,7 +145,7 @@ export function ModelSelector({ currentModel, onModelChange, onOpenSettings }: P
 
   const handleThinkingChange = (on: boolean) => {
     setLocalThinking(on)
-    updateConfig.mutate({ key: 'thinking_budget', value: on ? 4096 : 0, scope: 'global' })
+    updateConfig.mutate({ key: 'thinking_budget', value: on ? '4096' : '0', scope: 'global' })
   }
 
   const providers = Object.keys(groupedModels)
