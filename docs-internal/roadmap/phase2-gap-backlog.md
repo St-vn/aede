@@ -167,38 +167,48 @@ date_updated: 2026-06-14
 
 ---
 
-### P0.8 SOUL.md — agent identity + phonemes
+### P0.8 SOUL.md enhancements — structured fields + UI surface
 
-**Source spec:** new (proposed 2026-06-14; complements the deferred "Wake word" item in `aede-roadmap.md` line 348)
+**Source spec:** extension of the existing `aede/instructions.py` (which already loads `~/.aede/SOUL.md` and injects as `## Identity`); the user proposed (2026-06-14) extending it with phonemes, wake_word, and aliases for the voice subsystem to consume.
 
-**What ships:**
-- **`aede/soul/schema.py`** — `SoulDef` dataclass with fields: `name`, `phonetic` (IPA, e.g. `/ˈdʒɑːvɪs/`), `wake_word` (defaults to `hey {name.lower()}`), `wake_word_phonetic`, `persona` (short markdown body), `voice` (TTS config — engine, voice_id, rate, pitch — for future use), `aliases` (list of alternative call names).
-- **`aede/soul/loader.py`** — reads `SOUL.md` from `~/.aede/SOUL.md` (global) and `./SOUL.md` (project). 3-layer merge: project overrides global, just like `aede.yml`. YAML frontmatter + markdown body. Falls back to a default `SoulDef(name="aede", phonetic="/eɪd/")` if no file present.
-- **`aede/soul/injection.py`** — injects the persona + phonetic into the system prompt as a `## Agent Identity` section (mirrors the skills injection pattern). The wake word is exposed to the voice input subsystem via `cfg.soul.wake_word`.
-- **CLI surface** — `/soul` slash command to view/edit the active SOUL.md.
+**What already exists (DO NOT rebuild):**
+- `aede/instructions.py:23` — `load_soul(home)` reads `~/.aede/SOUL.md` and returns the stripped content
+- `aede/instructions.py:96` — `build_instructions_suffix()` injects as `## Identity` section
+- `aede/agent.py:80,101,111,265,291` — `AgentLoop` takes `instructions_suffix` and includes it in the dynamic system prompt
+- `aede/cli.py:410-411,505` — bootstrap calls the loader at startup
+- `tests/test_instructions.py` — coverage for the existing loader
+
+**What's actually new (the enhancement):**
+- **YAML frontmatter parsing** in `aede/instructions.py` — extract structured fields (`name`, `phonetic`, `wake_word`, `wake_word_phonetic`, `voice.*`, `aliases`) from the SOUL.md frontmatter. The body remains the persona prose.
+- **3-layer merge** — add `./SOUL.md` (project) as a project-level override of `~/.aede/SOUL.md` (global), matching the existing `aede.yml` merge pattern. Currently only the global is loaded.
+- **`SoulDef` dataclass** — typed access to the parsed fields: `name`, `phonetic`, `wake_word`, `wake_word_phonetic`, `persona` (body), `voice` (TTS config — engine, voice_id, rate, pitch — for future use), `aliases` (list of alternative call names). Exposed via `cfg.soul` for the voice subsystem (P0.9) to consume.
+- **`/soul` slash command** to view/edit the active SOUL.md.
 - **Settings tab** — `SoulTab` in the web UI settings modal (parallels the existing `SkillsTab`).
 
-**Example `SOUL.md`:**
+**Example `SOUL.md` (new structured form, body unchanged):**
 ```yaml
 ---
 name: Jarvis
 phonetic: /ˈdʒɑːvɪs/
 wake_word: "hey jarvis"
 wake_word_phonetic: /heɪ ˈdʒɑːvɪs/
-persona_voice: en-GB-Ryan
-persona_rate: 1.0
+voice:
+  engine: piper
+  voice_id: en-GB-Ryan
+  rate: 1.0
+  pitch: 1.0
 aliases: [jarvis, j]
 ---
 British butler. Dry wit. Gets to the point. Never apologetic.
 ```
 
-**Size:** ~100-200 LOC + tests. Small.
+**Size:** ~100-200 LOC + tests. Small (most of the work — the loader, the injection — already exists).
 
-**Dependencies:** none new (mirrors the existing `SKILL.md` loader pattern in `aede/skills/loader.py`).
+**Dependencies:** none new (PyYAML already a dep for `aede.yml` parsing; `aede/instructions.py` doesn't currently use it).
 
-**Verification:** TDD on the loader (YAML parsing, 3-layer merge, fallback to default); integration test that the persona is injected into the system prompt.
+**Verification:** TDD on the frontmatter parser (3-layer merge, fallback to default SoulDef when no file or no frontmatter); integration test that the parsed SoulDef fields are accessible via `cfg.soul.wake_word` etc. for P0.9 to consume.
 
-**Why pre-divergence (per 2026-06-14 user decision):** users want the agent to have an identity. "Wake word might seem like a luxury feature" but users like having it. The SaaS benefits from per-tenant SOUL.md (each user customizes their agent's name + persona) without forking the loader.
+**Why pre-divergence (per 2026-06-14 user decision):** users want the agent to have an identity. The SaaS benefits from per-tenant SOUL.md (each user customizes their agent's name + persona) without forking the loader. The structured fields (`wake_word` etc.) are the seam P0.9's voice subsystem reads from.
 
 ---
 

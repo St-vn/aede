@@ -166,7 +166,7 @@ For each Phase 3 block, four destinations:
 | ACP Chat Integration | Done in P0.1 commit `8000c40` + `6c40742`. |
 | Background Runtime — Daemon | The multi-tenant foundation. The SaaS is a daemon process. **Must-have pre-divergence.** |
 | Background Runtime — Timers / cron / event triggers | The daemon needs these to actually do anything. **Must-have pre-divergence.** |
-| SOUL.md (agent identity + phonemes + wake word) | The agent's name, persona, wake word, and phonemes live in a config file. Loader is aede-side. **Must-have pre-divergence** (per 2026-06-14 user decision: wake word is not a luxury, users want it, ship pre-divergence). |
+| SOUL.md (agent identity + phonemes + wake word) | **Already exists** as `aede/instructions.py:load_soul()` + the system-prompt injection. The plain-markdown form is loaded as `## Identity`. P0.8 is the enhancement: structured YAML frontmatter for `name`/`phonetic`/`wake_word`/`voice`/`aliases`, project-override merge, `/soul` slash command, settings tab. **Must-have pre-divergence** (per 2026-06-14 user decision: wake word is not a luxury, users want it, ship pre-divergence). |
 | Voice input subsystem (web UI mic + Web Speech API + browser continuous wake word) | The voice input path is part of the aede web UI. The SaaS reuses — each tenant can enable voice. **Must-have pre-divergence.** |
 | Workflow Automation | n8n-style; aede owns the loop. |
 | Observability (OTel, Langfuse) | The `TraceLogger` is already in aede; OTel is a thin adapter. **Must-have pre-divergence** (the SaaS needs cross-tenant aggregation). |
@@ -211,7 +211,7 @@ Adding Phase 3 to the pre-divergence must-haves means P0 expands. New P0 items t
 - **P0.5 Background Runtime — Daemon + Timers + Cron + Event triggers** (~600-1000 LOC). The SaaS cannot be multi-tenant without a daemon.
 - **P0.6 Observability — OTel adapter for TraceLogger** (~200-300 LOC). The SaaS needs cross-tenant trace aggregation.
 - **P0.7 FDE — opt-in capture + redaction** (~200-400 LOC). Required for the SaaS feedback loop.
-- **P0.8 SOUL.md — agent identity config with phonemes** (~100-200 LOC). The agent's name, persona, wake word, and phonetic pronunciation live in a single config file. Mirrors the `SKILL.md` loader pattern.
+- **P0.8 SOUL.md — enhance existing loader with structured fields + UI** (~100-200 LOC). The loader already exists in `aede/instructions.py:load_soul()`. The enhancement: YAML frontmatter parsing for `name`/`phonetic`/`wake_word`/`voice`/`aliases`, project-override merge, `/soul` slash command, settings tab.
 - **P0.9 Voice input — push-to-talk + browser continuous wake word** (~700-1200 LOC). Web Speech API integration in the web UI. Reads the wake word from SOUL.md. Works on any device with a supported browser.
 
 The Memory Upgrade (pgvector, TTL, poisoning) and Self-Improvement (auto-creation, curator) are not pre-divergence must-haves — they can land in aede after the SaaS fork, and the SaaS updates its pin when they ship.
