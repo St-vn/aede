@@ -167,6 +167,69 @@ date_updated: 2026-06-14
 
 ---
 
+### P0.8 SOUL.md — agent identity + phonemes
+
+**Source spec:** new (proposed 2026-06-14; complements the deferred "Wake word" item in `aede-roadmap.md` line 348)
+
+**What ships:**
+- **`aede/soul/schema.py`** — `SoulDef` dataclass with fields: `name`, `phonetic` (IPA, e.g. `/ˈdʒɑːvɪs/`), `wake_word` (defaults to `hey {name.lower()}`), `wake_word_phonetic`, `persona` (short markdown body), `voice` (TTS config — engine, voice_id, rate, pitch — for future use), `aliases` (list of alternative call names).
+- **`aede/soul/loader.py`** — reads `SOUL.md` from `~/.aede/SOUL.md` (global) and `./SOUL.md` (project). 3-layer merge: project overrides global, just like `aede.yml`. YAML frontmatter + markdown body. Falls back to a default `SoulDef(name="aede", phonetic="/eɪd/")` if no file present.
+- **`aede/soul/injection.py`** — injects the persona + phonetic into the system prompt as a `## Agent Identity` section (mirrors the skills injection pattern). The wake word is exposed to the voice input subsystem via `cfg.soul.wake_word`.
+- **CLI surface** — `/soul` slash command to view/edit the active SOUL.md.
+- **Settings tab** — `SoulTab` in the web UI settings modal (parallels the existing `SkillsTab`).
+
+**Example `SOUL.md`:**
+```yaml
+---
+name: Jarvis
+phonetic: /ˈdʒɑːvɪs/
+wake_word: "hey jarvis"
+wake_word_phonetic: /heɪ ˈdʒɑːvɪs/
+persona_voice: en-GB-Ryan
+persona_rate: 1.0
+aliases: [jarvis, j]
+---
+British butler. Dry wit. Gets to the point. Never apologetic.
+```
+
+**Size:** ~100-200 LOC + tests. Small.
+
+**Dependencies:** none new (mirrors the existing `SKILL.md` loader pattern in `aede/skills/loader.py`).
+
+**Verification:** TDD on the loader (YAML parsing, 3-layer merge, fallback to default); integration test that the persona is injected into the system prompt.
+
+**Why pre-divergence (per 2026-06-14 user decision):** users want the agent to have an identity. "Wake word might seem like a luxury feature" but users like having it. The SaaS benefits from per-tenant SOUL.md (each user customizes their agent's name + persona) without forking the loader.
+
+---
+
+### P0.9 Voice input — push-to-talk + browser continuous wake word
+
+**Source spec:** `aede-roadmap.md` line 348 (Phase 3, currently deferred — pulled forward 2026-06-14)
+
+**What ships:**
+- **Web UI mic button** in `InputBar` — toggleable per user preference (`cfg.voice_input_enabled`, default off). Press-to-talk; speech → text via Web Speech API. Populates the input bar; user reviews, hits send.
+- **Browser continuous wake word** — when `cfg.voice_wake_word_enabled=true` and the wake word from SOUL.md is set, the web UI listens continuously for the wake word via Web Speech API with `continuous: true`. On match, activates the input bar with a "yes?" prompt.
+- **Phoneme-aware TTS prep** — stores `wake_word_phonetic` from SOUL.md for use by future TTS / acoustic models. (The actual TTS response path is deferred per Phase 3 Other Tools line 362.)
+- **Permissions UX** — browser-native mic permission prompt; clear UI indication when listening, when waiting for wake word, when error.
+- **Backend acknowledgment** — when the wake word triggers an input, aede logs the trigger event to the trace + (opt-in) FDE capture.
+
+**Browser support matrix:**
+| Browser | Push-to-talk | Continuous wake word |
+|---|---|---|
+| Chrome / Edge (desktop + mobile) | Yes | Yes (with limitations on mobile background) |
+| Safari (desktop + iOS) | Yes | Partial (Safari pauses recognition after a few minutes) |
+| Firefox | Yes (via webkitSpeechRecognition polyfill if available) | No (no Web Speech API support) |
+
+**Size:** ~700-1200 LOC + tests. Medium-large.
+
+**Dependencies:** none new for the client side (Web Speech API is browser-native). Backend: hooks into the existing `TraceLogger` for trigger events.
+
+**Verification:** TDD on the wake word matching logic (string + phonetic); integration test that the web UI toggles correctly (mock `window.SpeechRecognition`); manual cross-browser smoke test.
+
+**Why pre-divergence (per 2026-06-14 user decision):** the user wants the wake word for their own daily use; it's a UX differentiator that the SaaS can re-skin for per-tenant branding (each tenant's agent has a different wake word via their SOUL.md). Building it pre-divergence means the SaaS fork ships with voice support on day one.
+
+---
+
 ## P1 — defer to v0.3 (after the SaaS MVP ships)
 
 ### P1.1 Interface Additions gaps (UI polish)

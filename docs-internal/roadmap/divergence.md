@@ -166,6 +166,8 @@ For each Phase 3 block, four destinations:
 | ACP Chat Integration | Done in P0.1 commit `8000c40` + `6c40742`. |
 | Background Runtime — Daemon | The multi-tenant foundation. The SaaS is a daemon process. **Must-have pre-divergence.** |
 | Background Runtime — Timers / cron / event triggers | The daemon needs these to actually do anything. **Must-have pre-divergence.** |
+| SOUL.md (agent identity + phonemes + wake word) | The agent's name, persona, wake word, and phonemes live in a config file. Loader is aede-side. **Must-have pre-divergence** (per 2026-06-14 user decision: wake word is not a luxury, users want it, ship pre-divergence). |
+| Voice input subsystem (web UI mic + Web Speech API + browser continuous wake word) | The voice input path is part of the aede web UI. The SaaS reuses — each tenant can enable voice. **Must-have pre-divergence.** |
 | Workflow Automation | n8n-style; aede owns the loop. |
 | Observability (OTel, Langfuse) | The `TraceLogger` is already in aede; OTel is a thin adapter. **Must-have pre-divergence** (the SaaS needs cross-tenant aggregation). |
 | Field Feedback Loop (FDE) — opt-in capture | Aede-side: the capture + redaction primitive. **Must-have pre-divergence** for SaaS feedback loop. |
@@ -187,8 +189,10 @@ For each Phase 3 block, four destinations:
 | Keybind customization | UX, not core. v0.3+. |
 | Keybind import | Depends on keybind customization. v0.3+. |
 | Cross-harness interop | Distinct from ACP (which is already in). Build when a user actually needs to drive Claude Code from aede live. v0.3+. |
-| Background Runtime — Wake word ("hey aede") | Low priority, niche use case. v0.4+. |
-| Other Tools (Full Browser Use, image gen, TTS) | Playwright MCP covers browser; image/TTS are niche. v0.4+. |
+| Local TTS for voice responses | The input side (Web Speech API → text) is in aede. The output side (text → speech) needs a TTS engine. Defer to v0.4+ — pair with a chosen TTS engine (piper, OpenAI TTS, etc.). |
+| Native cross-platform wake word (Porcupine/openWakeWord) | Browser-based wake word covers "any device with a browser". Native bindings per-OS are a large lift; defer to v0.4+ unless user feedback demands. |
+| iOS Shortcut / Android Tasker integrations | Zero aede code needed (just a stable HTTP endpoint, which the daemon provides). Built as separate iOS/Android apps post-divergence. |
+| Other Tools (Full Browser Use, image gen) | Playwright MCP covers browser; image gen is niche. v0.4+. |
 | Workflow Automation | The pattern is clear; the actual n8n integration is large. Build when there's a real use case. v0.3+. |
 | Self-Improvement — Executable skill bodies | **Locked: "v1 self-improvement writes typed *learnings* only, never code"** (defer note line 26). v0.4+ at earliest. |
 
@@ -206,6 +210,8 @@ Adding Phase 3 to the pre-divergence must-haves means P0 expands. New P0 items t
 - **P0.5 Background Runtime — Daemon + Timers + Cron + Event triggers** (~600-1000 LOC). The SaaS cannot be multi-tenant without a daemon.
 - **P0.6 Observability — OTel adapter for TraceLogger** (~200-300 LOC). The SaaS needs cross-tenant trace aggregation.
 - **P0.7 FDE — opt-in capture + redaction** (~200-400 LOC). Required for the SaaS feedback loop.
+- **P0.8 SOUL.md — agent identity config with phonemes** (~100-200 LOC). The agent's name, persona, wake word, and phonetic pronunciation live in a single config file. Mirrors the `SKILL.md` loader pattern.
+- **P0.9 Voice input — push-to-talk + browser continuous wake word** (~700-1200 LOC). Web Speech API integration in the web UI. Reads the wake word from SOUL.md. Works on any device with a supported browser.
 
 The Memory Upgrade (pgvector, TTL, poisoning) and Self-Improvement (auto-creation, curator) are not pre-divergence must-haves — they can land in aede after the SaaS fork, and the SaaS updates its pin when they ship.
 
