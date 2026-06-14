@@ -128,7 +128,7 @@ date_updated: 2026-06-14
 
 ### New planning docs
 - `docs-internal/roadmap/divergence.md` — the seam between aede (open-core) and the commercial SaaS. §1-§5: what's in aede, what's in the SaaS, the import-surface contract, three personal-vs-SaaS relationship options, Phase 2 land-down. **§6 (NEW): Phase 3 triage** — aede vs SaaS vs defer vs ignore. §7: 10-step MVP→beta→launch path.
-- `docs-internal/roadmap/phase2-gap-backlog.md` — 7 P0 items + 1 P1 item. P0s: (1) **DONE** OpenCode routing/providers/MCP configs, (2) Sandboxing, (3) Skills/Plugins, (4) Context selection, **(5) Background Runtime daemon (NEW)**, **(6) OTel observability (NEW)**, **(7) FDE opt-in capture (NEW)**.
+- `docs-internal/roadmap/phase2-gap-backlog.md` — 9 P0 items + 1 P1 item. P0s: (1) **DONE** OpenCode routing/providers/MCP configs, (2) Sandboxing, (3) Skills/Plugins, (4) Context selection, **(5) Background Runtime daemon (NEW)**, **(6) OTel observability (NEW)**, **(7) FDE opt-in capture (NEW)**, **(8) SOUL.md enhancements (loader already exists in `aede/instructions.py`)**, **(9) Voice input + wake word (NEW)**.
 
 ### Abandoned work (archived 2026-06-14)
 Moved to `%TEMP%\opencode\aede-abandoned-20260614-095331\` and gitignored:
