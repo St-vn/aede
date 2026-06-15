@@ -4,7 +4,9 @@ import { matchWakeWord, type SoulData } from './matchWakeWord'
 import { handleRecognitionError } from './ErrorDisplay'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
+const SR = typeof window !== 'undefined'
+  ? (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
+  : undefined
 
 type WakeWordState = 'disabled' | 'starting' | 'continuous-listening' | 'activated'
 

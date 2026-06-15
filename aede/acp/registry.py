@@ -228,7 +228,7 @@ def ensure_acp_package(home: Path, command: str, args: list[str]) -> list[str] |
                 capture_output=True, text=True, check=True, timeout=120,
             )
         except (subprocess.CalledProcessError, FileNotFoundError, TimeoutError) as exc:
-            logger.warning("ACP cache install failed for %s: %s", package_name, exc)
+            logger.debug("ACP cache install failed for %s: %s", package_name, exc)
             return None
         pkg_dir = _find_installed_package(home, package_name)
         if pkg_dir is None:

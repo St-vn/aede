@@ -778,8 +778,6 @@ def handle_serve(
                 for name, result in zip([n for n, _, _ in _BASE_AGENTS], results):
                     if isinstance(result, Exception):
                         logger.debug("ACP warmup failed for %s: %s", name, result)
-                        if console:
-                            console.print(f"[dim]ACP warmup: {name} — {result}[/dim]")
                     else:
                         if console:
                             console.print(f"[dim]ACP warmup: {name} connected[/dim]")

@@ -4,7 +4,9 @@ import { Mic, MicOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
+const SR = typeof window !== 'undefined'
+  ? (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
+  : undefined
 
 type RecognitionState = 'idle' | 'requesting-permission' | 'listening' | 'permission-denied' | 'error'
 
