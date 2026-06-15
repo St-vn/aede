@@ -754,12 +754,12 @@ def handle_serve(
             app.state.mcp_bridge = MCPBridge(servers=mcp_servers)
             failed = app.state.mcp_bridge.spawn_all()
             if failed:
-                console.print(f"[yellow]⚠ MCP servers failed: {', '.join(failed)}[/yellow]")
+                console.print(f"[yellow]! MCP servers failed: {', '.join(failed)}[/yellow]")
             discovered = app.state.mcp_bridge.discovered_tools()
             if discovered:
                 console.print(f"[dim]MCP: {len(discovered)} tools from {len(mcp_servers)} servers[/dim]")
         except Exception as e:
-            console.print(f"[yellow]⚠ MCP bridge error: {e}[/yellow]")
+            console.print(f"[yellow]! MCP bridge error: {e}[/yellow]")
     else:
         app.state.mcp_bridge = None
 
@@ -784,7 +784,7 @@ def handle_serve(
                         if console:
                             console.print(f"[dim]ACP warmup: {name} connected[/dim]")
 
-            asyncio.create_task(_warm_acp())
+            asyncio.run(_warm_acp())
 
     console.print(f"[green]Starting aede backend server at http://{host}:{port}[/green]")
     console.print("[dim]Press Ctrl+C to stop.[/dim]")
