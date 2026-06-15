@@ -53,6 +53,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # OTel observability
     "otel_endpoint": None,  # None = no-op; set to OTLP gRPC endpoint (e.g. http://localhost:4317)
     "otel_service_name": "aede",
+    # FDE (fair-data-ethics) capture — opt-in
+    "fde_enabled": False,
+    "fde_endpoint": None,
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -107,6 +110,7 @@ def bootstrap(home: Path | None = None) -> None:
     home.mkdir(parents=True, exist_ok=True)
     (home / "data").mkdir(exist_ok=True)
     (home / "data" / "sessions").mkdir(exist_ok=True)
+    (home / "data" / "fde").mkdir(exist_ok=True)
     (home / "skills").mkdir(exist_ok=True)
     (home / "agents").mkdir(exist_ok=True)
     cfg_path = home / "config.yml"
@@ -158,6 +162,9 @@ class AedeConfig:
         # P0.9 Voice Input
         self.voice_input_enabled: bool = data.get("voice_input_enabled", DEFAULT_CONFIG["voice_input_enabled"])
         self.voice_wake_word_enabled: bool = data.get("voice_wake_word_enabled", DEFAULT_CONFIG["voice_wake_word_enabled"])
+        # FDE (fair-data-ethics) capture
+        self.fde_enabled: bool = data.get("fde_enabled", False)
+        self.fde_endpoint: str | None = data.get("fde_endpoint") or None
         raw_data_dir = data.get("data_dir")
         if raw_data_dir:
             self.data_dir = Path(raw_data_dir).expanduser()
