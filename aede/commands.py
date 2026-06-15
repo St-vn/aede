@@ -20,7 +20,7 @@ COMMANDS = {
     "help", "keybinds", "resume", "sessions", "tools", "config",
     "compact", "tokens", "clear", "exit", "setkey",
     "skills", "agents", "mcp", "delete-session", "rm", "acp", "import",
-    "extract", "soul",
+    "extract", "soul", "rename", "approve",
 }
 
 
@@ -113,6 +113,41 @@ def handle_sessions(db: Any, console: Any) -> None:
         prefix = "└" if s.parent_id else str(i)
         title = s.title or "(untitled)"
         console.print(f"  {prefix}  {age_str:12}  {indent}{title[:60]}")
+
+
+def handle_rename(args: list[str], session: Any, db: Any, console: Any) -> None:
+    """Rename the current session.
+
+    Usage:
+      /rename <new title>
+    """
+    if not args:
+        console.print("[yellow]Usage: /rename <new title>[/yellow]")
+        return
+    title = " ".join(args)
+    session.set_title(db, title)
+    console.print(f"[green]✓[/green] Session renamed to \"{title}\"")
+
+
+def handle_approve(args: list[str], router: Any, gate_store: Any, console: Any) -> None:
+    """Batch-approve gated tools for the current session.
+
+    Usage:
+      /approve                      — show gated tools
+      /approve <tool> [tool...]     — approve specific tools
+    """
+    if args:
+        router.set_auto_approved(args)
+        console.print(f"[green]✓[/green] Approved: {', '.join(args)}")
+        return
+
+    from aede.tools.router import GATE_TOOLS
+    lines = ["Gated tools:"]
+    for name in sorted(router.tool_names()):
+        if name in GATE_TOOLS or name.startswith("mcp__"):
+            status = "approved" if name in router._session_auto_approve else "gated"
+            lines.append(f"  {name:<25} [{status}]")
+    console.print("\n".join(lines))
 
 
 def handle_tools(router: Any, console: Any) -> None:
@@ -317,6 +352,7 @@ def handle_config_edit(
 
     Usage:
       /config global|project
+      /config raw [project]       — open raw YAML config in editor
       /config <scope> <key> <value>
       /config <scope> auto_approve add/remove <tool>
     """
@@ -324,12 +360,25 @@ def handle_config_edit(
         handle_config_show(cfg, console)
         return
 
+    from aede.config import DEFAULT_CONFIG, write_config_value, edit_config_file
+
     scope = args[0].lower()
+
+    if scope == "raw":
+        target = args[1].lower() if len(args) > 1 else "global"
+        if target not in ("global", "project"):
+            console.print("[red]Error: target must be 'global' or 'project'[/red]")
+            return
+        try:
+            edit_config_file(target, home=home, project_dir=project_dir)
+            console.print(f"[green]✓[/green] Opened raw {target} config in editor.")
+        except Exception as e:
+            console.print(f"[red]Error launching editor: {e}[/red]")
+        return
+
     if scope not in ("global", "project"):
         console.print("[red]Error: Scope must be 'global' or 'project'[/red]")
         return
-
-    from aede.config import DEFAULT_CONFIG, write_config_value, edit_config_file
 
     if len(args) == 1:
         try:
@@ -365,6 +414,7 @@ def handle_config_edit(
     console.print(
         "Usage:\n"
         "  /config [global|project]              — open config file in $EDITOR\n"
+        "  /config raw [project]                 — open raw YAML config in editor\n"
         "  /config <scope> <key> <value>         — set config key inline\n"
         "  /config <scope> auto_approve add/remove <tool> — update auto-approve list"
     )

@@ -395,7 +395,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     from aede.gate import PermissionStore, TerminalGateBackend
     from aede.tokens import TokenTracker, PriceCache
     from aede.agent import AgentLoop
-    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_tools, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_soul, handle_agents, handle_mcp, handle_acp, _load_session_notes, handle_delete_session, handle_import, handle_extract
+    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_rename, handle_tools, handle_approve, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_soul, handle_agents, handle_mcp, handle_acp, _load_session_notes, handle_delete_session, handle_import, handle_extract
 
     console = Console()
 
@@ -665,6 +665,10 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
                 handle_skills(skill_registry, console)
             elif cmd.name == "agents":
                 handle_agents(agent_registry, console)
+            elif cmd.name == "rename":
+                handle_rename(cmd.args, session, db, console)
+            elif cmd.name == "approve":
+                handle_approve(cmd.args, router, gate_store, console)
             elif cmd.name == "mcp":
                 handle_mcp(mcp_servers, console)
             elif cmd.name == "acp":
