@@ -50,6 +50,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "sandbox": {},
     # Plugin/skill toggle configuration
     "plugins": {},
+    # OTel observability
+    "otel_endpoint": None,  # None = no-op; set to OTLP gRPC endpoint (e.g. http://localhost:4317)
+    "otel_service_name": "aede",
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -170,6 +173,9 @@ class AedeConfig:
         self.sandbox: SandboxConfig = SandboxConfig.from_dict(raw_sandbox)
         # Plugin/skill toggle configuration
         self.plugins: dict = data.get("plugins") or {}
+        # OTel observability
+        self.otel_endpoint: str | None = data.get("otel_endpoint") or None
+        self.otel_service_name: str = data.get("otel_service_name") or "aede"
 
 
 def load_config(
