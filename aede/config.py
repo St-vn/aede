@@ -43,6 +43,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "compaction_model": None,
     # MCP server configurations
     "mcp_servers": {},
+    # Plugin/skill toggle configuration
+    "plugins": {},
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -155,6 +157,8 @@ class AedeConfig:
         self.project_dir = project_dir
         from aede.instructions import load_soul_def, SoulDef
         self.soul: SoulDef = load_soul_def(home=self.home, project_dir=self.project_dir)
+        # Plugin/skill toggle configuration
+        self.plugins: dict = data.get("plugins") or {}
 
 
 def load_config(
