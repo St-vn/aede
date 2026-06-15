@@ -43,6 +43,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "compaction_model": None,
     # MCP server configurations
     "mcp_servers": {},
+    # OTel observability
+    "otel_endpoint": None,  # None = no-op; set to OTLP gRPC endpoint (e.g. http://localhost:4317)
+    "otel_service_name": "aede",
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -155,6 +158,9 @@ class AedeConfig:
         self.project_dir = project_dir
         from aede.instructions import load_soul_def, SoulDef
         self.soul: SoulDef = load_soul_def(home=self.home, project_dir=self.project_dir)
+        # OTel observability
+        self.otel_endpoint: str | None = data.get("otel_endpoint") or None
+        self.otel_service_name: str = data.get("otel_service_name") or "aede"
 
 
 def load_config(
