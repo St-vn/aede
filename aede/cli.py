@@ -71,6 +71,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         if not hasattr(ns, "task"):
             ns.task = None
         return ns
+    elif first == "daemon":
+        parser = argparse.ArgumentParser(prog="aede", description="Personal AI agent CLI")
+        parser.add_argument("--version", action="version", version=f"aede {VERSION}")
+        subparsers = parser.add_subparsers(dest="command")
+        daemon_parser = subparsers.add_parser("daemon", help="Manage the background daemon")
+        daemon_sub = daemon_parser.add_subparsers(dest="daemon_subcommand")
+        daemon_sub.add_parser("start", help="Start the background daemon")
+        daemon_sub.add_parser("stop", help="Stop the background daemon")
+        daemon_sub.add_parser("status", help="Check daemon status")
+        ns = parser.parse_args(effective_argv)
+        if not hasattr(ns, "task"):
+            ns.task = None
+        return ns
     else:
         parser = argparse.ArgumentParser(prog="aede", description="Personal AI agent CLI")
         parser.add_argument("task", nargs="?", default=None, help="Optional first message")
@@ -86,6 +99,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.add_argument("--serve", action="store_true", help="Start the FastAPI backend server")
         parser.add_argument("--host", default="127.0.0.1", help="Host to bind the server to")
         parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to")
+        parser.add_argument("--attach", action="store_true", help="Attach to running daemon")
         ns = parser.parse_args(effective_argv)
         ns.command = None
         return ns
@@ -211,6 +225,9 @@ def main() -> None:
                 mem_argv.append(args.id)
         run_memory_command(mem_argv, home)
         return
+    if args.command == "daemon":
+        _handle_daemon_cmd(args)
+        return
     if args.import_action:
         _handle_import(args)
         return
@@ -219,7 +236,67 @@ def main() -> None:
         _handle_serve_cmd(args)
         return
 
-    asyncio.run(_run(initial_task=args.task))
+    asyncio.run(_run(initial_task=args.task, attach=bool(getattr(args, "attach", False))))
+
+
+def _handle_daemon_cmd(args: argparse.Namespace) -> None:
+    """Handle the ``daemon`` subcommand: start/stop/status."""
+    import asyncio
+    from rich.console import Console
+    from aede.config import bootstrap
+    from aede.daemon import Daemon, send_command
+
+    console = Console()
+    home = Path(os.environ.get("AEDE_HOME", str(Path.home() / ".aede")))
+    bootstrap(home)
+    from aede.config import load_config
+    cfg = load_config(home=home, project_dir=Path.cwd())
+    daemon = Daemon(data_dir=cfg.data_dir)
+    sub = getattr(args, "daemon_subcommand", None)
+
+    if sub == "start":
+        if daemon.is_running():
+            console.print("[yellow]Daemon is already running[/yellow]")
+            return
+        asyncio.run(_daemon_start(daemon, console))
+    elif sub == "stop":
+        if not daemon.is_running():
+            console.print("[yellow]Daemon is not running[/yellow]")
+            return
+        asyncio.run(_daemon_stop(daemon, console))
+    elif sub == "status":
+        running = daemon.is_running()
+        if running:
+            pid = int(daemon.pid_path.read_text().strip()) if daemon.pid_path.exists() else "?"
+            console.print(f"[green]Daemon is running (pid {pid})[/green]")
+        else:
+            console.print("[dim]Daemon is not running[/dim]")
+    else:
+        console.print("Usage: aede daemon {start|stop|status}")
+
+
+async def _daemon_start(daemon: Daemon, console: Any) -> None:
+    await daemon.start()
+    console.print(f"[green]Daemon started (pid {daemon._pid})[/green]")
+
+
+async def _daemon_stop(daemon: Daemon, console: Any) -> None:
+    try:
+        resp = await send_command({"cmd": "stop"}, data_dir=daemon.data_dir)
+        if resp.get("status") == "ok":
+            console.print("[green]Daemon stopped[/green]")
+    except ConnectionError:
+        console.print("[red]Could not connect to daemon[/red]")
+        import signal
+        if daemon.pid_path.exists():
+            try:
+                pid = int(daemon.pid_path.read_text().strip())
+                os.kill(pid, signal.SIGTERM)
+                daemon.pid_path.unlink(missing_ok=True)
+                daemon.port_path.unlink(missing_ok=True)
+                console.print("[green]Daemon killed[/green]")
+            except (OSError, ValueError):
+                console.print("[red]Could not stop daemon[/red]")
 
 
 def _handle_serve_cmd(args: argparse.Namespace) -> None:
@@ -298,7 +375,7 @@ def _handle_import(args: argparse.Namespace) -> None:
         console.print("[red]Error: unknown import type[/red]")
 
 
-async def _run(initial_task: str | None = None, resume_session_id: str | None = None) -> None:
+async def _run(initial_task: str | None = None, resume_session_id: str | None = None, attach: bool = False) -> None:
     """Bootstrap all subsystems and run the interactive REPL until exit.
 
     If ``initial_task`` is provided it is submitted as the first user turn
@@ -332,6 +409,19 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         console.print(f"[yellow]⚠ Could not load credentials vault: {e}[/yellow]")
 
     cfg = load_config(home=home, project_dir=Path.cwd())
+
+    # --attach: validate daemon is running
+    if attach:
+        from aede.daemon import Daemon, send_command
+        _daemon = Daemon(data_dir=cfg.data_dir)
+        if not _daemon.is_running():
+            console.print("[red]Daemon is not running. Start it with 'aede daemon start'.[/red]")
+            return
+        resp = await send_command({"cmd": "status"}, data_dir=cfg.data_dir)
+        if resp.get("status") != "ok":
+            console.print("[red]Could not communicate with daemon.[/red]")
+            return
+        console.print("[dim]Connected to daemon[/dim]")
 
     # Process any pending extractions from previous sessions (deferred queue)
     try:
