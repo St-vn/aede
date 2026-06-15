@@ -241,3 +241,121 @@ class TestTraceLogger:
         assert stored[1]["passed"] is False
         assert stored[2]["score"] == 0.5
         assert stored[2]["passed"] is True
+
+
+# ---------------------------------------------------------------------------
+# V-01x — TraceLogger.write_event
+# ---------------------------------------------------------------------------
+
+
+class TestTraceLoggerWriteEvent:
+    """V-01x: write_event appends event-shaped records to the same JSONL."""
+
+    def test_write_event_basic_shape(self, tmp_path):
+        """write_event writes a record with kind='event', event_type, payload, timestamp, schema_version."""
+        traces_dir = tmp_path / "traces"
+        logger = TraceLogger(traces_dir=traces_dir)
+
+        logger.write_event(
+            session_id="sess_v01",
+            event_type="wake_word_trigger",
+            payload={"wake_word": "hey jarvis", "matched_text": "", "source": "browser"},
+        )
+
+        jsonl_path = traces_dir / "sess_v01.jsonl"
+        assert jsonl_path.exists()
+
+        lines = jsonl_path.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 1
+
+        record = json.loads(lines[0])
+        assert record["session_id"] == "sess_v01"
+        assert record["kind"] == "event"
+        assert record["event_type"] == "wake_word_trigger"
+        assert record["payload"] == {"wake_word": "hey jarvis", "matched_text": "", "source": "browser"}
+        assert record["schema_version"] == "phase2-draft"
+        assert "timestamp" in record
+        assert isinstance(record["timestamp"], int)
+        assert record["timestamp"] > 1_000_000_000_000
+
+    def test_write_event_coexists_with_turn_records(self, tmp_path):
+        """kind='event' and kind='turn_trace' records live in the same JSONL without conflict."""
+        traces_dir = tmp_path / "traces"
+        logger = TraceLogger(traces_dir=traces_dir)
+
+        logger.write_turn_trace(
+            session_id="mixed",
+            turn_number=0,
+            input_tokens=10, output_tokens=5, cached_tokens=0,
+            tool_calls=[], reasoning_text="", outcome="end_turn",
+        )
+        logger.write_event(
+            session_id="mixed",
+            event_type="wake_word_trigger",
+            payload={"wake_word": "hey", "matched_text": "", "source": "browser"},
+        )
+        logger.write_turn_trace(
+            session_id="mixed",
+            turn_number=1,
+            input_tokens=20, output_tokens=10, cached_tokens=2,
+            tool_calls=[], reasoning_text="", outcome="end_turn",
+        )
+
+        lines = (traces_dir / "mixed.jsonl").read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 3
+
+        records = [json.loads(l) for l in lines]
+        # Existing turn records have no 'kind' field; event records have kind='event'
+        assert "kind" not in records[0] or records[0]["kind"] in ("turn_trace",)
+        assert records[1]["kind"] == "event"
+        assert records[1]["event_type"] == "wake_word_trigger"
+        assert "kind" not in records[2] or records[2]["kind"] in ("turn_trace",)
+
+    def test_write_event_timestamp_precision(self, tmp_path):
+        """write_event timestamp is a Unix ms integer (matching write_turn_trace convention)."""
+        traces_dir = tmp_path / "traces"
+        logger = TraceLogger(traces_dir=traces_dir)
+
+        logger.write_event(
+            session_id="ts_prec",
+            event_type="test",
+            payload={},
+        )
+
+        record = json.loads((traces_dir / "ts_prec.jsonl").read_text(encoding="utf-8"))
+        assert isinstance(record["timestamp"], int)
+        assert record["timestamp"] > 1_000_000_000_000
+
+    def test_write_event_different_sessions_separate_files(self, tmp_path):
+        """Each session_id goes to its own <id>.jsonl for events too."""
+        traces_dir = tmp_path / "traces"
+        logger = TraceLogger(traces_dir=traces_dir)
+
+        logger.write_event(session_id="a", event_type="test", payload={})
+        logger.write_event(session_id="b", event_type="test", payload={})
+
+        assert (traces_dir / "a.jsonl").exists()
+        assert (traces_dir / "b.jsonl").exists()
+
+    def test_write_event_append_multiple(self, tmp_path):
+        """Two write_event calls → two lines."""
+        traces_dir = tmp_path / "traces"
+        logger = TraceLogger(traces_dir=traces_dir)
+
+        logger.write_event(session_id="mult", event_type="e1", payload={"n": 1})
+        logger.write_event(session_id="mult", event_type="e2", payload={"n": 2})
+
+        lines = (traces_dir / "mult.jsonl").read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 2
+        assert json.loads(lines[0])["event_type"] == "e1"
+        assert json.loads(lines[1])["event_type"] == "e2"
+
+    def test_write_event_creates_traces_dir(self, tmp_path):
+        """write_event creates the traces dir if it doesn't exist."""
+        traces_dir = tmp_path / "deeply" / "nested" / "traces"
+        logger = TraceLogger(traces_dir=traces_dir)
+
+        logger.write_event(session_id="cd", event_type="test", payload={})
+
+        assert traces_dir.exists()
+        assert (traces_dir / "cd.jsonl").exists()

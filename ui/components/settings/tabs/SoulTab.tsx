@@ -18,17 +18,22 @@ export function SoulTab() {
   const [name, setName] = useState('')
   const [phonetic, setPhonetic] = useState('')
   const [wakeWord, setWakeWord] = useState('')
+  const [voiceInputEnabled, setVoiceInputEnabled] = useState(false)
+  const [voiceWakeWordEnabled, setVoiceWakeWordEnabled] = useState(false)
 
   useEffect(() => {
-    fetch('/api/soul')
-      .then(r => r.json())
-      .then(data => {
-        setSoul(data)
-        setName(data.name || '')
-        setPhonetic(data.phonetic || '')
-        setWakeWord(data.wake_word || '')
-        setLoading(false)
-      })
+    Promise.all([
+      fetch('/api/soul').then(r => r.json()),
+      fetch('/api/config').then(r => r.json()),
+    ]).then(([soulData, configData]) => {
+      setSoul(soulData)
+      setName(soulData.name || '')
+      setPhonetic(soulData.phonetic || '')
+      setWakeWord(soulData.wake_word || '')
+      setVoiceInputEnabled(configData.voice_input_enabled ?? false)
+      setVoiceWakeWordEnabled(configData.voice_wake_word_enabled ?? false)
+      setLoading(false)
+    })
   }, [])
 
   const handleSave = async () => {
@@ -47,6 +52,24 @@ export function SoulTab() {
     setName(updated.name || '')
     setPhonetic(updated.phonetic || '')
     setWakeWord(updated.wake_word || '')
+  }
+
+  const toggleVoiceInput = async (val: boolean) => {
+    setVoiceInputEnabled(val)
+    await fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'voice_input_enabled', value: val, scope: 'global' }),
+    })
+  }
+
+  const toggleVoiceWakeWord = async (val: boolean) => {
+    setVoiceWakeWordEnabled(val)
+    await fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'voice_wake_word_enabled', value: val, scope: 'global' }),
+    })
   }
 
   if (loading) {
@@ -95,6 +118,36 @@ export function SoulTab() {
         <Button size="sm" className="h-8 text-xs" onClick={handleSave}>
           Save
         </Button>
+      </div>
+      <Separator />
+      <div>
+        <h3 className="text-sm font-medium">Voice Input</h3>
+        <p className="text-xs text-muted-foreground">
+          Enable voice input via browser speech recognition. Audio is sent to your browser's STT service (Chrome routes to Google). Only recognized text is sent to the agent.
+        </p>
+      </div>
+      <div className="space-y-3">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={voiceInputEnabled}
+            onChange={e => toggleVoiceInput(e.target.checked)}
+            className="rounded border-input"
+          />
+          <span className="text-xs font-medium">Push-to-talk mic button</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={voiceWakeWordEnabled}
+            onChange={e => toggleVoiceWakeWord(e.target.checked)}
+            className="rounded border-input"
+          />
+          <span className="text-xs font-medium">Continuous wake word listening</span>
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Voice input uses your browser's speech-to-text (Chrome routes audio to Google). Audio is not recorded by aede; only the resulting text is sent to the agent. Requires an internet connection.
+        </p>
       </div>
       {soul && soul.persona && (
         <>

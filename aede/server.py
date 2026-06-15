@@ -535,7 +535,8 @@ async def get_config(request: Request):
                  "api_base_url", "grounding_enabled", "critic_enabled", "critic_model",
                  "critic_api_base_url", "ollama_base_url", "ollama_embed_model",
                  "ollama_timeout_s", "learnings_top_k", "learnings_max_tokens",
-                 "reasoning_effort", "thinking_budget"):
+                 "reasoning_effort", "thinking_budget",
+                 "voice_input_enabled", "voice_wake_word_enabled"):
         val = getattr(cfg, key, None)
         if val is not None:
             d[key] = val
@@ -1669,4 +1670,58 @@ async def patch_soul(data: dict, request: Request):
         "wake_word": fm.get("wake_word"),
         "persona": body,
     }
+
+
+# ── Voice Input endpoints ─────────────────────────────────────
+
+
+_VALID_SOURCES = frozenset({"browser", "ios_shortcut"})
+
+
+@app.post("/api/voice/trigger")
+async def voice_trigger(request: Request, payload: dict):
+    """Log a wake-word trigger event for the session.
+
+    Accepts ``source`` in {"browser", "ios_shortcut"}.  Writes a
+    ``kind: "event"`` record to the session trace via
+    ``TraceLogger.write_event(...)``.  Fail-soft on write errors.
+    """
+    session_id = (payload.get("session_id") or "").strip()
+    wake_word = (payload.get("wake_word") or "").strip()
+    matched_text = (payload.get("matched_text") or "").strip()
+    source = (payload.get("source") or "browser").strip()
+
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+    if not wake_word:
+        raise HTTPException(status_code=400, detail="wake_word is required")
+
+    # NFR-7: Reject path traversal in session_id
+    for char in ("/", "\\", "..", "\0"):
+        if char in session_id:
+            raise HTTPException(status_code=400, detail="Invalid session_id")
+
+    # NFR-6: Validate source
+    if source not in _VALID_SOURCES:
+        raise HTTPException(status_code=422, detail=f"source must be one of {sorted(_VALID_SOURCES)}")
+
+    # Write the trigger event to the session trace
+    try:
+        from aede.trace.logger import TraceLogger
+        traces_dir = request.app.state.cfg.data_dir / "traces"
+        logger = TraceLogger(traces_dir)
+        logger.write_event(
+            session_id=session_id,
+            event_type="wake_word_trigger",
+            payload={
+                "wake_word": wake_word,
+                "matched_text": matched_text,
+                "source": source,
+            },
+        )
+    except Exception:
+        # Fail-soft: never break the voice path on a logging failure
+        pass
+
+    return {"status": "ok"}
 

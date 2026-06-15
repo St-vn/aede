@@ -255,3 +255,38 @@ def test_compaction_model_round_trip(tmp_home):
     cfg = AedeConfig(data={"compaction_model": "deepseek-v4-flash-free"}, home=tmp_home)
     assert cfg.compaction_model == "deepseek-v4-flash-free"
 
+
+# ── P0.9 Voice Input config ─────────────────────────────────────
+
+
+def test_voice_config_defaults_in_default_config():
+    from aede.config import DEFAULT_CONFIG
+    assert "voice_input_enabled" in DEFAULT_CONFIG
+    assert DEFAULT_CONFIG["voice_input_enabled"] is False
+    assert "voice_wake_word_enabled" in DEFAULT_CONFIG
+    assert DEFAULT_CONFIG["voice_wake_word_enabled"] is False
+
+
+def test_voice_config_defaults_on_empty(tmp_home):
+    cfg = AedeConfig(data={}, home=tmp_home)
+    assert cfg.voice_input_enabled is False
+    assert cfg.voice_wake_word_enabled is False
+
+
+def test_voice_config_can_be_set_true(tmp_home):
+    cfg = AedeConfig(data={
+        "voice_input_enabled": True,
+        "voice_wake_word_enabled": True,
+    }, home=tmp_home)
+    assert cfg.voice_input_enabled is True
+    assert cfg.voice_wake_word_enabled is True
+
+
+def test_voice_config_round_trip_through_write(tmp_home):
+    from aede.config import write_config_value
+    write_config_value(scope="global", key="voice_input_enabled", value=True, home=tmp_home)
+    write_config_value(scope="global", key="voice_wake_word_enabled", value=True, home=tmp_home)
+    cfg = load_config(home=tmp_home, project_dir=tmp_home)
+    assert cfg.voice_input_enabled is True
+    assert cfg.voice_wake_word_enabled is True
+

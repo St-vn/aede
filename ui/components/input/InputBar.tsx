@@ -14,6 +14,10 @@ import { ContextButton, type FileAttachment } from './ContextButton'
 import { SlashCommandPicker } from './SlashCommandPicker'
 import { ImagePreviewBar, type ImageAttachment } from './ImagePreviewBar'
 import { FileChipBar } from './FileChipBar'
+import { VoiceButton } from './voice/VoiceButton'
+import { WakeWordListener } from './voice/WakeWordListener'
+import { PermissionGate } from './voice/PermissionGate'
+import { useSoulFetch } from './voice/useSoulFetch'
 
 interface Props {
   onSend: (content: string, model?: string) => void
@@ -52,6 +56,8 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
   const [isDragging, setIsDragging] = useState(false)
   const ref = useRef<HTMLTextAreaElement>(null)
   const urlInputRef = useRef<HTMLInputElement>(null)
+  const [permDenied, setPermDenied] = useState(false)
+  const { soul } = useSoulFetch()
 
   // Auto-resize
   useEffect(() => {
@@ -332,6 +338,14 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
 
   return (
     <div className="px-4 py-3 relative">
+      <WakeWordListener
+        enabled={true}
+        soul={soul}
+        sessionId={sessionId ?? null}
+        textareaRef={ref}
+        setText={setText}
+        submit={submit}
+      />
       <WorkspaceMentionPicker
         open={mentionOpen}
         onOpenChange={setMentionOpen}
@@ -390,6 +404,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
         )}
         <ImagePreviewBar images={imageAttachments} onRemove={removeImage} />
         <FileChipBar files={mentionedFiles} onRemove={handleRemoveMentionedFile} />
+        <PermissionGate showing={permDenied} onDismiss={() => setPermDenied(false)} />
         <textarea
           ref={ref}
           aria-label="Message"
@@ -414,6 +429,13 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
             <ModelSelector currentModel={model} onModelChange={setModel}
               onOpenSettings={onOpenSettings ? () => onOpenSettings('models') : undefined} />
             <AcpConnectChip model={model} />
+            <VoiceButton
+              enabled={true}
+              textareaRef={ref}
+              setText={setText}
+              onPermissionDenied={() => setPermDenied(true)}
+              onError={() => {}}
+            />
             <Tooltip>
               <TooltipTrigger render={
                 <Button size="icon" className="w-7 h-7" aria-label="Send message"

@@ -81,3 +81,36 @@ class TraceLogger:
         with dest.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             fh.flush()
+
+    def write_event(
+        self,
+        *,
+        session_id: str,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Append an event record to ``<traces_dir>/<session_id>.jsonl``.
+
+        Event records are distinguished from turn-trace records by the
+        ``kind: "event"`` field.  Writes to the same file as
+        :meth:`write_turn_trace`, preserving the append-only invariant.
+
+        Args:
+            session_id: Unique identifier for the agent session.
+            event_type: Machine-readable event type (e.g. ``"wake_word_trigger"``).
+            payload: Free-form event payload as a JSON-serialisable dict.
+        """
+        record: dict[str, Any] = {
+            "session_id": session_id,
+            "kind": "event",
+            "event_type": event_type,
+            "payload": payload,
+            "timestamp": int(time.time() * 1000),
+            "schema_version": _SCHEMA_VERSION,
+        }
+
+        self._traces_dir.mkdir(parents=True, exist_ok=True)
+        dest: Path = self._traces_dir / f"{session_id}.jsonl"
+        with dest.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            fh.flush()

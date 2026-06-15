@@ -43,6 +43,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "compaction_model": None,
     # MCP server configurations
     "mcp_servers": {},
+    # P0.9 Voice Input
+    "voice_input_enabled": False,
+    "voice_wake_word_enabled": False,
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -145,6 +148,9 @@ class AedeConfig:
         raw_mcp = data.get("mcp_servers") or data.get("mcpServers") or {}
         from aede.mcp.client import _parse_mcp_servers
         self.mcp_servers = _parse_mcp_servers(raw_mcp)
+        # P0.9 Voice Input
+        self.voice_input_enabled: bool = data.get("voice_input_enabled", DEFAULT_CONFIG["voice_input_enabled"])
+        self.voice_wake_word_enabled: bool = data.get("voice_wake_word_enabled", DEFAULT_CONFIG["voice_wake_word_enabled"])
         raw_data_dir = data.get("data_dir")
         if raw_data_dir:
             self.data_dir = Path(raw_data_dir).expanduser()
