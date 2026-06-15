@@ -1605,3 +1605,68 @@ async def get_workspace_files(request: Request, session_id: str | None = None, p
                     continue
         return sorted(files)
 
+
+# ── Soul endpoints ────────────────────────────────────────────
+
+def get_config_for_request(request: Request):
+    return request.app.state.cfg
+
+
+@app.get("/api/soul")
+async def get_soul(request: Request):
+    from aede.instructions import SoulDef
+    cfg = get_config_for_request(request)
+    s: SoulDef = cfg.soul
+    return {
+        "name": s.name,
+        "phonetic": s.phonetic,
+        "wake_word": s.wake_word,
+        "wake_word_phonetic": s.wake_word_phonetic,
+        "persona": s.persona,
+        "aliases": s.aliases,
+        "voice": {
+            "engine": s.voice.engine,
+            "voice_id": s.voice.voice_id,
+            "rate": s.voice.rate,
+            "pitch": s.voice.pitch,
+        },
+        "source_files": s.source_files,
+    }
+
+
+@app.patch("/api/soul")
+async def patch_soul(data: dict, request: Request):
+    cfg = get_config_for_request(request)
+    target = cfg.project_dir / "SOUL.md" if cfg.project_dir else cfg.home / "SOUL.md"
+    text = target.read_text(encoding="utf-8") if target.exists() else ""
+    import re as _re
+    m = _re.match(r"\A---\n(.*?)\n---\n?", text, _re.DOTALL)
+    if m:
+        import yaml
+        try:
+            existing = yaml.safe_load(m.group(1)) or {}
+        except yaml.YAMLError:
+            existing = {}
+        body = text[m.end():]
+    else:
+        existing = {}
+        body = text
+    existing.update({k: v for k, v in data.items() if v is not None})
+    lines = ["---"]
+    for k, v in existing.items():
+        lines.append(f"{k}: {v}")
+    lines.append("---")
+    if body.strip():
+        lines.append("")
+        lines.append(body.strip())
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines), encoding="utf-8")
+    from aede.instructions import _parse_frontmatter
+    text = target.read_text(encoding="utf-8")
+    fm, body = _parse_frontmatter(text, console=None)
+    return {
+        "name": fm.get("name"),
+        "wake_word": fm.get("wake_word"),
+        "persona": body,
+    }
+

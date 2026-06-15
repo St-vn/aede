@@ -14,7 +14,67 @@ Loads three tiers of instructions into the agent's system prompt:
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from typing import Any
+from dataclasses import dataclass, field
+
+
+@dataclass
+class VoiceDef:
+    engine: str | None = None
+    voice_id: str | None = None
+    rate: float = 1.0
+    pitch: float = 1.0
+
+
+@dataclass
+class SoulDef:
+    name: str | None = None
+    phonetic: str | None = None
+    wake_word: str | None = None
+    wake_word_phonetic: str | None = None
+    persona: str = ""
+    voice: VoiceDef = field(default_factory=VoiceDef)
+    aliases: list[str] = field(default_factory=list)
+    source_files: list[str] = field(default_factory=list)
+
+
+_FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n?---\n?", re.DOTALL)
+_warned_paths: set[Path] = set()
+
+
+def _warn(console: Any, msg: str) -> None:
+    if console is not None:
+        console.print(msg)
+    else:
+        print(msg)
+
+
+def _parse_frontmatter(text: str, *, console: Any = None) -> tuple[dict, str]:
+    if not text.startswith("---"):
+        return {}, text
+
+    m = _FRONTMATTER_RE.match(text)
+    if not m:
+        return {}, text
+
+    block = m.group(1)
+    body = text[m.end():]
+
+    import yaml
+
+    try:
+        parsed = yaml.safe_load(block)
+    except yaml.YAMLError:
+        _warn(console, "[yellow]⚠ SOUL.md frontmatter invalid, ignoring[/yellow]")
+        return {}, body
+
+    if not isinstance(parsed, dict):
+        _warn(console, "[yellow]⚠ SOUL.md frontmatter is not a mapping, ignoring[/yellow]")
+        return {}, body
+
+    return parsed, body
 
 
 INSTRUCTION_FILENAMES = ("AGENTS.md", "CLAUDE.md")
@@ -119,3 +179,96 @@ def build_instructions_suffix(home: Path, project_dir: Path) -> str | None:
         parts.append(f"## Project Instructions ({label})\n" + content)
 
     return "\n\n".join(parts) if parts else None
+
+
+def _coerce_voice(raw: Any) -> "VoiceDef":
+    if not isinstance(raw, dict):
+        return VoiceDef()
+    rate_raw = raw.get("rate", 1.0)
+    pitch_raw = raw.get("pitch", 1.0)
+    try:
+        rate = float(rate_raw)
+    except (TypeError, ValueError):
+        rate = 1.0
+    try:
+        pitch = float(pitch_raw)
+    except (TypeError, ValueError):
+        pitch = 1.0
+    return VoiceDef(
+        engine=raw.get("engine"),
+        voice_id=raw.get("voice_id"),
+        rate=rate,
+        pitch=pitch,
+    )
+
+
+def _def_from_frontmatter(fm: dict, body: str, source_path: Path | None,
+                           warn_console: Any = None) -> SoulDef:
+    if not fm:
+        return SoulDef(
+            persona=body,
+            source_files=[str(source_path)] if source_path else [],
+        )
+    raw_voice = fm.get("voice") or {}
+    return SoulDef(
+        name=fm.get("name"),
+        phonetic=fm.get("phonetic"),
+        wake_word=fm.get("wake_word"),
+        wake_word_phonetic=fm.get("wake_word_phonetic"),
+        persona=body,
+        voice=_coerce_voice(raw_voice),
+        aliases=list(fm.get("aliases") or []),
+        source_files=[str(source_path)] if source_path else [],
+    )
+
+
+def load_soul_def(home: Path, project_dir: Path | None, *, console: Any = None) -> SoulDef:
+    global_path = home / "SOUL.md"
+    project_path = (project_dir / "SOUL.md") if project_dir is not None else None
+
+    global_fm, global_body, global_present = {}, "", False
+    if global_path.exists():
+        global_present = True
+        try:
+            text = global_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            raise
+        if global_path not in _warned_paths:
+            global_fm, global_body = _parse_frontmatter(text, console=console)
+            _warned_paths.add(global_path)
+
+    project_fm, project_body, project_present = {}, "", False
+    if project_path is not None and project_path.exists():
+        project_present = True
+        try:
+            text = project_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            raise
+        if project_path not in _warned_paths:
+            project_fm, project_body = _parse_frontmatter(text, console=console)
+            _warned_paths.add(project_path)
+
+    if not global_present and not project_present:
+        return SoulDef()
+
+    merged_fm = {**global_fm, **project_fm}
+    body = project_body if project_present else global_body
+    source_files: list[str] = []
+    if global_present:
+        source_files.append(str(global_path))
+    if project_present:
+        source_files.append(str(project_path))
+
+    if not merged_fm:
+        return SoulDef(persona=body, source_files=source_files)
+
+    return SoulDef(
+        name=merged_fm.get("name"),
+        phonetic=merged_fm.get("phonetic"),
+        wake_word=merged_fm.get("wake_word"),
+        wake_word_phonetic=merged_fm.get("wake_word_phonetic"),
+        persona=body,
+        voice=_coerce_voice(merged_fm.get("voice") or {}),
+        aliases=list(merged_fm.get("aliases") or []),
+        source_files=source_files,
+    )

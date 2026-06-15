@@ -111,7 +111,7 @@ class AedeConfig:
     code.
     """
 
-    def __init__(self, data: dict[str, Any], home: Path, sources: dict[str, str] | None = None) -> None:
+    def __init__(self, data: dict[str, Any], home: Path, sources: dict[str, str] | None = None, project_dir: Path | None = None) -> None:
         self.model: str = data.get("model", DEFAULT_CONFIG["model"])
         self.context_window: int = data.get("context_window", DEFAULT_CONFIG["context_window"])
         self.compaction_threshold: float = data.get("compaction_threshold", DEFAULT_CONFIG["compaction_threshold"])
@@ -152,6 +152,9 @@ class AedeConfig:
             self.data_dir = home / "data"
         self.home = home
         self.sources: dict[str, str] = sources or {}
+        self.project_dir = project_dir
+        from aede.instructions import load_soul_def, SoulDef
+        self.soul: SoulDef = load_soul_def(home=self.home, project_dir=self.project_dir)
 
 
 def load_config(
@@ -199,7 +202,7 @@ def load_config(
         else:
             sources[key] = "default"
 
-    return AedeConfig(merged, home, sources=sources)
+    return AedeConfig(merged, home, sources=sources, project_dir=project_dir)
 
 
 def write_config_value(

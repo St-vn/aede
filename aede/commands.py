@@ -20,7 +20,7 @@ COMMANDS = {
     "help", "keybinds", "resume", "sessions", "tools", "config",
     "compact", "tokens", "clear", "exit", "setkey",
     "skills", "agents", "mcp", "delete-session", "rm", "acp", "import",
-    "extract",
+    "extract", "soul",
 }
 
 
@@ -68,6 +68,7 @@ def handle_help(console: Any) -> None:
             "  /compact                      — manually compact context",
             "  /tokens                       — show token usage and cost",
             "  /setkey <NAME> <value>        — save a credential to aede's vault (loaded on every launch)",
+            "  /soul [view|global|project|<key> <value>] — view or edit soul definition",
             "  /import agent <path> [--source] — import an agent/rules file (claude-code, opencode, antigravity, codex, cursor, windsurf)",
             "  /import skill <path> [--source] — import a SKILL.md (claude-code, antigravity, codex, windsurf)",
             "  /import mcp <path> [--source]   — import MCP servers (JSON or Codex TOML)",
@@ -1306,3 +1307,87 @@ def handle_extract(
 
     console.print(f"[dim]Extracted {written}/{len(candidates)} learnings from {session_id}.[/dim]")
     return f"extracted {written} from {session_id}"
+
+
+def handle_soul(args: list[str], *, home: Path, console: Any, cfg: Any,
+                project_dir: Path | None = None) -> str | None:
+    from aede.instructions import SoulDef, load_soul_def
+    from aede.config import edit_config_file
+
+    if not args or args[0] == "view":
+        s: SoulDef = cfg.soul
+        if s.name:
+            console.print(f"[bold]Name:[/bold] {s.name}")
+        if s.phonetic:
+            console.print(f"[bold]Phonetic:[/bold] {s.phonetic}")
+        if s.wake_word:
+            console.print(f"[bold]Wake word:[/bold] {s.wake_word}")
+        if s.wake_word_phonetic:
+            console.print(f"[bold]Wake word (phonetic):[/bold] {s.wake_word_phonetic}")
+        if s.aliases:
+            console.print(f"[bold]Aliases:[/bold] {', '.join(s.aliases)}")
+        if s.voice.engine or s.voice.voice_id:
+            console.print(f"[bold]Voice:[/bold] engine={s.voice.engine or '—'}, voice_id={s.voice.voice_id or '—'}, rate={s.voice.rate}, pitch={s.voice.pitch}")
+        if s.source_files:
+            console.print(f"[dim]Sources:[/dim] {', '.join(s.source_files)}")
+        if s.persona:
+            console.print()
+            console.print(s.persona)
+        return None
+
+    if args[0] in ("global", "project"):
+        if args[0] == "global":
+            path = home / "SOUL.md"
+        else:
+            path = project_dir / "SOUL.md" if project_dir else None
+            if path is None:
+                console.print("[red]No project directory set[/red]")
+                return None
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                frontmatter = load_soul_def(home=home, project_dir=project_dir)
+                existing_body = (home / "SOUL.md").read_text(encoding="utf-8") if (home / "SOUL.md").exists() else ""
+                body_only = existing_body
+                if body_only.startswith("---"):
+                    import re as _re
+                    m = _re.match(r"\A---\n.*?\n---\n?", body_only, _re.DOTALL)
+                    if m:
+                        body_only = body_only[m.end():]
+                path.write_text(
+                    "---\n---\n" + body_only.strip(),
+                    encoding="utf-8",
+                )
+        edit_config_file(path, console)
+        return None
+
+    # /soul <key> <value> — write a frontmatter key to project SOUL.md
+    if len(args) >= 2:
+        key, value = args[0], " ".join(args[1:])
+        project_path = (project_dir / "SOUL.md") if project_dir else (home / "SOUL.md")
+        project_path.parent.mkdir(parents=True, exist_ok=True)
+        text = project_path.read_text(encoding="utf-8") if project_path.exists() else ""
+        import re as _re
+        m = _re.match(r"\A---\n(.*?)\n---\n?", text, _re.DOTALL)
+        if m:
+            import yaml
+            try:
+                existing = yaml.safe_load(m.group(1)) or {}
+            except yaml.YAMLError:
+                existing = {}
+            body = text[m.end():]
+        else:
+            existing = {}
+            body = text
+        existing[key] = value
+        lines = ["---"]
+        for k, v in existing.items():
+            lines.append(f"{k}: {v}")
+        lines.append("---")
+        lines.append("")
+        if body.strip():
+            lines.append(body.strip())
+        project_path.write_text("\n".join(lines), encoding="utf-8")
+        console.print(f"[green]Set {key} = {value}[/green]")
+        return None
+
+    return None
