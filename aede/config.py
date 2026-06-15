@@ -48,6 +48,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "voice_wake_word_enabled": False,
     # Sandboxing (Phase 2 — P0.2)
     "sandbox": {},
+    # Plugin/skill toggle configuration
+    "plugins": {},
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -166,6 +168,8 @@ class AedeConfig:
         raw_sandbox = data.get("sandbox") or {}
         from aede.sandboxing.docker import SandboxConfig
         self.sandbox: SandboxConfig = SandboxConfig.from_dict(raw_sandbox)
+        # Plugin/skill toggle configuration
+        self.plugins: dict = data.get("plugins") or {}
 
 
 def load_config(
