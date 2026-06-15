@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, reference]
-date_updated: 2026-06-10
+date_updated: 2026-06-14
 ---
 
 # Slash Commands
@@ -16,6 +16,7 @@ date_updated: 2026-06-10
 | `/sessions` | List the 20 most recent sessions | `/sessions` |
 | `/delete-session [id]` | Delete a session, its rollout log, and notes | `/delete-session <id>` |
 | `/rm [id]` | Alias for `/delete-session` | `/rm <id>` |
+| `/rename <title>` | Rename the current session | `/rename my-task` |
 
 ## Information
 
@@ -38,6 +39,7 @@ date_updated: 2026-06-10
 | `/config <scope> <key> <value>` | Set a config value | `/config project model claude-sonnet-4-20250514` |
 | `/config <scope> <key> +<value>` | Add to a list key | `/config project auto_approve +powershell` |
 | `/config <scope> <key> -<value>` | Remove from a list key | `/config project auto_approve -powershell` |
+| `/config raw [scope]` | Open raw config YAML in `$EDITOR` | `/config raw project` |
 | `/setkey <NAME> <value>` | Save a credential to the vault | `/setkey OPENAI_API_KEY sk-...` |
 
 ## Agent Control
@@ -46,6 +48,22 @@ date_updated: 2026-06-10
 |---------|-------------|--------|
 | `/compact` | Manually trigger context compaction | `/compact` |
 | `/extract [id]` | Extract learnings from a session trace | `/extract <session-id>` |
+
+## Identity
+
+| Command | Description | Syntax |
+|---------|-------------|--------|
+| `/soul` | Print the effective SoulDef | `/soul` |
+| `/soul global` | Open global `SOUL.md` in `$EDITOR` | `/soul global` |
+| `/soul project` | Open project `SOUL.md` in `$EDITOR` | `/soul project` |
+| `/soul <key> <value>` | Set a frontmatter key on the project SOUL.md | `/soul name Jarvis` |
+
+## Approval
+
+| Command | Description | Syntax |
+|---------|-------------|--------|
+| `/approve` | List pending gated tools | `/approve` |
+| `/approve <tool...>` | Batch-approve gated tools | `/approve powershell write_file` |
 
 ## ACP
 

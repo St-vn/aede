@@ -84,7 +84,7 @@ export function SoulTab() {
     <div className="space-y-4">
       <div>
         <h3 className="text-sm font-medium">Agent Identity</h3>
-        <p className="text-xs text-muted-foreground">Configure the agent's name, wake word, and persona.</p>
+        <p className="text-xs text-muted-foreground">Configure the agent&apos;s name, wake word, and persona.</p>
       </div>
       <Separator />
       <div className="space-y-3">
@@ -123,7 +123,7 @@ export function SoulTab() {
       <div>
         <h3 className="text-sm font-medium">Voice Input</h3>
         <p className="text-xs text-muted-foreground">
-          Enable voice input via browser speech recognition. Audio is sent to your browser's STT service (Chrome routes to Google). Only recognized text is sent to the agent.
+          Enable voice input via browser speech recognition. Audio is sent to your browser&apos;s STT service (Chrome routes to Google). Only recognized text is sent to the agent.
         </p>
       </div>
       <div className="space-y-3">
@@ -146,7 +146,7 @@ export function SoulTab() {
           <span className="text-xs font-medium">Continuous wake word listening</span>
         </label>
         <p className="text-xs text-muted-foreground">
-          Voice input uses your browser's speech-to-text (Chrome routes audio to Google). Audio is not recorded by aede; only the resulting text is sent to the agent. Requires an internet connection.
+          Voice input uses your browser&apos;s speech-to-text (Chrome routes audio to Google). Audio is not recorded by aede; only the resulting text is sent to the agent. Requires an internet connection.
         </p>
       </div>
       {soul && soul.persona && (

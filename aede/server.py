@@ -541,6 +541,12 @@ async def get_config(request: Request):
         if val is not None:
             d[key] = val
     d["model_prices"] = cfg.model_prices
+    d["plugins"] = cfg.plugins
+    d["sandbox"] = dataclasses.asdict(cfg.sandbox) if cfg.sandbox else {}
+    for key in ("otel_endpoint", "otel_service_name", "fde_enabled", "fde_endpoint"):
+        val = getattr(cfg, key, None)
+        if val is not None:
+            d[key] = val
     d["mcp_servers"] = cfg.mcp_servers
     return d
 

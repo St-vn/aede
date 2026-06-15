@@ -59,6 +59,34 @@ date_updated: 2026-06-14
 |-----|------|---------|-------------|
 | `grounding_enabled` | boolean | `true` | Inject grounding instruction into system prompt |
 
+## Voice
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `voice_input_enabled` | boolean | `false` | Enable voice input in the web UI |
+| `voice_wake_word_enabled` | boolean | `false` | Enable wake word detection |
+
+## Sandbox
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `sandbox` | object | `{}` | Sandbox config with `enabled`, `image`, `workspace_mount`, `memory_limit`, `cpu_limit`, `env` |
+
+## Plugins
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `plugins` | object | `{}` | Plugin toggle config with `enabled` and `disabled` lists |
+
+## Observability
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `otel_endpoint` | string | `null` | OTLP gRPC endpoint (null = no-op) |
+| `otel_service_name` | string | `"aede"` | Service name in OTel resource attributes |
+| `fde_enabled` | boolean | `false` | Enable fair-data-ethics capture |
+| `fde_endpoint` | string | `null` | Remote FDE forwarding endpoint (optional) |
+
 ## Memory (Embeddings)
 
 | Key | Type | Default | Description |

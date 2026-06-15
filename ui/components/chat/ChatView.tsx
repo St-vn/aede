@@ -5,6 +5,7 @@ import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 import { ToolCallCard } from './ToolCallCard'
 import { GateCard } from './GateCard'
+import { GateBatchCard } from './GateBatchCard'
 import { InputBar } from '@/components/input/InputBar'
 import { useWebSocket, type WSEvent } from '@/hooks/useWebSocket'
 import { ContextBar } from './ContextBar'
@@ -29,7 +30,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   const [isStreaming, setIsStreaming] = useState(false)
   const [isThinkingActive, setIsThinkingActive] = useState(false)
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([])
-  const [gate, setGate] = useState<GateRequest | null>(null)
+  const [gates, setGates] = useState<GateRequest[]>([])
   const [pendingMessages, setPendingMessages] = useState<{ content: string; id: string }[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -75,11 +76,11 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
         ? { ...c, status: ev.status as string, output: ev.output as string, durationMs: ev.duration_ms as number }
         : c))
     } else if (ev.type === 'gate_request') {
-      setGate({ gateId: ev.gate_id as string, toolName: ev.tool_name as string, args: ev.args as Record<string, unknown> })
+      setGates(gs => [...gs, { gateId: ev.gate_id as string, toolName: ev.tool_name as string, args: ev.args as Record<string, unknown> }])
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
       setIsStreaming(false)
       setIsThinkingActive(false)
-      setGate(null)
+      setGates([])
       setStreamingThinking('')
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
     } else if (ev.type === 'error') {
@@ -130,7 +131,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     const payload: Record<string, unknown> = { type: 'gate_response', gate_id: gateId, decision }
     if (message) payload.redirect_msg = message
     send(payload)
-    setGate(null)
+    setGates(gs => gs.filter(g => g.gateId !== gateId))
   }
 
   const handleModelChange = useCallback((model: string) => {
@@ -147,7 +148,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     }
   }, [onModelChange])
 
-  const inputDisabled = isStreaming || !!gate
+  const inputDisabled = isStreaming || gates.length > 0
 
   return (
     <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
@@ -174,9 +175,13 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
           {(streamingText || streamingThinking || isThinkingActive || isStreaming) && (
             <AssistantMessage content={streamingText} isStreaming={isStreaming} thinking={streamingThinking} isThinkingActive={isThinkingActive} />
           )}
-          {gate && (
-            <GateCard gateId={gate.gateId} toolName={gate.toolName}
-              args={gate.args} onDecision={handleGateDecision} />
+          {gates.length > 1 && (
+            <GateBatchCard gates={gates} onDecision={(gateId, decision) =>
+              handleGateDecision({ gateId, decision })} />
+          )}
+          {gates.length === 1 && (
+            <GateCard gateId={gates[0].gateId} toolName={gates[0].toolName}
+              args={gates[0].args} onDecision={handleGateDecision} />
           )}
         </div>
       </ScrollArea>

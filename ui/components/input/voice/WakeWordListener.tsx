@@ -3,7 +3,8 @@ import React, { useRef, useEffect, useCallback, useState } from 'react'
 import { matchWakeWord, type SoulData } from './matchWakeWord'
 import { handleRecognitionError } from './ErrorDisplay'
 
-const SR = window.SpeechRecognition ?? (window as any).webkitSpeechRecognition
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
 
 type WakeWordState = 'disabled' | 'starting' | 'continuous-listening' | 'activated'
 
@@ -51,6 +52,7 @@ export function WakeWordListener({ enabled, soul, sessionId, textareaRef, setTex
     followUp.interimResults = true
     followUp.lang = navigator.language
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     followUp.onresult = (event: any) => {
       const results = event.results
       for (let i = event.resultIndex; i < results.length; i++) {
@@ -75,6 +77,7 @@ export function WakeWordListener({ enabled, soul, sessionId, textareaRef, setTex
 
     followUp.onaudiostart = resetSilenceTimeout
     followUp.onaudioend = resetSilenceTimeout
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     followUp.onerror = (event: any) => {
       handleRecognitionError(event.error)
       setState('continuous-listening')
@@ -98,6 +101,7 @@ export function WakeWordListener({ enabled, soul, sessionId, textareaRef, setTex
       try { recognition.phrases = [wakeWord, ...(soul.aliases || [])] } catch {}
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       if (!disabledRef.current) return
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -118,6 +122,7 @@ export function WakeWordListener({ enabled, soul, sessionId, textareaRef, setTex
       }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (event: any) => {
       const code: string = event.error
       if (code === 'not-allowed' || code === 'service-not-allowed') {

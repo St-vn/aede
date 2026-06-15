@@ -17,6 +17,7 @@ import { KeybindsTab } from './tabs/KeybindsTab'
 import { ProjectsTab } from './tabs/ProjectsTab'
 import { ImportTab } from './tabs/ImportTab'
 import { SoulTab } from './tabs/SoulTab'
+import { SandboxTab } from './tabs/SandboxTab'
 const TABS = [
   { id: 'config', label: 'Config', icon: Cog },
   { id: 'models', label: 'Models', icon: Key },
@@ -25,6 +26,7 @@ const TABS = [
   { id: 'memory', label: 'Memory', icon: BrainCircuit },
   { id: 'agents', label: 'Agents', icon: Bot },
   { id: 'skills', label: 'Skills', icon: Sparkles },
+  { id: 'sandbox', label: 'Sandbox', icon: Cog },
   { id: 'keybinds', label: 'Keybinds', icon: Keyboard },
   { id: 'projects', label: 'Projects', icon: FolderOpen },
   { id: 'import', label: 'Import', icon: Download },
@@ -97,6 +99,9 @@ export function SettingsModal({ open, onOpenChange, initialTab }: Props) {
                 </TabsContent>
                 <TabsContent value="skills" className="mt-0">
                   <SkillsTab />
+                </TabsContent>
+                <TabsContent value="sandbox" className="mt-0">
+                  <SandboxTab />
                 </TabsContent>
                 <TabsContent value="keybinds" className="mt-0">
                   <KeybindsTab />
