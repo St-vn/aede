@@ -160,6 +160,21 @@
   animation-fill-mode: both !important;
 }
 
+/* ── Collapsible chevron rotation ── */
+[data-panel-open] > svg.lucide-chevron-down,
+[data-panel-open] > .lucide-chevron-down {
+  transform: rotate(0deg) !important;
+}
+
+/* ── ScrollArea: hide native scrollbar ── */
+[data-slot="scroll-area-viewport"] {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+[data-slot="scroll-area-viewport"]::-webkit-scrollbar {
+  display: none;
+}
+
 /* ── Docs prose styles ── */
 .docs-content {
   color: rgb(var(--foreground));
