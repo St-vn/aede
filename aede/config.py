@@ -43,6 +43,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "compaction_model": None,
     # MCP server configurations
     "mcp_servers": {},
+    # Sandboxing (Phase 2 — P0.2)
+    "sandbox": {},
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -155,6 +157,9 @@ class AedeConfig:
         self.project_dir = project_dir
         from aede.instructions import load_soul_def, SoulDef
         self.soul: SoulDef = load_soul_def(home=self.home, project_dir=self.project_dir)
+        raw_sandbox = data.get("sandbox") or {}
+        from aede.sandboxing.docker import SandboxConfig
+        self.sandbox: SandboxConfig = SandboxConfig.from_dict(raw_sandbox)
 
 
 def load_config(
