@@ -255,3 +255,53 @@ def test_compaction_model_round_trip(tmp_home):
     cfg = AedeConfig(data={"compaction_model": "deepseek-v4-flash-free"}, home=tmp_home)
     assert cfg.compaction_model == "deepseek-v4-flash-free"
 
+
+# ---------------------------------------------------------------------------
+# P0.7 — FDE capture config
+# ---------------------------------------------------------------------------
+
+def test_fde_enabled_defaults_to_false(tmp_home):
+    cfg = AedeConfig(data={}, home=tmp_home)
+    assert cfg.fde_enabled is False
+
+
+def test_fde_enabled_can_be_set(tmp_home):
+    cfg = AedeConfig(data={"fde_enabled": True}, home=tmp_home)
+    assert cfg.fde_enabled is True
+
+
+def test_fde_endpoint_defaults_to_none(tmp_home):
+    cfg = AedeConfig(data={}, home=tmp_home)
+    assert cfg.fde_endpoint is None
+
+
+def test_fde_endpoint_can_be_set(tmp_home):
+    cfg = AedeConfig(data={"fde_endpoint": "https://fde.example.com/upload"}, home=tmp_home)
+    assert cfg.fde_endpoint == "https://fde.example.com/upload"
+
+
+def test_bootstrap_creates_fde_dir(tmp_home):
+    bootstrap(tmp_home)
+    assert (tmp_home / "data" / "fde").exists()
+
+
+def test_fde_fields_in_default_config():
+    from aede.config import DEFAULT_CONFIG
+    assert "fde_enabled" in DEFAULT_CONFIG
+    assert DEFAULT_CONFIG["fde_enabled"] is False
+    assert "fde_endpoint" in DEFAULT_CONFIG
+    assert DEFAULT_CONFIG["fde_endpoint"] is None
+
+
+def test_fde_settings_via_project_config(tmp_home, tmp_path):
+    bootstrap(tmp_home)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "aede.yml").write_text(yaml.dump({
+        "fde_enabled": True,
+        "fde_endpoint": "https://analytics.example.com/fde",
+    }))
+    cfg = load_config(home=tmp_home, project_dir=project_dir)
+    assert cfg.fde_enabled is True
+    assert cfg.fde_endpoint == "https://analytics.example.com/fde"
+

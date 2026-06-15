@@ -43,6 +43,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "compaction_model": None,
     # MCP server configurations
     "mcp_servers": {},
+    # FDE (fair-data-ethics) capture — opt-in
+    "fde_enabled": False,
+    "fde_endpoint": None,
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -97,6 +100,7 @@ def bootstrap(home: Path | None = None) -> None:
     home.mkdir(parents=True, exist_ok=True)
     (home / "data").mkdir(exist_ok=True)
     (home / "data" / "sessions").mkdir(exist_ok=True)
+    (home / "data" / "fde").mkdir(exist_ok=True)
     (home / "skills").mkdir(exist_ok=True)
     (home / "agents").mkdir(exist_ok=True)
     cfg_path = home / "config.yml"
@@ -145,6 +149,9 @@ class AedeConfig:
         raw_mcp = data.get("mcp_servers") or data.get("mcpServers") or {}
         from aede.mcp.client import _parse_mcp_servers
         self.mcp_servers = _parse_mcp_servers(raw_mcp)
+        # FDE (fair-data-ethics) capture
+        self.fde_enabled: bool = data.get("fde_enabled", False)
+        self.fde_endpoint: str | None = data.get("fde_endpoint") or None
         raw_data_dir = data.get("data_dir")
         if raw_data_dir:
             self.data_dir = Path(raw_data_dir).expanduser()
