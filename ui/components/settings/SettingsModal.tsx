@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  Cog, Key, Plug, BarChart3, BrainCircuit, Bot, Sparkles, Keyboard, FolderOpen, Download, User,
+  Cog, Key, Plug, BarChart3, BrainCircuit, Bot, Sparkles, Keyboard, FolderOpen, Download, User, ScrollText,
 } from 'lucide-react'
 import { ConfigTab } from './tabs/ConfigTab'
 import { ModelsTab } from './tabs/ModelsTab'
@@ -17,6 +17,7 @@ import { KeybindsTab } from './tabs/KeybindsTab'
 import { ProjectsTab } from './tabs/ProjectsTab'
 import { ImportTab } from './tabs/ImportTab'
 import { SoulTab } from './tabs/SoulTab'
+import { InstructionsTab } from './tabs/InstructionsTab'
 import { SandboxTab } from './tabs/SandboxTab'
 const TABS = [
   { id: 'config', label: 'Config', icon: Cog },
@@ -31,6 +32,7 @@ const TABS = [
   { id: 'projects', label: 'Projects', icon: FolderOpen },
   { id: 'import', label: 'Import', icon: Download },
   { id: 'soul', label: 'Soul', icon: User },
+  { id: 'instructions', label: 'Instructions', icon: ScrollText },
 ] as const
 
 export type SettingsTabId = (typeof TABS)[number]['id']
@@ -40,9 +42,10 @@ interface Props {
   onOpenChange: (open: boolean) => void
   initialTab?: SettingsTabId
   sessionId?: string | null
+  projectDir?: string | null
 }
 
-export function SettingsModal({ open, onOpenChange, initialTab, sessionId }: Props) {
+export function SettingsModal({ open, onOpenChange, initialTab, sessionId, projectDir }: Props) {
   const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab || 'config')
 
   React.useEffect(() => {
@@ -114,7 +117,10 @@ export function SettingsModal({ open, onOpenChange, initialTab, sessionId }: Pro
                   <ImportTab />
                 </TabsContent>
                 <TabsContent value="soul" className="mt-0">
-                  <SoulTab />
+                  <SoulTab projectDir={projectDir} />
+                </TabsContent>
+                <TabsContent value="instructions" className="mt-0">
+                  <InstructionsTab projectDir={projectDir} />
                 </TabsContent>
               </div>
             </ScrollArea>

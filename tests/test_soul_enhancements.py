@@ -374,6 +374,70 @@ def test_soultab_file_exists_and_settings_modal_wired():
     modal = root / "ui" / "components" / "settings" / "SettingsModal.tsx"
     text = modal.read_text(encoding="utf-8")
     assert "SoulTab" in text
+    # Instructions tab (AGENTS.md / CLAUDE.md editor) is wired too.
+    instr_tab = root / "ui" / "components" / "settings" / "tabs" / "InstructionsTab.tsx"
+    assert instr_tab.exists(), f"Missing {instr_tab}"
+    assert "InstructionsTab" in text
+    assert "/api/project-instructions" in instr_tab.read_text(encoding="utf-8")
+
+
+# ── T6 — PATCH /api/soul scope + persona body ──
+
+def _patch_soul(tmp_home, project, json_body):
+    from aede.server import app
+    from fastapi.testclient import TestClient
+    from aede.config import AedeConfig
+    client = TestClient(app)
+    with patch("aede.server.get_config_for_request") as mock_cfg:
+        mock_cfg.return_value = AedeConfig({}, home=tmp_home, project_dir=project)
+        return client.patch("/api/soul", json=json_body)
+
+
+def test_patch_soul_global_scope_writes_to_home(tmp_home, tmp_path):
+    project = tmp_path / "proj"
+    project.mkdir()
+    resp = _patch_soul(tmp_home, project, {"name": "GlobalBot", "scope": "global"})
+    assert resp.status_code == 200
+    # Global scope writes to home, NOT project_dir.
+    assert (tmp_home / "SOUL.md").exists()
+    assert not (project / "SOUL.md").exists()
+    assert "name: GlobalBot" in (tmp_home / "SOUL.md").read_text(encoding="utf-8")
+
+
+def test_patch_soul_project_scope_writes_to_project(tmp_home, tmp_path):
+    project = tmp_path / "proj"
+    project.mkdir()
+    resp = _patch_soul(tmp_home, project, {"name": "ProjBot", "scope": "project"})
+    assert resp.status_code == 200
+    assert (project / "SOUL.md").exists()
+    assert not (tmp_home / "SOUL.md").exists()
+
+
+def test_patch_soul_persona_body_written(tmp_home, tmp_path):
+    project = tmp_path / "proj"
+    project.mkdir()
+    resp = _patch_soul(tmp_home, project, {
+        "name": "BodyBot", "persona": "You are calm and terse.", "scope": "project",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["persona"] == "You are calm and terse."
+    text = (project / "SOUL.md").read_text(encoding="utf-8")
+    assert "You are calm and terse." in text
+
+
+def test_patch_soul_aliases_list_roundtrips(tmp_home, tmp_path):
+    # The old f-string serializer broke on list values; safe_dump must round-trip.
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "SOUL.md").write_text(
+        "---\nname: OldBot\naliases:\n- jarvis\n- friday\n---\nbody\n", encoding="utf-8"
+    )
+    resp = _patch_soul(tmp_home, project, {"name": "NewBot", "scope": "project"})
+    assert resp.status_code == 200
+    from aede.instructions import _parse_frontmatter
+    fm, _ = _parse_frontmatter((project / "SOUL.md").read_text(encoding="utf-8"))
+    assert fm["name"] == "NewBot"
+    assert fm["aliases"] == ["jarvis", "friday"]
 
 
 def test_all_p0_8_acs_have_tests():

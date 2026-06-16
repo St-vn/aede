@@ -1683,39 +1683,110 @@ async def get_soul(request: Request):
 
 @app.patch("/api/soul")
 async def patch_soul(data: dict, request: Request):
-    cfg = get_config_for_request(request)
-    target = cfg.project_dir / "SOUL.md" if cfg.project_dir else cfg.home / "SOUL.md"
-    text = target.read_text(encoding="utf-8") if target.exists() else ""
-    import re as _re
-    m = _re.match(r"\A---\n(.*?)\n---\n?", text, _re.DOTALL)
-    if m:
-        import yaml
-        try:
-            existing = yaml.safe_load(m.group(1)) or {}
-        except yaml.YAMLError:
-            existing = {}
-        body = text[m.end():]
-    else:
-        existing = {}
-        body = text
-    existing.update({k: v for k, v in data.items() if v is not None})
-    lines = ["---"]
-    for k, v in existing.items():
-        lines.append(f"{k}: {v}")
-    lines.append("---")
-    if body.strip():
-        lines.append("")
-        lines.append(body.strip())
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("\n".join(lines), encoding="utf-8")
+    """Update SOUL.md at the requested scope.
+
+    Body fields:
+      - ``scope``: "global" (~/.aede/SOUL.md) or "project" (project_dir/SOUL.md).
+        Defaults to "project" when a project_dir is set, else "global" — preserving
+        prior behaviour for callers that omit scope.
+      - ``persona``: freeform Markdown body (the identity text). Empty string clears it.
+      - any frontmatter key (name, phonetic, wake_word, aliases, ...): merged into
+        existing frontmatter. ``None`` values are ignored.
+    """
+    import yaml
     from aede.instructions import _parse_frontmatter
-    text = target.read_text(encoding="utf-8")
-    fm, body = _parse_frontmatter(text, console=None)
+
+    cfg = get_config_for_request(request)
+    scope = data.get("scope")
+    if scope not in ("global", "project"):
+        scope = "project" if cfg.project_dir else "global"
+    if scope == "project":
+        if not cfg.project_dir:
+            raise HTTPException(status_code=400, detail="project scope requires an active project")
+        target = cfg.project_dir / "SOUL.md"
+    else:
+        target = cfg.home / "SOUL.md"
+
+    text = target.read_text(encoding="utf-8") if target.exists() else ""
+    existing, body = _parse_frontmatter(text)
+
+    # persona is the body, handled separately from frontmatter keys.
+    if "persona" in data:
+        body = data["persona"] or ""
+    fm_updates = {k: v for k, v in data.items()
+                  if k not in ("scope", "persona") and v is not None}
+    existing.update(fm_updates)
+
+    parts: list[str] = []
+    if existing:
+        # safe_dump round-trips lists/nested values correctly (the old f-string
+        # serializer flattened ``aliases`` into ``[..]`` text and corrupted it).
+        fm_text = yaml.safe_dump(existing, default_flow_style=False, sort_keys=False).strip()
+        parts.append("---\n" + fm_text + "\n---")
+    if body.strip():
+        parts.append(body.strip())
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(parts) + "\n", encoding="utf-8")
+
+    fm, new_body = _parse_frontmatter(target.read_text(encoding="utf-8"))
     return {
         "name": fm.get("name"),
+        "phonetic": fm.get("phonetic"),
         "wake_word": fm.get("wake_word"),
-        "persona": body,
+        "aliases": fm.get("aliases", []),
+        "persona": new_body.strip(),
+        "scope": scope,
     }
+
+
+# ── Project instructions (AGENTS.md / CLAUDE.md) ──────────────
+
+
+def _resolve_instructions_path(cfg, scope: str, project_dir: str | None, *, for_write: bool):
+    """Resolve the instructions file for the given scope.
+
+    Global scope → ``~/.aede/AGENTS.md``.
+    Project scope → ``<project>/AGENTS.md`` preferred; if only ``CLAUDE.md``
+    exists, that file is used (matching the read-side fallback in
+    ``aede.instructions.INSTRUCTION_FILENAMES`` so edits hit the file actually
+    loaded). For writes to a project with neither file present, AGENTS.md is
+    chosen (aede's preferred filename).
+    """
+    from aede.instructions import INSTRUCTION_FILENAMES
+    if scope == "global":
+        return cfg.home / "AGENTS.md", "AGENTS.md"
+    if scope != "project":
+        raise HTTPException(status_code=400, detail="scope must be 'global' or 'project'")
+    base = Path(project_dir) if project_dir else cfg.project_dir
+    if not base:
+        raise HTTPException(status_code=400, detail="project scope requires project_dir")
+    for name in INSTRUCTION_FILENAMES:
+        candidate = base / name
+        if candidate.exists():
+            return candidate, name
+    # No file yet → default to the preferred filename (AGENTS.md).
+    return base / INSTRUCTION_FILENAMES[0], INSTRUCTION_FILENAMES[0]
+
+
+@app.get("/api/project-instructions")
+async def get_project_instructions(request: Request, scope: str = "project",
+                                   project_dir: str | None = None):
+    cfg = get_config_for_request(request)
+    path, filename = _resolve_instructions_path(cfg, scope, project_dir, for_write=False)
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    return {"path": str(path), "filename": filename, "content": content, "scope": scope}
+
+
+@app.put("/api/project-instructions")
+async def put_project_instructions(data: dict, request: Request):
+    cfg = get_config_for_request(request)
+    scope = data.get("scope", "project")
+    content = data.get("content", "")
+    path, filename = _resolve_instructions_path(
+        cfg, scope, data.get("project_dir"), for_write=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return {"path": str(path), "filename": filename, "scope": scope}
 
 
 # ── Voice Input endpoints ─────────────────────────────────────

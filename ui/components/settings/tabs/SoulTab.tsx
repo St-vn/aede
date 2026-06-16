@@ -13,24 +13,35 @@ interface SoulData {
   persona: string
 }
 
-export function SoulTab() {
-  const [soul, setSoul] = useState<SoulData | null>(null)
+type Scope = 'global' | 'project'
+
+interface Props {
+  projectDir?: string | null
+}
+
+export function SoulTab({ projectDir }: Props) {
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')
   const [phonetic, setPhonetic] = useState('')
   const [wakeWord, setWakeWord] = useState('')
+  const [persona, setPersona] = useState('')
+  const [scope, setScope] = useState<Scope>('global')
   const [voiceInputEnabled, setVoiceInputEnabled] = useState(false)
   const [voiceWakeWordEnabled, setVoiceWakeWordEnabled] = useState(false)
+
+  // Project scope is only meaningful when a project is active.
+  const canProject = !!projectDir
+  const effectiveScope: Scope = scope === 'project' && !canProject ? 'global' : scope
 
   useEffect(() => {
     Promise.all([
       apiFetch<SoulData>('/api/soul'),
       apiFetch<{ voice_input_enabled?: boolean; voice_wake_word_enabled?: boolean }>('/api/config'),
     ]).then(([soulData, configData]) => {
-      setSoul(soulData)
       setName(soulData.name || '')
       setPhonetic(soulData.phonetic || '')
       setWakeWord(soulData.wake_word || '')
+      setPersona(soulData.persona || '')
       setVoiceInputEnabled(configData.voice_input_enabled ?? false)
       setVoiceWakeWordEnabled(configData.voice_wake_word_enabled ?? false)
       setLoading(false)
@@ -38,20 +49,22 @@ export function SoulTab() {
   }, [])
 
   const handleSave = async () => {
-    const body: Record<string, string | null> = {}
-    if (name) body.name = name
-    if (phonetic) body.phonetic = phonetic
-    if (wakeWord) body.wake_word = wakeWord
-    await apiFetch('/api/soul', {
+    const body: Record<string, string | null> = {
+      scope: effectiveScope,
+      name: name || null,
+      phonetic: phonetic || null,
+      wake_word: wakeWord || null,
+      persona,
+    }
+    const updated = await apiFetch<SoulData>('/api/soul', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-    const updated = await apiFetch<SoulData>('/api/soul')
-    setSoul(updated)
     setName(updated.name || '')
     setPhonetic(updated.phonetic || '')
     setWakeWord(updated.wake_word || '')
+    setPersona(updated.persona || '')
   }
 
   const toggleVoiceInput = async (val: boolean) => {
@@ -84,9 +97,28 @@ export function SoulTab() {
     <div className="space-y-4">
       <div>
         <h3 className="text-sm font-medium">Agent Identity</h3>
-        <p className="text-xs text-muted-foreground">Configure the agent&apos;s name, wake word, and persona.</p>
+        <p className="text-xs text-muted-foreground">Configure the agent&apos;s name, wake word, and persona (SOUL.md).</p>
       </div>
       <Separator />
+      <div className="flex items-center gap-1 rounded-md bg-muted/40 p-0.5 w-fit">
+        {(['global', 'project'] as Scope[]).map(s => {
+          const disabled = s === 'project' && !canProject
+          return (
+            <button
+              key={s}
+              type="button"
+              disabled={disabled}
+              onClick={() => setScope(s)}
+              className={`px-2.5 py-1 text-xs rounded capitalize transition-colors ${
+                effectiveScope === s ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'
+              } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+              title={disabled ? 'Open a project to edit project-scoped identity' : undefined}
+            >
+              {s}
+            </button>
+          )
+        })}
+      </div>
       <div className="space-y-3">
         <div className="space-y-1.5">
           <label className="text-xs font-medium">Name</label>
@@ -115,8 +147,18 @@ export function SoulTab() {
             placeholder="e.g. hey jarvis"
           />
         </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium">Persona</label>
+          <textarea
+            value={persona}
+            onChange={e => setPersona(e.target.value)}
+            rows={6}
+            className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono resize-y"
+            placeholder="Freeform identity / tone / boundaries (Markdown). Injected into the system prompt."
+          />
+        </div>
         <Button size="sm" className="h-8 text-xs" onClick={handleSave}>
-          Save
+          Save {effectiveScope === 'project' ? 'project' : 'global'} identity
         </Button>
       </div>
       <Separator />
@@ -149,15 +191,6 @@ export function SoulTab() {
           Voice input uses your browser&apos;s speech-to-text (Chrome routes audio to Google). Audio is not recorded by aede; only the resulting text is sent to the agent. Requires an internet connection.
         </p>
       </div>
-      {soul && soul.persona && (
-        <>
-          <Separator />
-          <div>
-            <h4 className="text-xs font-medium mb-1">Persona</h4>
-            <pre className="text-xs text-muted-foreground whitespace-pre-wrap bg-muted/30 rounded-md p-3">{soul.persona}</pre>
-          </div>
-        </>
-      )}
     </div>
   )
 }
