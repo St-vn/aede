@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { apiFetch } from '@/lib/api'
 import type { SoulData } from './matchWakeWord'
 
 export function useSoulFetch(): { soul: SoulData | null; loading: boolean } {
@@ -7,8 +8,7 @@ export function useSoulFetch(): { soul: SoulData | null; loading: boolean } {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/soul')
-      .then(r => r.json())
+    apiFetch<{ name?: string | null; wake_word?: string | null; aliases?: string[] }>('/api/soul')
       .then(data => {
         setSoul({
           name: data.name ?? null,

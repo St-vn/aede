@@ -12,6 +12,7 @@ import { ContextBar } from './ContextBar'
 import { LearningsChip } from './LearningsChip'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api'
 
 interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean; thinking?: string }
 interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number; streamingOutput?: string }
@@ -140,7 +141,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     const isAcp = acpPrefixes.some(p => model === p || model.startsWith(p + '/'))
     if (isAcp) {
       const baseAgent = model.split('/')[0]
-      fetch('/api/acp/warmup', {
+      apiFetch('/api/acp/warmup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: baseAgent }),

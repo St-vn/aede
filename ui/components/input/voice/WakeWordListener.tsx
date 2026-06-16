@@ -2,6 +2,7 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react'
 import { matchWakeWord, type SoulData } from './matchWakeWord'
 import { handleRecognitionError } from './ErrorDisplay'
+import { apiFetch } from '@/lib/api'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SR = typeof window !== 'undefined'
@@ -34,7 +35,7 @@ export function WakeWordListener({ enabled, soul, sessionId, textareaRef, setTex
 
   const triggerWakeEvent = useCallback((wakeWord: string, matchedText: string) => {
     if (!sessionId) return
-    fetch('/api/voice/trigger', {
+    apiFetch('/api/voice/trigger', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
