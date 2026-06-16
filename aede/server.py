@@ -97,7 +97,7 @@ class WebSocketGateBackend:
         try:
             # UI should respond with {"type": "gate_response", "gate_id": "...", "decision": "ALLOW_ONCE", "redirect_msg": ""}
             decision_str, redirect_msg = await fut
-            return GateDecision[decision_str], redirect_msg
+            return GateDecision(decision_str), redirect_msg
         finally:
             self._futures.pop(gate_id, None)
 
