@@ -60,8 +60,20 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       if (!content.trim()) return
       setStreamingText(t => t + content + '\n')
     } else if (ev.type === 'tool_call') {
-      setToolCalls(tc => [...tc, { id: ev.id as string, name: ev.name as string,
-        args: ev.args as Record<string, unknown>, status: 'running' }])
+      const id = ev.id as string
+      const name = ev.name as string
+      const args = ev.args as Record<string, unknown>
+      setToolCalls(tc => {
+        const existing = tc.find(c => c.id === id)
+        if (existing) {
+          // Later updates carry populated args (e.g. ACP rawInput); merge them in
+          // without resetting a status already advanced to success/error.
+          return tc.map(c => c.id === id
+            ? { ...c, name, args: Object.keys(args).length ? args : c.args }
+            : c)
+        }
+        return [...tc, { id, name, args, status: 'running' }]
+      })
     } else if (ev.type === 'thinking_start') {
       setIsStreaming(true)
       setIsThinkingActive(true)

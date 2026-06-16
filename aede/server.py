@@ -9,6 +9,12 @@ import os
 from pathlib import Path
 from typing import Any
 import sys
+
+# Ensure stdout/stderr are UTF-8 on Windows (prevents charmap crashes on Unicode tool output)
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -234,6 +240,18 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     except Exception:
                         pass
 
+                async def _stream_tool_call(call_id: str, name: str, args: dict):
+                    try:
+                        await websocket.send_json({"type": "tool_call", "id": call_id, "name": name, "args": args})
+                    except Exception:
+                        pass
+
+                async def _stream_tool_result(call_id: str, status: str, output: str, duration_ms: int):
+                    try:
+                        await websocket.send_json({"type": "tool_result", "id": call_id, "status": status, "output": output, "duration_ms": duration_ms})
+                    except Exception:
+                        pass
+
                 agent = AgentLoop(
                     cfg=cfg,
                     session=session,
@@ -248,6 +266,8 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     acp_manager=getattr(app.state, "acp_manager", None),
                     stream_text=_stream_text,
                     stream_thinking=_stream_thinking,
+                    stream_tool_call=_stream_tool_call,
+                    stream_tool_result=_stream_tool_result,
                 )
 
                 # Load prior messages for context

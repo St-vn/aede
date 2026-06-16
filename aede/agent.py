@@ -222,6 +222,8 @@ class AgentLoop:
         acp_manager: Any = None,
         stream_text: Any = None,
         stream_thinking: Any = None,
+        stream_tool_call: Any = None,
+        stream_tool_result: Any = None,
     ) -> None:
         self._cfg = cfg
         self._session = session
@@ -235,6 +237,8 @@ class AgentLoop:
         self._acp_manager = acp_manager
         self._stream_text = stream_text
         self._stream_thinking = stream_thinking
+        self._stream_tool_call = stream_tool_call
+        self._stream_tool_result = stream_tool_result
         self._accumulated_thinking = ""
 
         from aede.gate import TerminalGateBackend
@@ -297,6 +301,24 @@ class AgentLoop:
         if prior_messages:
             self._messages = list(prior_messages)
 
+    def _emit_tool_call(self, call_id: str, name: str, args: dict) -> None:
+        """Forward a tool-call start to the UI stream, if a callback is wired.
+
+        Uses ``getattr`` so partially-constructed instances (e.g. tests using
+        ``AgentLoop.__new__``) and the terminal CLI path are both safe.
+        """
+        cb = getattr(self, "_stream_tool_call", None)
+        if cb:
+            import asyncio as _asyncio
+            _asyncio.ensure_future(cb(call_id, name, args))
+
+    def _emit_tool_result(self, call_id: str, status: str, output: str, duration_ms: int) -> None:
+        """Forward a tool result to the UI stream, if a callback is wired."""
+        cb = getattr(self, "_stream_tool_result", None)
+        if cb:
+            import asyncio as _asyncio
+            _asyncio.ensure_future(cb(call_id, status, output, duration_ms))
+
     def _get_provider(self) -> Any:
         """Lazily instantiate and cache the provider selected by config."""
         if self._provider is None:
@@ -304,6 +326,11 @@ class AgentLoop:
             self._provider = get_provider(self._cfg, acp_manager=self._acp_manager)
             if self._stream_text is not None and hasattr(self._provider, '_stream_text'):
                 self._provider._stream_text = self._stream_text
+            # ACP agents run tools in-subprocess; surface them to the UI too.
+            if hasattr(self._provider, '_stream_tool_call'):
+                self._provider._stream_tool_call = getattr(self, '_stream_tool_call', None)
+            if hasattr(self._provider, '_stream_tool_result'):
+                self._provider._stream_tool_result = getattr(self, '_stream_tool_result', None)
         return self._provider
 
     def _get_trace_logger(self) -> Any:
@@ -429,6 +456,8 @@ class AgentLoop:
                 except HardDeniedError as e:
                     self._console.print(f"[red]⛔ Hard denied: {e.matched}[/red]")
                     self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "hard_denied"})
+                    self._emit_tool_call(tool_use_id, tool_name, tool_input)
+                    self._emit_tool_result(tool_use_id, "denied", f"Hard denied: {e.matched!r}", 0)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tool_use_id,
@@ -459,6 +488,8 @@ class AgentLoop:
                     )
                     if decision == GateDecision.DENY:
                         self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "denied"})
+                        self._emit_tool_call(tool_use_id, tool_name, tool_input)
+                        self._emit_tool_result(tool_use_id, "denied", "Tool call denied by user.", 0)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tool_use_id,
@@ -505,6 +536,7 @@ class AgentLoop:
 
                 self._console.print(f"⚡ {tool_name} · running...")
                 self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id})
+                self._emit_tool_call(tool_use_id, tool_name, tool_input)
 
                 call_key = f"{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
                 was_retry = call_key in retry_count
@@ -521,6 +553,7 @@ class AgentLoop:
                     "result": result.output[:500],
                     "duration_ms": result.duration_ms,
                 })
+                self._emit_tool_result(tool_use_id, result.status, result.output, result.duration_ms)
 
                 if result.status == "error":
                     score = 0.0

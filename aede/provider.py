@@ -576,6 +576,10 @@ class AcpProvider:
         self._current_agent: str | None = None
         self._stream_text = stream_text
         self._stream_thinking = None
+        # Optional callbacks for surfacing the ACP agent's own tool calls to the UI.
+        # Set by AgentLoop after construction (mirrors _stream_text wiring).
+        self._stream_tool_call = None
+        self._stream_tool_result = None
 
     async def stream_turn(
         self,
@@ -681,8 +685,15 @@ class AcpProvider:
     def _make_on_update(self):
         stream_text = self._stream_text
         stream_thinking = self._stream_thinking
-        if not stream_text and not stream_thinking:
+        stream_tool_call = self._stream_tool_call
+        stream_tool_result = self._stream_tool_result
+        if not (stream_text or stream_thinking or stream_tool_call or stream_tool_result):
             return None
+
+        # Cache populated args from middle tool_call_update so the terminal
+        # update can re-emit a tool_call with _start_line injected.
+        _pending_args: dict[str, dict] = {}
+
         def on_update(update: dict):
             update_type = update.get("sessionUpdate")
             content = update.get("content", {})
@@ -695,7 +706,100 @@ class AcpProvider:
                     text = content.get("text", "")
                     if text and stream_text:
                         asyncio.ensure_future(stream_text(text))
+            elif update_type == "tool_call" and stream_tool_call:
+                # Start-of-tool-call. rawInput is usually {} here; the populated
+                # args arrive in a later tool_call_update for the same id.
+                call_id = update.get("toolCallId", "")
+                name = _acp_tool_name(update)
+                args = update.get("rawInput") or {}
+                asyncio.ensure_future(stream_tool_call(call_id, name, args))
+            elif update_type == "tool_call_update":
+                call_id = update.get("toolCallId", "")
+                # Middle update: carry real args (old_string/new_string/file_path).
+                raw_input = update.get("rawInput")
+                if raw_input and stream_tool_call:
+                    name = _acp_tool_name(update)
+                    args = dict(raw_input)
+                    _pending_args[call_id] = args
+                    asyncio.ensure_future(stream_tool_call(call_id, name, args))
+                # Terminal update: emit result + re-emit args with real line numbers
+                # from structuredPatch (only available here, not in middle update).
+                status = update.get("status", "")
+                if status in ("completed", "failed") and stream_tool_result:
+                    if stream_tool_call and call_id in _pending_args:
+                        start_line = _acp_edit_start_line(update)
+                        if start_line:
+                            cached = dict(_pending_args[call_id])
+                            cached["_start_line"] = start_line
+                            asyncio.ensure_future(
+                                stream_tool_call(call_id, _acp_tool_name(update), cached)
+                            )
+                        del _pending_args[call_id]
+                    out = _acp_tool_content_to_text(update.get("content")) \
+                        or update.get("rawOutput", "")
+                    ui_status = "success" if status == "completed" else "error"
+                    asyncio.ensure_future(stream_tool_result(call_id, ui_status, out, 0))
         return on_update
+
+
+def _acp_tool_name(update: dict) -> str:
+    """Resolve a display tool name from an ACP tool_call update.
+
+    Prefers the concrete tool name in ``_meta.claudeCode.toolName`` (e.g.
+    "Edit", "Read") so the UI can match its diff renderer; falls back to the
+    human title or ACP ``kind``.
+    """
+    meta = update.get("_meta") or {}
+    cc = meta.get("claudeCode") or {}
+    return cc.get("toolName") or update.get("kind") or "tool"
+
+
+def _acp_tool_content_to_text(content: Any) -> str:
+    """Flatten an ACP tool_call_update ``content`` field into plain text.
+
+    ACP sends content as a list of blocks (often ``{"type": "content",
+    "content": {"type": "text", "text": ...}}``).  Returns "" when nothing
+    textual is present.
+    """
+    if not content:
+        return ""
+    if isinstance(content, str):
+        return content
+    parts: list[str] = []
+    items = content if isinstance(content, list) else [content]
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        inner = item.get("content", item)
+        if isinstance(inner, dict) and inner.get("type") == "text":
+            parts.append(inner.get("text", ""))
+        elif item.get("type") == "text":
+            parts.append(item.get("text", ""))
+    return "\n".join(p for p in parts if p)
+
+
+def _acp_edit_start_line(update: dict) -> int | None:
+    """Extract the edit starting line number from an ACP ``tool_call_update``.
+
+    Prefers ``_meta.claudeCode.toolResponse.structuredPatch[0].newStart``
+    (available on the terminal update which has status=completed) over
+    ``locations[0].line`` (available on the middle update for Read but
+    not for Edit).
+    """
+    meta = update.get("_meta") or {}
+    cc = meta.get("claudeCode") or {}
+    tool_response = cc.get("toolResponse") or {}
+    patches = tool_response.get("structuredPatch") or []
+    if patches and isinstance(patches, list):
+        start = patches[0].get("newStart")
+        if isinstance(start, int):
+            return start
+    locs = update.get("locations") or []
+    if locs and isinstance(locs, list) and isinstance(locs[0], dict):
+        line = locs[0].get("line")
+        if isinstance(line, int):
+            return line
+    return None
 
 
 def _build_prompt_text(messages: list[dict]) -> str:
