@@ -763,26 +763,13 @@ def handle_serve(
     else:
         app.state.mcp_bridge = None
 
-    # Pre-warm ACP agents in parallel if enabled (B3).
-    acp_warmup = getattr(cfg, "acp_warmup", True)
-    if acp_warmup:
-        mgr = app.state.acp_manager
-        if mgr:
-            from aede.acp.registry import _BASE_AGENTS
-
-            async def _warm_acp():
-                tasks = []
-                for name, _, _ in _BASE_AGENTS:
-                    tasks.append(mgr.connect(name))
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                for name, result in zip([n for n, _, _ in _BASE_AGENTS], results):
-                    if isinstance(result, Exception):
-                        logger.debug("ACP warmup failed for %s: %s", name, result)
-                    else:
-                        if console:
-                            console.print(f"[dim]ACP warmup: {name} connected[/dim]")
-
-            asyncio.run(_warm_acp())
+    # Pre-warm ACP agents in parallel if enabled (B3).  The actual warmup runs
+    # in the FastAPI "startup" event (see server.py) so it shares uvicorn's
+    # event loop — connecting an agent binds its subprocess transport to the
+    # running loop, and warming up on a throwaway asyncio.run() loop that is
+    # then closed leaves dead sessions cached, breaking /api/acp/connect (500).
+    app.state.console = console
+    app.state.acp_warmup_enabled = bool(getattr(cfg, "acp_warmup", True))
 
     console.print(f"[green]Starting aede backend server at http://{host}:{port}[/green]")
     console.print("[dim]Press Ctrl+C to stop.[/dim]")

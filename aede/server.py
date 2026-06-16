@@ -9,10 +9,18 @@ import os
 from pathlib import Path
 from typing import Any
 import sys
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="aede backend")
+
+@asynccontextmanager
+async def _lifespan(app: "FastAPI"):
+    await _warmup_acp_on_startup(app)
+    yield
+
+
+app = FastAPI(title="aede backend", lifespan=_lifespan)
 
 # ... (middleware same as before)
 app.add_middleware(
@@ -22,6 +30,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+async def _warmup_acp_on_startup(app: "FastAPI") -> None:
+    """Pre-warm ACP agents on uvicorn's event loop.
+
+    Warmup MUST run here, not before ``uvicorn.run``: connecting an agent
+    spawns a subprocess whose stdio transport and reader tasks bind to the
+    *current* event loop.  If warmup runs on a throwaway ``asyncio.run`` loop
+    that is then closed, the cached AgentSessions reference dead transports and
+    the next ``/api/acp/connect`` short-circuits to a stale session, raising and
+    returning HTTP 500.  Running inside the startup event guarantees the same
+    loop uvicorn serves requests on.
+    """
+    if not getattr(app.state, "acp_warmup_enabled", False):
+        return
+    mgr = getattr(app.state, "acp_manager", None)
+    if mgr is None:
+        return
+    console = getattr(app.state, "console", None)
+    from aede.acp.registry import _BASE_AGENTS
+
+    names = [name for name, _, _ in _BASE_AGENTS]
+    results = await asyncio.gather(
+        *(mgr.connect(name) for name in names), return_exceptions=True
+    )
+    for name, result in zip(names, results):
+        if isinstance(result, Exception):
+            import logging
+            logging.getLogger(__name__).debug(
+                "ACP warmup failed for %s: %s", name, result)
+        elif console is not None:
+            console.print(f"[dim]ACP warmup: {name} connected[/dim]")
 
 
 class WebSocketGateBackend:
