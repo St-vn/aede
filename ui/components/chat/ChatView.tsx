@@ -188,7 +188,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
               : m.role === 'user'
                 ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} />
                 : <React.Fragment key={m.id}><AssistantMessage content={m.content} isStreaming={false} thinking={m.thinking} />
-                    {m.tool_calls?.map(tc => (
+                    {!isStreaming && m.tool_calls?.map(tc => (
                       <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
                         args={tc.args} output={tc.output} durationMs={tc.durationMs} />
                     ))}</React.Fragment>
