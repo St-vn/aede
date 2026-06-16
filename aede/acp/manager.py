@@ -110,28 +110,51 @@ class AcpManager:
                 resume_meta = merged
 
         from .auth import drive_auth, Connected, Failed, NeedsKey, NeedsBrowser, NeedsTerminal
-        client = AcpClient(config)
+
+        async def _drive(meta: dict | None) -> str | None:
+            """Run one auth/connect attempt. Returns session_id, or raises
+            AcpConnectionError on Failed. Returns None if no step connected."""
+            client = AcpClient(config)
+            try:
+                async for step in drive_auth(agent_name, client=client,
+                                             vault=self._credential_provider,
+                                             registry=self._registry,
+                                             _meta=meta):
+                    if isinstance(step, Connected):
+                        session = AcpSession(client)
+                        session.adopt(step.session_id)
+                        self._sessions[agent_name] = AgentSession(
+                            name=agent_name, client=client, session=session,
+                            session_id=step.session_id)
+                        self._active_name = agent_name
+                        self._save_saved_session(agent_name, step.session_id)
+                        return step.session_id
+                    if isinstance(step, Failed):
+                        await client.aclose()
+                        raise AcpConnectionError(step.reason)
+            except FileNotFoundError:
+                hint = "Install Node.js from https://nodejs.org" if config.command in ("npx", "node") else f"Make sure '{config.command}' is installed and in PATH"
+                raise AcpConnectionError(
+                    f"Agent '{agent_name}' not found: command '{config.command}' not available. {hint}")
+            return None
+
         try:
-            async for step in drive_auth(agent_name, client=client,
-                                         vault=self._credential_provider,
-                                         registry=self._registry,
-                                         _meta=resume_meta if resume_meta else _meta):
-                if isinstance(step, Connected):
-                    session = AcpSession(client)
-                    session.adopt(step.session_id)
-                    self._sessions[agent_name] = AgentSession(
-                        name=agent_name, client=client, session=session,
-                        session_id=step.session_id)
-                    self._active_name = agent_name
-                    self._save_saved_session(agent_name, step.session_id)
-                    return step.session_id
-                if isinstance(step, Failed):
-                    await client.aclose()
-                    raise AcpConnectionError(step.reason)
-        except FileNotFoundError:
-            hint = f"Install Node.js from https://nodejs.org" if config.command in ("npx", "node") else f"Make sure '{config.command}' is installed and in PATH"
-            raise AcpConnectionError(
-                f"Agent '{agent_name}' not found: command '{config.command}' not available. {hint}")
+            session_id = await _drive(resume_meta if resume_meta else _meta)
+        except AcpConnectionError:
+            # Resume is best-effort: a saved session can expire or be cleared on
+            # the agent side, which surfaces as a non-auth "Resource not found"
+            # Failed step.  Drop the stale id and retry once with a fresh
+            # session/new rather than propagating a 500.
+            if resume_meta is None:
+                raise
+            logger.info(
+                "ACP resume failed for %s; clearing saved session and retrying fresh",
+                agent_name)
+            self._remove_saved_session(agent_name)
+            session_id = await _drive(_meta)
+
+        if session_id is not None:
+            return session_id
         raise AcpConnectionError(f"Agent '{agent_name}' did not connect")
 
     async def new_session(self, agent_name: str, _meta: Optional[dict] = None) -> str:
