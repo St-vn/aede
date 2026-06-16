@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Loader2 } from 'lucide-react'
+import { apiFetch } from '@/lib/api'
 
 interface SoulData {
   name: string | null
@@ -23,8 +24,8 @@ export function SoulTab() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/soul').then(r => r.json()),
-      fetch('/api/config').then(r => r.json()),
+      apiFetch<SoulData>('/api/soul'),
+      apiFetch<{ voice_input_enabled?: boolean; voice_wake_word_enabled?: boolean }>('/api/config'),
     ]).then(([soulData, configData]) => {
       setSoul(soulData)
       setName(soulData.name || '')
@@ -41,13 +42,12 @@ export function SoulTab() {
     if (name) body.name = name
     if (phonetic) body.phonetic = phonetic
     if (wakeWord) body.wake_word = wakeWord
-    await fetch('/api/soul', {
+    await apiFetch('/api/soul', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-    const resp = await fetch('/api/soul')
-    const updated = await resp.json()
+    const updated = await apiFetch<SoulData>('/api/soul')
     setSoul(updated)
     setName(updated.name || '')
     setPhonetic(updated.phonetic || '')
@@ -56,7 +56,7 @@ export function SoulTab() {
 
   const toggleVoiceInput = async (val: boolean) => {
     setVoiceInputEnabled(val)
-    await fetch('/api/config', {
+    await apiFetch('/api/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'voice_input_enabled', value: val, scope: 'global' }),
@@ -65,7 +65,7 @@ export function SoulTab() {
 
   const toggleVoiceWakeWord = async (val: boolean) => {
     setVoiceWakeWordEnabled(val)
-    await fetch('/api/config', {
+    await apiFetch('/api/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'voice_wake_word_enabled', value: val, scope: 'global' }),

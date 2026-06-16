@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Loader2, Container } from 'lucide-react'
+import { apiFetch } from '@/lib/api'
 
 interface SandboxData {
   enabled: boolean
@@ -24,8 +25,7 @@ export function SandboxTab() {
   const [cpuLimit, setCpuLimit] = useState('')
 
   useEffect(() => {
-    fetch('/api/config')
-      .then(r => r.json())
+    apiFetch<{ sandbox?: SandboxData }>('/api/config')
       .then(data => {
         const s: SandboxData = data.sandbox || { enabled: false, image: 'python:3.12-slim', workspace_mount: '/workspace', memory_limit: '512m', cpu_limit: 1.0 }
         setConfig(s)
@@ -47,7 +47,7 @@ export function SandboxTab() {
       memory_limit: memoryLimit,
       cpu_limit: parseFloat(cpuLimit) || 1.0,
     }
-    await fetch('/api/config', {
+    await apiFetch('/api/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'sandbox', value: sandbox, scope: 'global' }),
