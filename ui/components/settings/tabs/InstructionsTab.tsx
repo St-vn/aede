@@ -2,8 +2,10 @@
 import React, { useEffect, useState } from 'react'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
-import { Loader2 } from 'lucide-react'
+import { Label } from '@/components/ui/label'
+import { Loader2, ExternalLink } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
+import { ScopeSelector } from '@/components/settings/ScopeSelector'
 
 interface InstructionsData {
   path: string
@@ -12,26 +14,28 @@ interface InstructionsData {
   scope: string
 }
 
-type Scope = 'global' | 'project'
-
 interface Props {
   projectDir?: string | null
 }
 
+// scope is 'global' or a project_dir path (the ScopeSelector contract).
+function scopeParams(scope: string) {
+  const isGlobal = scope === 'global'
+  return { scope: isGlobal ? 'global' : 'project', project_dir: isGlobal ? undefined : scope }
+}
+
 export function InstructionsTab({ projectDir }: Props) {
-  const [scope, setScope] = useState<Scope>('project')
+  const [scope, setScope] = useState<string>(projectDir || 'global')
   const [content, setContent] = useState('')
   const [meta, setMeta] = useState<InstructionsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  const canProject = !!projectDir
-  const effectiveScope: Scope = scope === 'project' && !canProject ? 'global' : scope
-
   useEffect(() => {
     setLoading(true)
-    const qs = new URLSearchParams({ scope: effectiveScope })
-    if (effectiveScope === 'project' && projectDir) qs.set('project_dir', projectDir)
+    const { scope: s, project_dir } = scopeParams(scope)
+    const qs = new URLSearchParams({ scope: s })
+    if (project_dir) qs.set('project_dir', project_dir)
     apiFetch<InstructionsData>(`/api/project-instructions?${qs.toString()}`)
       .then(data => {
         setMeta(data)
@@ -39,53 +43,52 @@ export function InstructionsTab({ projectDir }: Props) {
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [effectiveScope, projectDir])
+  }, [scope])
 
   const handleSave = async () => {
     setSaving(true)
+    const { scope: s, project_dir } = scopeParams(scope)
     const data = await apiFetch<InstructionsData>('/api/project-instructions', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scope: effectiveScope,
-        project_dir: effectiveScope === 'project' ? projectDir : undefined,
-        content,
-      }),
+      body: JSON.stringify({ scope: s, project_dir, content }),
     })
     setMeta(prev => (prev ? { ...prev, ...data } : data))
     setSaving(false)
   }
 
+  const handleEditFile = () => {
+    const { scope: s, project_dir } = scopeParams(scope)
+    apiFetch('/api/project-instructions/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: s, project_dir }),
+    }).catch(() => {})
+  }
+
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-medium">Instructions</h3>
-        <p className="text-xs text-muted-foreground">
-          Freeform directives injected into the system prompt. Global lives in{' '}
-          <code className="text-[10px]">~/.aede/AGENTS.md</code>; project is the active repo&apos;s{' '}
-          <code className="text-[10px]">AGENTS.md</code> (or <code className="text-[10px]">CLAUDE.md</code>).
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-medium">Instructions</h3>
+          <p className="text-xs text-muted-foreground">
+            Directives injected into the system prompt (AGENTS.md / CLAUDE.md).
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleEditFile}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            title="Open instructions file in editor"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Edit file
+          </button>
+          <Label className="text-xs text-muted-foreground">Scope:</Label>
+          <ScopeSelector value={scope} onChange={setScope} />
+        </div>
       </div>
       <Separator />
-      <div className="flex items-center gap-1 rounded-md bg-muted/40 p-0.5 w-fit">
-        {(['global', 'project'] as Scope[]).map(s => {
-          const disabled = s === 'project' && !canProject
-          return (
-            <button
-              key={s}
-              type="button"
-              disabled={disabled}
-              onClick={() => setScope(s)}
-              className={`px-2.5 py-1 text-xs rounded capitalize transition-colors ${
-                effectiveScope === s ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'
-              } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-              title={disabled ? 'Open a project to edit project instructions' : undefined}
-            >
-              {s}
-            </button>
-          )
-        })}
-      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
@@ -104,7 +107,7 @@ export function InstructionsTab({ projectDir }: Props) {
             placeholder={`# Instructions\n\nProject conventions, rules, and context for the agent...`}
           />
           <Button size="sm" className="h-8 text-xs" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : `Save ${effectiveScope} instructions`}
+            {saving ? 'Saving...' : `Save ${scope === 'global' ? 'global' : 'project'} instructions`}
           </Button>
         </div>
       )}

@@ -1660,9 +1660,34 @@ def get_config_for_request(request: Request):
 
 
 @app.get("/api/soul")
-async def get_soul(request: Request):
+async def get_soul(request: Request, scope: str | None = None,
+                   project_dir: str | None = None):
+    """Return soul data.
+
+    With no ``scope``: the merged *effective* soul (global+project) for the
+    active config — used by the voice hook. With an explicit ``scope``: only
+    that scope's own SOUL.md file, so the editor shows exactly what a save at
+    that scope will overwrite.
+    """
     from aede.instructions import SoulDef
     cfg = get_config_for_request(request)
+
+    if scope is not None:
+        from aede.instructions import _parse_frontmatter
+        target, _ = _resolve_soul_path(cfg, scope, project_dir)
+        text = target.read_text(encoding="utf-8") if target.exists() else ""
+        fm, body = _parse_frontmatter(text)
+        return {
+            "name": fm.get("name"),
+            "phonetic": fm.get("phonetic"),
+            "wake_word": fm.get("wake_word"),
+            "wake_word_phonetic": fm.get("wake_word_phonetic"),
+            "persona": body.strip(),
+            "aliases": fm.get("aliases", []),
+            "voice": fm.get("voice", {}),
+            "source_files": [str(target)] if target.exists() else [],
+        }
+
     s: SoulDef = cfg.soul
     return {
         "name": s.name,
@@ -1681,14 +1706,31 @@ async def get_soul(request: Request):
     }
 
 
+def _resolve_soul_path(cfg, scope: str, project_dir: str | None):
+    """Resolve the SOUL.md file for the given scope.
+
+    Global → ``~/.aede/SOUL.md``. Project → ``<project>/SOUL.md`` where
+    ``project`` is the explicit ``project_dir`` (preferred, matching the
+    ScopeSelector contract) or the active ``cfg.project_dir`` as a fallback.
+    """
+    if scope not in ("global", "project"):
+        scope = "project" if (project_dir or cfg.project_dir) else "global"
+    if scope == "project":
+        base = Path(project_dir) if project_dir else cfg.project_dir
+        if not base:
+            raise HTTPException(status_code=400, detail="project scope requires project_dir")
+        return base / "SOUL.md", scope
+    return cfg.home / "SOUL.md", scope
+
+
 @app.patch("/api/soul")
 async def patch_soul(data: dict, request: Request):
     """Update SOUL.md at the requested scope.
 
     Body fields:
       - ``scope``: "global" (~/.aede/SOUL.md) or "project" (project_dir/SOUL.md).
-        Defaults to "project" when a project_dir is set, else "global" — preserving
-        prior behaviour for callers that omit scope.
+        Defaults to "project" when a project_dir is set, else "global".
+      - ``project_dir``: target project for project scope (else cfg.project_dir).
       - ``persona``: freeform Markdown body (the identity text). Empty string clears it.
       - any frontmatter key (name, phonetic, wake_word, aliases, ...): merged into
         existing frontmatter. ``None`` values are ignored.
@@ -1697,15 +1739,7 @@ async def patch_soul(data: dict, request: Request):
     from aede.instructions import _parse_frontmatter
 
     cfg = get_config_for_request(request)
-    scope = data.get("scope")
-    if scope not in ("global", "project"):
-        scope = "project" if cfg.project_dir else "global"
-    if scope == "project":
-        if not cfg.project_dir:
-            raise HTTPException(status_code=400, detail="project scope requires an active project")
-        target = cfg.project_dir / "SOUL.md"
-    else:
-        target = cfg.home / "SOUL.md"
+    target, scope = _resolve_soul_path(cfg, data.get("scope"), data.get("project_dir"))
 
     text = target.read_text(encoding="utf-8") if target.exists() else ""
     existing, body = _parse_frontmatter(text)
@@ -1737,6 +1771,22 @@ async def patch_soul(data: dict, request: Request):
         "persona": new_body.strip(),
         "scope": scope,
     }
+
+
+@app.post("/api/soul/open")
+async def open_soul_file(request: Request, payload: dict = {}):
+    """Open the SOUL.md for the given scope in the OS default editor.
+
+    Creates the file (with an empty frontmatter stub) if it does not exist yet,
+    so the editor always has something to open.
+    """
+    cfg = get_config_for_request(request)
+    target, _ = _resolve_soul_path(cfg, payload.get("scope"), payload.get("project_dir"))
+    if not target.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("---\n---\n", encoding="utf-8")
+    os.startfile(str(target))
+    return {"status": "ok", "path": str(target)}
 
 
 # ── Project instructions (AGENTS.md / CLAUDE.md) ──────────────
@@ -1787,6 +1837,22 @@ async def put_project_instructions(data: dict, request: Request):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return {"path": str(path), "filename": filename, "scope": scope}
+
+
+@app.post("/api/project-instructions/open")
+async def open_project_instructions(request: Request, payload: dict = {}):
+    """Open the resolved instructions file in the OS default editor.
+
+    Creates an empty file if none exists yet (AGENTS.md for new projects).
+    """
+    cfg = get_config_for_request(request)
+    path, _ = _resolve_instructions_path(
+        cfg, payload.get("scope", "project"), payload.get("project_dir"), for_write=True)
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    os.startfile(str(path))
+    return {"status": "ok", "path": str(path)}
 
 
 # ── Voice Input endpoints ─────────────────────────────────────

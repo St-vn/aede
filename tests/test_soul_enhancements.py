@@ -440,6 +440,40 @@ def test_patch_soul_aliases_list_roundtrips(tmp_home, tmp_path):
     assert fm["aliases"] == ["jarvis", "friday"]
 
 
+# ── T7 — GET /api/soul by explicit scope ──
+
+def test_get_soul_scoped_reads_own_file_not_merged(tmp_home, tmp_path):
+    from aede.server import app
+    from fastapi.testclient import TestClient
+    from aede.config import AedeConfig
+    project = tmp_path / "proj"
+    project.mkdir()
+    (tmp_home / "SOUL.md").write_text("---\nname: GlobalBot\n---\nglobal body", encoding="utf-8")
+    (project / "SOUL.md").write_text("---\nname: ProjBot\n---\nproject body", encoding="utf-8")
+    client = TestClient(app)
+    with patch("aede.server.get_config_for_request",
+               return_value=AedeConfig({}, home=tmp_home, project_dir=project)):
+        g = client.get("/api/soul", params={"scope": "global"})
+        p = client.get("/api/soul", params={"scope": "project", "project_dir": str(project)})
+    assert g.json()["name"] == "GlobalBot"
+    assert g.json()["persona"] == "global body"
+    assert p.json()["name"] == "ProjBot"
+    assert p.json()["persona"] == "project body"
+
+
+def test_get_soul_no_scope_returns_merged_effective(tmp_home, tmp_path):
+    # Backward compat: omitting scope returns the merged cfg.soul (voice hook path).
+    from aede.server import app
+    from fastapi.testclient import TestClient
+    from aede.config import AedeConfig
+    client = TestClient(app)
+    with patch("aede.server.get_config_for_request",
+               return_value=AedeConfig({}, home=tmp_home, project_dir=tmp_path / "none")):
+        resp = client.get("/api/soul")
+    assert resp.status_code == 200
+    assert "source_files" in resp.json()
+
+
 def test_all_p0_8_acs_have_tests():
     from pathlib import Path
     text = Path(__file__).resolve().read_text(encoding="utf-8")

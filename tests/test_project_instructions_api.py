@@ -86,6 +86,18 @@ def test_put_project_new_file_writes_agents_md(tmp_home, tmp_path):
     assert (project / "AGENTS.md").read_text(encoding="utf-8") == "proj rules"
 
 
+def test_get_project_with_explicit_project_dir_overrides_cfg(tmp_home, tmp_path):
+    # ScopeSelector passes any project_dir, not just the active session's.
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "AGENTS.md").write_text("other proj", encoding="utf-8")
+    with patch("aede.server.get_config_for_request", return_value=_cfg(tmp_home, None)):
+        resp = _client().get("/api/project-instructions",
+                             params={"scope": "project", "project_dir": str(other)})
+    assert resp.status_code == 200
+    assert resp.json()["content"] == "other proj"
+
+
 def test_put_project_existing_claude_md_updates_in_place(tmp_home, tmp_path):
     project = tmp_path / "proj"
     project.mkdir()

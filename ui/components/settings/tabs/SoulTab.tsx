@@ -2,8 +2,10 @@
 import React, { useEffect, useState } from 'react'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
-import { Loader2 } from 'lucide-react'
+import { Label } from '@/components/ui/label'
+import { Loader2, ExternalLink } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
+import { ScopeSelector } from '@/components/settings/ScopeSelector'
 
 interface SoulData {
   name: string | null
@@ -13,10 +15,14 @@ interface SoulData {
   persona: string
 }
 
-type Scope = 'global' | 'project'
-
 interface Props {
   projectDir?: string | null
+}
+
+// scope is 'global' or a project_dir path (the ScopeSelector contract).
+function scopeParams(scope: string) {
+  const isGlobal = scope === 'global'
+  return { scope: isGlobal ? 'global' : 'project', project_dir: isGlobal ? undefined : scope }
 }
 
 export function SoulTab({ projectDir }: Props) {
@@ -25,17 +31,18 @@ export function SoulTab({ projectDir }: Props) {
   const [phonetic, setPhonetic] = useState('')
   const [wakeWord, setWakeWord] = useState('')
   const [persona, setPersona] = useState('')
-  const [scope, setScope] = useState<Scope>('global')
+  const [scope, setScope] = useState<string>(projectDir || 'global')
   const [voiceInputEnabled, setVoiceInputEnabled] = useState(false)
   const [voiceWakeWordEnabled, setVoiceWakeWordEnabled] = useState(false)
 
-  // Project scope is only meaningful when a project is active.
-  const canProject = !!projectDir
-  const effectiveScope: Scope = scope === 'project' && !canProject ? 'global' : scope
-
+  // Reload identity for the selected scope so the editor shows that file's content.
   useEffect(() => {
+    setLoading(true)
+    const { scope: s, project_dir } = scopeParams(scope)
+    const qs = new URLSearchParams({ scope: s })
+    if (project_dir) qs.set('project_dir', project_dir)
     Promise.all([
-      apiFetch<SoulData>('/api/soul'),
+      apiFetch<SoulData>(`/api/soul?${qs.toString()}`),
       apiFetch<{ voice_input_enabled?: boolean; voice_wake_word_enabled?: boolean }>('/api/config'),
     ]).then(([soulData, configData]) => {
       setName(soulData.name || '')
@@ -45,12 +52,14 @@ export function SoulTab({ projectDir }: Props) {
       setVoiceInputEnabled(configData.voice_input_enabled ?? false)
       setVoiceWakeWordEnabled(configData.voice_wake_word_enabled ?? false)
       setLoading(false)
-    })
-  }, [])
+    }).catch(() => setLoading(false))
+  }, [scope])
 
   const handleSave = async () => {
-    const body: Record<string, string | null> = {
-      scope: effectiveScope,
+    const { scope: s, project_dir } = scopeParams(scope)
+    const body: Record<string, string | null | undefined> = {
+      scope: s,
+      project_dir,
       name: name || null,
       phonetic: phonetic || null,
       wake_word: wakeWord || null,
@@ -65,6 +74,15 @@ export function SoulTab({ projectDir }: Props) {
     setPhonetic(updated.phonetic || '')
     setWakeWord(updated.wake_word || '')
     setPersona(updated.persona || '')
+  }
+
+  const handleEditFile = () => {
+    const { scope: s, project_dir } = scopeParams(scope)
+    apiFetch('/api/soul/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: s, project_dir }),
+    }).catch(() => {})
   }
 
   const toggleVoiceInput = async (val: boolean) => {
@@ -95,30 +113,25 @@ export function SoulTab({ projectDir }: Props) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-medium">Agent Identity</h3>
-        <p className="text-xs text-muted-foreground">Configure the agent&apos;s name, wake word, and persona (SOUL.md).</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-medium">Agent Identity</h3>
+          <p className="text-xs text-muted-foreground">Name, wake word, and persona (SOUL.md).</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleEditFile}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            title="Open SOUL.md in editor"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Edit file
+          </button>
+          <Label className="text-xs text-muted-foreground">Scope:</Label>
+          <ScopeSelector value={scope} onChange={setScope} />
+        </div>
       </div>
       <Separator />
-      <div className="flex items-center gap-1 rounded-md bg-muted/40 p-0.5 w-fit">
-        {(['global', 'project'] as Scope[]).map(s => {
-          const disabled = s === 'project' && !canProject
-          return (
-            <button
-              key={s}
-              type="button"
-              disabled={disabled}
-              onClick={() => setScope(s)}
-              className={`px-2.5 py-1 text-xs rounded capitalize transition-colors ${
-                effectiveScope === s ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground'
-              } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-              title={disabled ? 'Open a project to edit project-scoped identity' : undefined}
-            >
-              {s}
-            </button>
-          )
-        })}
-      </div>
       <div className="space-y-3">
         <div className="space-y-1.5">
           <label className="text-xs font-medium">Name</label>
@@ -158,7 +171,7 @@ export function SoulTab({ projectDir }: Props) {
           />
         </div>
         <Button size="sm" className="h-8 text-xs" onClick={handleSave}>
-          Save {effectiveScope === 'project' ? 'project' : 'global'} identity
+          Save {scope === 'global' ? 'global' : 'project'} identity
         </Button>
       </div>
       <Separator />
