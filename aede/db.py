@@ -362,6 +362,32 @@ class DB:
         )
         self.con.commit()
 
+    def upsert_tool_call(
+        self,
+        id: str,
+        message_id: str,
+        tool_name: str,
+        args: str,
+        status: str,
+    ) -> None:
+        """Insert or update a tool call, preserving the original ``created_at``.
+
+        ACP re-emits ``tool_call`` WS events (middle update with populated
+        args, terminal update with ``_start_line``) for the same call ID;
+        this avoids the PRIMARY KEY collision that a plain ``INSERT`` would
+        trigger.
+        """
+        self.con.execute(
+            "INSERT INTO tool_calls (id, message_id, tool_name, args, status, created_at) "
+            "VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET "
+            "  tool_name=excluded.tool_name,"
+            "  args=excluded.args,"
+            "  status=excluded.status",
+            (id, message_id, tool_name, args, status, _now_ms()),
+        )
+        self.con.commit()
+
     def update_tool_call(
         self,
         id: str,
@@ -375,6 +401,28 @@ class DB:
             (result, status, duration_ms, id),
         )
         self.con.commit()
+
+    def get_tool_calls_for_message_ids(self, message_ids: list[str]) -> dict[str, list[dict]]:
+        if not message_ids:
+            return {}
+        import json
+        placeholders = ",".join("?" for _ in message_ids)
+        rows = self.con.execute(
+            f"SELECT * FROM tool_calls WHERE message_id IN ({placeholders}) ORDER BY created_at ASC",
+            message_ids,
+        ).fetchall()
+        result: dict[str, list[dict]] = {}
+        for row in rows:
+            r = dict(row)
+            try:
+                r["args"] = json.loads(r["args"])
+            except (json.JSONDecodeError, TypeError):
+                r["args"] = {}
+            mid = r["message_id"]
+            if mid not in result:
+                result[mid] = []
+            result[mid].append(r)
+        return result
 
     def insert_token_usage(
         self,

@@ -14,7 +14,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 
-interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean; thinking?: string }
+interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean; thinking?: string; tool_calls?: ToolCall[] }
 interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number; streamingOutput?: string }
 interface GateRequest { gateId: string; toolName: string; args: Record<string, unknown> }
 
@@ -49,6 +49,16 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       setPendingMessages([])
     }
   }, [isStreaming, messages.length])
+
+  useEffect(() => {
+    setToolCalls([])
+    setGates([])
+    setStreamingText('')
+    setStreamingThinking('')
+    setIsStreaming(false)
+    setIsThinkingActive(false)
+    setPendingMessages([])
+  }, [sessionId])
 
   const onEvent = useCallback((ev: WSEvent) => {
     if (ev.type === 'text_delta') {
@@ -93,6 +103,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
       setIsStreaming(false)
       setIsThinkingActive(false)
+      setToolCalls([])
       setGates([])
       setStreamingThinking('')
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
@@ -149,7 +160,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
 
   const handleModelChange = useCallback((model: string) => {
     onModelChange?.(model)
-    const acpPrefixes = ['claude-code', 'codex', 'gemini', 'cline', 'cursor', 'goose', 'opencode', 'agy']
+    const acpPrefixes = ['claude-code', 'codex', 'gemini', 'cline', 'cursor', 'goose', 'agy']
     const isAcp = acpPrefixes.some(p => model === p || model.startsWith(p + '/'))
     if (isAcp) {
       const baseAgent = model.split('/')[0]
@@ -176,7 +187,11 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
                 </div>
               : m.role === 'user'
                 ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} />
-                : <AssistantMessage key={m.id} content={m.content} isStreaming={false} thinking={m.thinking} />
+                : <React.Fragment key={m.id}><AssistantMessage content={m.content} isStreaming={false} thinking={m.thinking} />
+                    {m.tool_calls?.map(tc => (
+                      <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
+                        args={tc.args} output={tc.output} durationMs={tc.durationMs} />
+                    ))}</React.Fragment>
           )}
           {pendingMessages.map(pm => (
             <UserMessage key={pm.id} content={pm.content} timestamp={new Date().toISOString()} />

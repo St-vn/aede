@@ -156,7 +156,7 @@ def test_acp_commands_includes_common_agents():
 
 def test_model_presets_includes_acp_agents():
     from aede.models import MODEL_PRESETS
-    for name in ["codex", "claude-code", "gemini", "agy", "cline", "cursor", "goose", "opencode"]:
+    for name in ["codex", "claude-code", "gemini", "agy", "cline", "cursor", "goose"]:
         assert name in MODEL_PRESETS, f"{name} missing from MODEL_PRESETS"
         assert len(MODEL_PRESETS[name]) > 0, f"{name} has no presets"
 
@@ -168,7 +168,7 @@ def test_model_presets_includes_acp_agents():
 def test_acp_model_ids_set():
     """ACP_MODEL_IDS should include all known ACP agents."""
     from aede.provider import ACP_MODEL_IDS
-    for name in ["codex", "claude-code", "gemini", "cline", "cursor", "goose", "opencode"]:
+    for name in ["codex", "claude-code", "gemini", "cline", "cursor", "goose"]:
         assert name in ACP_MODEL_IDS, f"{name} missing from ACP_MODEL_IDS"
 
 

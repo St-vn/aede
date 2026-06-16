@@ -58,14 +58,18 @@ class Provider(Protocol):
 class AnthropicProvider:
     """Wraps AsyncAnthropic and streams a turn, returning a NormalizedResponse."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, base_url: str | None = None) -> None:
         self._api_key = api_key
+        self._base_url = base_url
         self._client: Any = None
 
     def _get_client(self) -> Any:
         if self._client is None:
             import anthropic
-            self._client = anthropic.AsyncAnthropic(api_key=self._api_key)
+            kwargs: dict[str, Any] = {"api_key": self._api_key}
+            if self._base_url:
+                kwargs["base_url"] = self._base_url
+            self._client = anthropic.AsyncAnthropic(**kwargs)
         return self._client
 
     @property
@@ -528,7 +532,7 @@ class OpenAIProvider:
 # Models that should be routed through ACP rather than LLM API
 ACP_MODEL_IDS: frozenset[str] = frozenset({
     "codex", "claude-code", "gemini",
-    "cline", "cursor", "goose", "opencode",
+    "cline", "cursor", "goose",
     # Sub-model entries
     "codex/gpt-5.5", "codex/gpt-5.3-codex", "codex/o3", "codex/o4-mini",
     "claude-code/fable-5", "claude-code/opus-4-8",
@@ -538,21 +542,26 @@ ACP_MODEL_IDS: frozenset[str] = frozenset({
     "goose/anthropic-claude-sonnet-4-6", "goose/openai-gpt-4o",
 })
 
-# Models that route through OpenCode Zen (free + paid chat-completions)
+# Models that route through OpenCode Zen (free + paid, OpenAI-compatible)
 # All use /v1/chat/completions via OpenAIProvider.
 ZEN_MODEL_IDS: frozenset[str] = frozenset({
     # Free models
     "deepseek-v4-flash-free", "nemotron-3-ultra-free", "big-pickle",
-    "mimo-v2.5-free", "qwen3.6-plus-free", "minimax-m3-free", "north-mini-code-free",
-    # Paid chat-completions models
-    "grok-build-0.1", "deepseek-v4-flash", "glm-5.1", "glm-5",
-    "minimax-m2.7", "minimax-m2.5", "kimi-k2.6", "kimi-k2.5",
+    "mimo-v2.5-free", "north-mini-code-free",
+    # Paid chat-completions models (exclusive to Zen — no Go overlap)
+    "grok-build-0.1", "kimi-k2.5",
 })
 
-# Models that route through OpenCode Go ($10/mo subscription)
-GO_MODEL_IDS: frozenset[str] = frozenset({
-    "deepseek-v4-pro", "deepseek-v4-flash", "glm-5.1", "kimi-k2.6",
-    "minimax-m2.7", "minimax-m2.5",
+# Go models using OpenAI-compatible /v1/chat/completions endpoint
+GO_OPENAI_MODEL_IDS: frozenset[str] = frozenset({
+    "deepseek-v4-pro", "deepseek-v4-flash", "glm-5.1", "glm-5",
+    "kimi-k2.7", "kimi-k2.6", "mimo-v2.5", "mimo-v2.5-pro",
+})
+
+# Go models using Anthropic-compatible /v1/messages endpoint
+GO_ANTHROPIC_MODEL_IDS: frozenset[str] = frozenset({
+    "minimax-m3", "minimax-m2.7", "minimax-m2.5",
+    "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus",
 })
 
 
@@ -872,17 +881,29 @@ def get_provider(cfg: Any, acp_manager: Any = None) -> AnthropicProvider | OpenA
             )
         return OpenAIProvider(api_key=api_key, base_url=base)
 
-    if model in GO_MODEL_IDS:
+    if model in GO_OPENAI_MODEL_IDS:
         providers = getattr(cfg, "providers", {})
         go_cfg: dict = providers.get("opencode-go", {}) if providers else {}
         env_key = go_cfg.get("api_key_env", "OPENCODE_GO_API_KEY")
-        base = go_cfg.get("base_url", "https://opencode.ai/zen/go")
+        base = go_cfg.get("base_url", "https://opencode.ai/zen/go/v1")
         api_key = os.environ.get(env_key)
         if not api_key:
             raise RuntimeError(
                 f"{env_key} is not set. Use /setkey {env_key} <key> first."
             )
         return OpenAIProvider(api_key=api_key, base_url=base)
+
+    if model in GO_ANTHROPIC_MODEL_IDS:
+        providers = getattr(cfg, "providers", {})
+        go_cfg: dict = providers.get("opencode-go", {}) if providers else {}
+        env_key = go_cfg.get("api_key_env", "OPENCODE_GO_API_KEY")
+        base = go_cfg.get("base_url", "https://opencode.ai/zen/go/v1")
+        api_key = os.environ.get(env_key)
+        if not api_key:
+            raise RuntimeError(
+                f"{env_key} is not set. Use /setkey {env_key} <key> first."
+            )
+        return AnthropicProvider(api_key=api_key, base_url=base)
 
     is_anthropic_model = (
         model.startswith("claude-") or model.startswith("anthropic/")

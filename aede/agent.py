@@ -240,6 +240,7 @@ class AgentLoop:
         self._stream_tool_call = stream_tool_call
         self._stream_tool_result = stream_tool_result
         self._accumulated_thinking = ""
+        self._current_assist_id: str | None = None
 
         from aede.gate import TerminalGateBackend
         self._gate_backend = gate_backend or TerminalGateBackend(
@@ -307,6 +308,17 @@ class AgentLoop:
         Uses ``getattr`` so partially-constructed instances (e.g. tests using
         ``AgentLoop.__new__``) and the terminal CLI path are both safe.
         """
+        # Persist to DB
+        if self._current_assist_id:
+            import json as _json
+            self._db.upsert_tool_call(
+                id=call_id,
+                message_id=self._current_assist_id,
+                tool_name=name,
+                args=_json.dumps(args),
+                status="running",
+            )
+        # Forward to UI
         cb = getattr(self, "_stream_tool_call", None)
         if cb:
             import asyncio as _asyncio
@@ -314,6 +326,15 @@ class AgentLoop:
 
     def _emit_tool_result(self, call_id: str, status: str, output: str, duration_ms: int) -> None:
         """Forward a tool result to the UI stream, if a callback is wired."""
+        # Persist to DB
+        if self._current_assist_id:
+            self._db.update_tool_call(
+                id=call_id,
+                result=output,
+                status=status,
+                duration_ms=duration_ms,
+            )
+        # Forward to UI
         cb = getattr(self, "_stream_tool_result", None)
         if cb:
             import asyncio as _asyncio
@@ -400,17 +421,18 @@ class AgentLoop:
             text_response = resp.text
             tool_calls = resp.tool_calls  # list of {"id", "name", "input"}
 
+            assist_id = str(ULID())
+            self._current_assist_id = assist_id
+            self._db.insert_message(
+                id=assist_id,
+                session_id=self._session.id,
+                role="assistant",
+                content=text_response or "",
+                token_count=resp.output_tokens,
+                thinking=self._accumulated_thinking or None,
+            )
             if text_response:
                 _trace_reasoning_text = text_response
-                assist_id = str(ULID())
-                self._db.insert_message(
-                    id=assist_id,
-                    session_id=self._session.id,
-                    role="assistant",
-                    content=text_response,
-                    token_count=resp.output_tokens,
-                    thinking=self._accumulated_thinking or None,
-                )
                 self._rollout.write({
                     "type": "assistant_message",
                     "content": text_response,

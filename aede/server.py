@@ -177,7 +177,8 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     await websocket.send_json({"type": "error", "message": "Missing session_id or content"})
                     continue
 
-                # Per-turn model override from the UI
+                # Per-turn model override from the UI (do NOT mutate shared cfg)
+                _original_model = cfg.model
                 turn_model = data.get("model")
                 if turn_model:
                     print(f"[WS#{hid}] per-turn model override: {cfg.model} → {turn_model}", flush=True)
@@ -242,12 +243,30 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
                 async def _stream_tool_call(call_id: str, name: str, args: dict):
                     try:
+                        # Persist to DB (ACP tools run in-subprocess, reported via on_update)
+                        if agent._current_assist_id:
+                            import json as _json
+                            db.upsert_tool_call(
+                                id=call_id,
+                                message_id=agent._current_assist_id,
+                                tool_name=name,
+                                args=_json.dumps(args),
+                                status="running",
+                            )
                         await websocket.send_json({"type": "tool_call", "id": call_id, "name": name, "args": args})
                     except Exception:
                         pass
 
                 async def _stream_tool_result(call_id: str, status: str, output: str, duration_ms: int):
                     try:
+                        # Persist to DB
+                        if agent._current_assist_id:
+                            db.update_tool_call(
+                                id=call_id,
+                                result=output,
+                                status=status,
+                                duration_ms=duration_ms,
+                            )
                         await websocket.send_json({"type": "tool_result", "id": call_id, "status": status, "output": output, "duration_ms": duration_ms})
                     except Exception:
                         pass
@@ -300,6 +319,8 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 def on_turn_done(fut):
                     nonlocal hid
                     print(f"[WS#{hid}] on_turn_done CALLED", flush=True)
+                    # Restore original model after turn
+                    cfg.model = _original_model
                     try:
                         fut.result()
                         print(f"[WS#{hid}] run_turn completed successfully", flush=True)
@@ -327,6 +348,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                         except Exception as e:
                             print(f"[WS#{hid}] learnings error: {e}", flush=True)
                     except Exception as e:
+                        cfg.model = _original_model
                         print(f"[WS#{hid}] run_turn FAILED: {e}", flush=True)
                         import traceback
                         traceback.print_exc()
@@ -539,7 +561,25 @@ async def get_messages(request: Request, session_id: str):
         parent_msgs[-1]["is_branch_point"] = True
     own = list(db.get_messages(session_id))
     parent_msgs.extend(own)
-    return parent_msgs
+
+    # Attach tool calls to their parent messages
+    all_msgs = parent_msgs
+    msg_ids = [m["id"] for m in all_msgs]
+    if msg_ids:
+        tc_map = db.get_tool_calls_for_message_ids(msg_ids)
+        # Normalize DB column names to frontend ToolCall interface
+        for tc_list in tc_map.values():
+            for tc in tc_list:
+                tc["name"] = tc.pop("tool_name")
+                tc["output"] = tc.pop("result", None)
+                tc["durationMs"] = tc.pop("duration_ms", None)
+        for m in all_msgs:
+            m["tool_calls"] = tc_map.get(m["id"], [])
+    else:
+        for m in all_msgs:
+            m["tool_calls"] = []
+
+    return all_msgs
 
 
 @app.get("/config")
