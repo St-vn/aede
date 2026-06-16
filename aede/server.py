@@ -70,12 +70,46 @@ async def _warmup_acp_on_startup(app: "FastAPI") -> None:
             console.print(f"[dim]ACP warmup: {name} connected[/dim]")
 
 
-class WebSocketGateBackend:
-    """Tool-approval backend that sends requests to the Web UI over WebSocket."""
+class SessionGate:
+    """Per-session gate state, shared across successive WebSocket connections.
 
-    def __init__(self, websocket: WebSocket, futures: dict[str, asyncio.Future]):
-        self._websocket = websocket
-        self._futures = futures
+    The turn task lives independently of any single socket.  When the UI's
+    socket drops mid-gate (e.g. React StrictMode teardown) and a new socket
+    reconnects for the same session, the new handler adopts this state, rebinds
+    the live socket, and re-sends any still-pending gate requests so the user
+    can answer them.  This prevents a pending gate from being orphaned (which
+    previously cancelled the turn and silently dropped the edit).
+    """
+
+    def __init__(self) -> None:
+        self.websocket: WebSocket | None = None
+        self.futures: dict[str, asyncio.Future] = {}
+        # gate_id -> the original gate_request payload, for re-send on reconnect.
+        self.pending_requests: dict[str, dict] = {}
+
+    def bind(self, websocket: WebSocket) -> None:
+        self.websocket = websocket
+
+    async def resend_pending(self) -> None:
+        """Re-send every unanswered gate_request to the freshly bound socket."""
+        if self.websocket is None:
+            return
+        for payload in list(self.pending_requests.values()):
+            try:
+                await self.websocket.send_json(payload)
+            except Exception:
+                pass
+
+
+class WebSocketGateBackend:
+    """Tool-approval backend that drives gate requests through a SessionGate.
+
+    Requests are sent over whatever socket is currently bound to the session,
+    so a turn started on one connection can be answered on a later one.
+    """
+
+    def __init__(self, gate: "SessionGate"):
+        self._gate = gate
 
     async def request(
         self,
@@ -86,20 +120,23 @@ class WebSocketGateBackend:
     ) -> tuple[Any, str]:
         from aede.gate import GateDecision
         fut = asyncio.get_running_loop().create_future()
-        self._futures[gate_id] = fut
-        await self._websocket.send_json({
+        self._gate.futures[gate_id] = fut
+        payload = {
             "type": "gate_request",
             "gate_id": gate_id,
             "tool_name": tool_name,
             "args": args,
             "batch_count": batch_count,
-        })
+        }
+        self._gate.pending_requests[gate_id] = payload
         try:
-            # UI should respond with {"type": "gate_response", "gate_id": "...", "decision": "ALLOW_ONCE", "redirect_msg": ""}
+            if self._gate.websocket is not None:
+                await self._gate.websocket.send_json(payload)
             decision_str, redirect_msg = await fut
             return GateDecision(decision_str), redirect_msg
         finally:
-            self._futures.pop(gate_id, None)
+            self._gate.futures.pop(gate_id, None)
+            self._gate.pending_requests.pop(gate_id, None)
 
 
 class WebSocketConsole:
@@ -159,10 +196,30 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
     
     db = app.state.db
     cfg = app.state.cfg
-    
-    gate_futures: dict[str, asyncio.Future] = {}
-    gate_backend = WebSocketGateBackend(websocket, gate_futures)
+
+    # Session-level gate state, shared across reconnects. A turn started on an
+    # earlier socket keeps its pending gates here; this (possibly new) handler
+    # binds the live socket and re-sends any unanswered gate requests so the
+    # user can still answer them.
+    gate_registry: dict[str, SessionGate] = getattr(app.state, "gate_registry", None)
+    if gate_registry is None:
+        gate_registry = {}
+        app.state.gate_registry = gate_registry
+    gate = gate_registry.setdefault(session_id, SessionGate())
+    gate.bind(websocket)
+    gate_backend = WebSocketGateBackend(gate)
     ws_console = WebSocketConsole(websocket)
+    # If a prior socket left gates pending, surface them to this fresh socket.
+    await gate.resend_pending()
+
+    async def send_live(obj: dict) -> None:
+        """Send to the socket currently bound to the session, not a captured
+        one.  Lets a turn that outlived a reconnect stream to the new socket."""
+        target = gate.websocket or websocket
+        try:
+            await target.send_json(obj)
+        except Exception:
+            pass
 
     try:
         while True:
@@ -209,13 +266,10 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
                 async def _stream_thinking(text: str):
                     nonlocal _thinking_started
-                    try:
-                        if not _thinking_started:
-                            _thinking_started = True
-                            await websocket.send_json({"type": "thinking_start"})
-                        await websocket.send_json({"type": "thinking_delta", "text": text})
-                    except Exception:
-                        pass
+                    if not _thinking_started:
+                        _thinking_started = True
+                        await send_live({"type": "thinking_start"})
+                    await send_live({"type": "thinking_delta", "text": text})
 
                 gate_store = PermissionStore()
                 gate_store.load_from_config(cfg.auto_approve)
@@ -236,10 +290,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 print(f"[WS#{hid}] Creating AgentLoop...", flush=True)
 
                 async def _stream_text(text: str):
-                    try:
-                        await websocket.send_json({"type": "text_delta", "text": text})
-                    except Exception:
-                        pass
+                    await send_live({"type": "text_delta", "text": text})
 
                 async def _stream_tool_call(call_id: str, name: str, args: dict):
                     try:
@@ -253,7 +304,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                                 args=_json.dumps(args),
                                 status="running",
                             )
-                        await websocket.send_json({"type": "tool_call", "id": call_id, "name": name, "args": args})
+                        await send_live({"type": "tool_call", "id": call_id, "name": name, "args": args})
                     except Exception:
                         pass
 
@@ -267,7 +318,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                                 status=status,
                                 duration_ms=duration_ms,
                             )
-                        await websocket.send_json({"type": "tool_result", "id": call_id, "status": status, "output": output, "duration_ms": duration_ms})
+                        await send_live({"type": "tool_result", "id": call_id, "status": status, "output": output, "duration_ms": duration_ms})
                     except Exception:
                         pass
 
@@ -321,15 +372,22 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     print(f"[WS#{hid}] on_turn_done CALLED", flush=True)
                     # Restore original model after turn
                     cfg.model = _original_model
+                    # A cancelled turn (e.g. WS disconnect/reconnect while waiting
+                    # on a gate response) raises CancelledError — a BaseException,
+                    # NOT caught by `except Exception`.  Swallow it explicitly so
+                    # the done-callback never propagates an unhandled exception.
+                    if fut.cancelled():
+                        print(f"[WS#{hid}] run_turn cancelled — skipping completion", flush=True)
+                        return
                     try:
                         fut.result()
                         print(f"[WS#{hid}] run_turn completed successfully", flush=True)
-                        asyncio.create_task(websocket.send_json({"type": "turn_completed"}))
+                        asyncio.create_task(send_live({"type": "turn_completed"}))
                         # Emit context usage info
                         try:
                             if hasattr(agent, 'count_context_tokens'):
                                 ctx = agent.count_context_tokens()
-                                asyncio.create_task(websocket.send_json({
+                                asyncio.create_task(send_live({
                                     "type": "context_usage",
                                     "used": ctx.get("total_tokens", 0),
                                     "total": cfg.context_window,
@@ -341,7 +399,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                             from aede.memory.store import LearningsStore
                             store = LearningsStore(data_dir=cfg.data_dir, db=db)
                             all_l = store.list_all()
-                            asyncio.create_task(websocket.send_json({
+                            asyncio.create_task(send_live({
                                 "type": "learnings_injected",
                                 "count": len(all_l),
                             }))
@@ -352,7 +410,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                         print(f"[WS#{hid}] run_turn FAILED: {e}", flush=True)
                         import traceback
                         traceback.print_exc()
-                        asyncio.create_task(websocket.send_json({"type": "error", "message": str(e)}))
+                        asyncio.create_task(send_live({"type": "error", "message": str(e)}))
 
                 turn_task.add_done_callback(on_turn_done)
                 print(f"[WS#{hid}] Done setting up turn, returning to message loop", flush=True)
@@ -361,16 +419,28 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 gate_id = data.get("gate_id")
                 decision = data.get("decision")
                 redirect_msg = data.get("redirect_msg", "")
-                
-                if gate_id in gate_futures:
-                    gate_futures[gate_id].set_result((decision, redirect_msg))
+
+                fut = gate.futures.get(gate_id)
+                if fut is not None and not fut.done():
+                    fut.set_result((decision, redirect_msg))
                 else:
                     await websocket.send_json({"type": "error", "message": f"Unknown gate_id: {gate_id}"})
 
     except WebSocketDisconnect:
         print(f"[WS#{hid}] WebSocket disconnected", flush=True)
-        if 'turn_task' in locals() and not turn_task.done():
+        # Do NOT cancel a turn that is waiting on a gate: the session-level
+        # gate state survives, and a reconnecting socket will adopt it and
+        # re-send the pending request.  Only cancel a turn with no outstanding
+        # gate (genuinely abandoned work with nothing to resume).
+        turn = gate_registry.get(session_id)
+        gates_pending = bool(turn and turn.futures)
+        if gate.websocket is websocket:
+            gate.websocket = None  # current socket is gone; await reconnect
+        if 'turn_task' in locals() and not turn_task.done() and not gates_pending:
+            print(f"[WS#{hid}] no pending gate — cancelling abandoned turn", flush=True)
             turn_task.cancel()
+        elif gates_pending:
+            print(f"[WS#{hid}] gate pending — leaving turn alive for reconnect", flush=True)
     except Exception as e:
         print(f"[WS#{hid}] UNHANDLED EXCEPTION: {e}", flush=True)
         import traceback

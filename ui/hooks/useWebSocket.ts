@@ -11,11 +11,57 @@ export function useWebSocket(
   const ws = useRef<WebSocket | null>(null)
   const onEventRef = useRef(onEvent)
   onEventRef.current = onEvent
+  // Pending deferred-close timer; lets StrictMode's remount cancel a close.
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Defer the socket close one macrotask so a StrictMode remount can cancel it.
+  const scheduleClose = (socket: WebSocket): ReturnType<typeof setTimeout> =>
+    setTimeout(() => {
+      console.log('[WS] cleanup (deferred) - readyState:', socket.readyState)
+      socket.onopen = null
+      socket.onmessage = null
+      socket.onerror = null
+      socket.onclose = null
+      if (socket.readyState !== WebSocket.CONNECTING) {
+        socket.close()
+      }
+      if (ws.current === socket) {
+        ws.current = null
+      }
+    }, 0)
 
   useEffect(() => {
     if (!sessionId) return
 
+    // React 18/19 StrictMode double-invokes effects in dev: mount → cleanup →
+    // mount. Closing the socket synchronously in cleanup tears down a connection
+    // a brand-new turn is about to run on — the backend then sees
+    // WebSocketDisconnect and CANCELS the in-flight (possibly gated) turn,
+    // silently dropping the user's edit.
+    //
+    // Fix: defer the close one macrotask. If StrictMode immediately remounts,
+    // this effect re-runs first, cancels the pending close, and reuses the live
+    // socket — so the connection survives the dev double-invoke. A real unmount
+    // or session change lets the timer fire and closes cleanly.
+    if (closeTimerRef.current !== null) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+
     const url = `${WS_BASE}/ws/sessions/${sessionId}`
+    const existing = ws.current
+    if (
+      existing &&
+      existing.url === url &&
+      (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)
+    ) {
+      // Reuse the surviving socket; just re-bind the message handler.
+      existing.onmessage = (e) => onEventRef.current(JSON.parse(e.data) as WSEvent)
+      return () => {
+        closeTimerRef.current = scheduleClose(existing)
+      }
+    }
+
     console.log('[WS] creating socket:', url)
     const socket = new WebSocket(url)
     ws.current = socket
@@ -37,17 +83,7 @@ export function useWebSocket(
     }
 
     return () => {
-      console.log('[WS] cleanup - readyState:', socket.readyState, 'session:', sessionId)
-      socket.onopen = null
-      socket.onmessage = null
-      socket.onerror = null
-      socket.onclose = null
-      if (socket.readyState !== WebSocket.CONNECTING) {
-        socket.close()
-      }
-      if (ws.current === socket) {
-        ws.current = null
-      }
+      closeTimerRef.current = scheduleClose(socket)
     }
   }, [sessionId])
 
