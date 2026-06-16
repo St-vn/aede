@@ -302,6 +302,34 @@ class AgentLoop:
         if prior_messages:
             self._messages = list(prior_messages)
 
+    def _enrich_edit_args(self, name: str, args: dict) -> dict:
+        """For full-content write tools, attach ``old_string``/``new_string`` so
+        the UI renders an inline diff identical to ACP "Edit" tool calls.
+
+        Native ``write_file``/``create_file`` only carry ``{path, content}``;
+        without an old/new pair the UI falls back to a raw JSON block.  We read
+        the file's current contents *before* the write executes (this runs at
+        emit time, prior to ``_router.execute_sync``) so the diff shows what
+        actually changed.  Best-effort: any failure leaves args untouched.
+        """
+        if name not in ("write_file", "create_file"):
+            return args
+        new_content = args.get("content")
+        path_str = args.get("path")
+        if not isinstance(new_content, str) or not isinstance(path_str, str):
+            return args
+        from pathlib import Path
+        old_content = ""
+        if name == "write_file":
+            try:
+                p = Path(path_str)
+                if p.exists():
+                    old_content = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                return args
+        # Don't mutate the caller's dict (it feeds tool execution + trace).
+        return {**args, "old_string": old_content, "new_string": new_content}
+
     def _emit_tool_call(self, call_id: str, name: str, args: dict) -> None:
         """Forward a tool-call start to the UI stream, if a callback is wired.
 
@@ -402,8 +430,29 @@ class AgentLoop:
         _trace_outcome: str = "completed"
 
         while True:
+            # Pre-allocate the assistant message row BEFORE calling the
+            # provider.  ACP agents run tools in their subprocess and report
+            # them mid-stream (during stream_turn), so the persist callback
+            # needs _current_assist_id set and the message row to exist for the
+            # tool_calls FK.  Native providers return tool calls only after the
+            # stream completes, so this reordering is harmless for them.
+            assist_id = str(ULID())
+            self._current_assist_id = assist_id
+            self._db.insert_message(
+                id=assist_id,
+                session_id=self._session.id,
+                role="assistant",
+                content="",
+                token_count=None,
+            )
+
             resp = await self._stream_response()
             if resp is None:
+                # Provider failed; drop the empty placeholder (and any tool
+                # calls persisted against it) so it doesn't show as a blank
+                # assistant message on refetch.
+                self._current_assist_id = None
+                self._db.delete_message(assist_id)
                 break
 
             self._tracker.record(
@@ -421,12 +470,9 @@ class AgentLoop:
             text_response = resp.text
             tool_calls = resp.tool_calls  # list of {"id", "name", "input"}
 
-            assist_id = str(ULID())
-            self._current_assist_id = assist_id
-            self._db.insert_message(
+            # Finalize the pre-allocated assistant row with the streamed text.
+            self._db.update_message(
                 id=assist_id,
-                session_id=self._session.id,
-                role="assistant",
                 content=text_response or "",
                 token_count=resp.output_tokens,
                 thinking=self._accumulated_thinking or None,
@@ -558,7 +604,10 @@ class AgentLoop:
 
                 self._console.print(f"⚡ {tool_name} · running...")
                 self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id})
-                self._emit_tool_call(tool_use_id, tool_name, tool_input)
+                # Enrich write/create with an old/new pair so the UI shows an
+                # inline diff (same shape as ACP edits).  Read happens before
+                # the tool executes below, so old content is still on disk.
+                self._emit_tool_call(tool_use_id, tool_name, self._enrich_edit_args(tool_name, tool_input))
 
                 call_key = f"{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
                 was_retry = call_key in retry_count

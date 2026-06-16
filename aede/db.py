@@ -320,6 +320,34 @@ class DB:
         )
         self.con.commit()
 
+    def update_message(
+        self,
+        id: str,
+        content: str,
+        token_count: int | None,
+        thinking: str | None = None,
+    ) -> None:
+        """Fill in a previously-inserted message's content/tokens/thinking.
+
+        Assistant rows are inserted empty *before* the provider call so that
+        tool calls reported mid-stream (notably ACP agents, which run tools in
+        their subprocess and emit them during ``stream_turn``) have a valid
+        ``message_id`` FK to persist against.  The finalized text is written
+        here once the response completes.
+        """
+        self.con.execute(
+            "UPDATE messages SET content=?, token_count=?, thinking=? WHERE id=?",
+            (content, token_count, thinking, id),
+        )
+        self.con.commit()
+
+    def delete_message(self, id: str) -> None:
+        """Delete a message and its tool calls (used to clean up an empty
+        assistant placeholder when the provider call fails)."""
+        self.con.execute("DELETE FROM tool_calls WHERE message_id = ?", (id,))
+        self.con.execute("DELETE FROM messages WHERE id = ?", (id,))
+        self.con.commit()
+
     def get_messages(
         self, session_id: str, include_compacted: bool = False
     ) -> list[dict[str, Any]]:
