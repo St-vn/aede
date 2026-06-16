@@ -31,6 +31,9 @@ credentials.json
 # sdlc-engineer artifacts (spec/design/tasks scratch — internal only)
 /docs/sdlc-engineer/
 
+# Internal docs — not for the public repo
+/docs-internal/
+
 # ---------------------------------------------------------------
 # ABANDONED — archived 2026-06-14 to %TEMP%\opencode\aede-abandoned-*
 # (remediation = "security for vibe coding" side-quest; market is

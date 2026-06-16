@@ -40,7 +40,7 @@ export function ToolCallCard({ toolName, status, args, output, durationMs, strea
     <Collapsible>
       <CollapsibleTrigger className={`flex items-center gap-2 py-0.5 text-sm w-full text-left
                                       hover:text-foreground transition-colors ${cfg.color}`}>
-        <ChevronRight className="w-3 h-3 shrink-0 transition-transform [&[data-state=open]]:rotate-90" />
+        <ChevronRight className="w-3 h-3 shrink-0 transition-transform [&[data-panel-open]]:rotate-90" />
         <span className="font-mono">{toolName}</span>
         {cfg.icon}
         {cfg.label && <span className={cfg.color}>{cfg.label}</span>}

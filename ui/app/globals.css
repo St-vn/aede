@@ -162,7 +162,7 @@
 
 /* ── Collapsible chevron rotation ── */
 [data-slot="collapsible-trigger"][data-panel-open] .chevron-collapsible {
-  transform: rotate(0deg) !important;
+  rotate: 0deg !important;
 }
 
 /* ── ScrollArea: hide native scrollbar ── */
