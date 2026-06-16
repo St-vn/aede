@@ -39,9 +39,10 @@ interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialTab?: SettingsTabId
+  sessionId?: string | null
 }
 
-export function SettingsModal({ open, onOpenChange, initialTab }: Props) {
+export function SettingsModal({ open, onOpenChange, initialTab, sessionId }: Props) {
   const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab || 'config')
 
   React.useEffect(() => {
@@ -89,7 +90,7 @@ export function SettingsModal({ open, onOpenChange, initialTab }: Props) {
                   <McpTab />
                 </TabsContent>
                 <TabsContent value="context" className="mt-0">
-                  <ContextTab />
+                  <ContextTab sessionId={sessionId} />
                 </TabsContent>
                 <TabsContent value="memory" className="mt-0">
                   <MemoryTab />

@@ -129,7 +129,7 @@ export function AgentPage() {
           </div>
         )}
       />
-      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} initialTab={settingsTab} />
+      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} initialTab={settingsTab} sessionId={activeId} />
     </>
   )
 }
