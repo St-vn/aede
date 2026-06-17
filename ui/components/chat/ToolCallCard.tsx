@@ -70,6 +70,7 @@ function DiffView({ filePath, oldStr, newStr, startLine }: { filePath: string; o
         </div>
       )}
       <div className="overflow-x-auto bg-background/40 py-1">
+        <div className="min-w-full w-max">
         {lines.map((dl, idx) => {
           const isAdd = dl.type === 'add', isRem = dl.type === 'remove'
           let lineNo: number
@@ -89,11 +90,12 @@ function DiffView({ filePath, oldStr, newStr, startLine }: { filePath: string; o
                 {lineNo}
               </span>
               <span className={`select-none shrink-0 w-4 text-center ${text}`}>{sign}</span>
-              <span className={`whitespace-pre pr-3 ${text}`}>{dl.line}</span>
+              <span className={`whitespace-pre pr-3 flex-1 ${text}`}>{dl.line}</span>
             </div>
           )
         })}
       </div>
+    </div>
     </div>
   )
 }
