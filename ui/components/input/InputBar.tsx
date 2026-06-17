@@ -72,6 +72,38 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
     }
   }, [model])
 
+  // submitRef avoids a stale-closure: the wake controller's onTranscript is
+  // created in an effect but must always call the latest submit().
+  const submitRef = useRef<(override?: string) => void>(() => {})
+
+  // VoiceController for the always-on wake word. Armed only when a wake word is
+  // configured. On transcript → submit (auto-send), distinct from push-to-talk
+  // which inserts at cursor.
+  const wakeControllerRef = useRef<VoiceController | null>(null)
+  useEffect(() => {
+    if (!soul?.wake_word) return
+    let cancelled = false
+    const vc = new VoiceController({
+      getStream: () => navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true } }),
+      transcribe: (blob, mdl?: string) => transcribe(blob, mdl ?? model),
+      onTranscript: (txt) => { if (txt.trim()) submitRef.current(txt) },
+      createWake: async (opts) => {
+        const { createWakeWordEngine } = await import('./voice/wakeWorklet')
+        return createWakeWordEngine(opts)
+      },
+      wakeOpts: { keywords: ['hey_jarvis'] },
+    })
+    wakeControllerRef.current = vc
+    // Lazy-arm: load WASM + models only now that voice is enabled.
+    void vc.start().catch(() => { /* permission/load failure is non-fatal */ })
+    return () => {
+      cancelled = true
+      vc.stop()
+      wakeControllerRef.current = null
+      void cancelled
+    }
+  }, [soul?.wake_word, model])
+
   // Auto-resize
   useEffect(() => {
     if (ref.current) {
@@ -98,6 +130,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
     setImageAttachments([])
     setMentionedFiles([])
   }
+  submitRef.current = submit
 
   // --- File injection ---
   const injectFiles = useCallback((files: FileAttachment[]) => {
