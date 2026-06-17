@@ -28,7 +28,6 @@ const DEFAULTS = {
   keywords: ['hey_jarvis'],
   detectionThreshold: 0.5,
   cooldownMs: 2000,
-  debug: true,  // logs '[WakeWordEngine] Keyword score {...}' per frame — temporary, for tuning
 }
 
 /** Create a wake-word engine. Lazy-imports the package so nothing loads until

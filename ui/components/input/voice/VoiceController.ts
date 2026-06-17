@@ -34,10 +34,9 @@ export class VoiceController {
       // Surface engine errors — the engine swallows mel/embedding/VAD failures
       // into an 'error' event; without this listener detection dies silently.
       this.wake.on('error', (e) => { console.error('[voice] wake engine error:', e) })
-      this.wake.on('detect', (p) => { console.debug('[voice] wake detected:', p); void this._onWake().catch(err => console.error('[voice] onWake failed:', err)) })
+      this.wake.on('detect', () => { void this._onWake().catch(err => console.error('[voice] onWake failed:', err)) })
       await this.wake.load()
       await this.wake.start()  // engine owns its own mic stream while listening
-      console.debug('[voice] wake engine armed, listening for wake word')
       return
     }
 
@@ -94,20 +93,13 @@ export class VoiceController {
   // Open one stream, record until end-of-speech, transcribe. Returns '' when no
   // speech was detected (cost gate) — caller makes zero transcription request.
   private async _recordAndTranscribe(model?: string): Promise<string> {
-    console.debug('[voice] recording command clip…')
     const stream = await this.deps.getStream()
     this.stream = stream
     const ctx = new AudioContext()  // default rate; recording, not 16k wake inference
 
     const blob = await new Promise<Blob | null>((resolve) => {
       this.recorder = new ClipRecorder(stream, ctx)
-      this.recorder.start({
-        onSpeech: () => console.debug('[voice] speech detected, recording…'),
-        onSilence: (clip) => {
-          console.debug('[voice] clip done. hadSpeech=', this.recorder?.hadSpeech, 'bytes=', clip?.size ?? 0)
-          resolve(clip)
-        },
-      })
+      this.recorder.start({ onSilence: (clip) => resolve(clip) })
     })
 
     stream.getTracks().forEach(t => t.stop())
@@ -115,12 +107,8 @@ export class VoiceController {
     void ctx.close()
     this.recorder = null
 
-    if (!blob) { console.debug('[voice] no speech after wake — cost gate, no ASR call'); return '' }
+    if (!blob) return ''  // cost gate: no speech after wake → no ASR call
     this.state = 'transcribing'
-    const m = model ?? this.deps.model
-    console.debug('[voice] transcribing (deps.transcribe closure carries the ASR model)…')
-    const text = await this.deps.transcribe(blob, m)
-    console.debug('[voice] transcript:', JSON.stringify(text))
-    return text
+    return await this.deps.transcribe(blob, model ?? this.deps.model)
   }
 }
