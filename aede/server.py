@@ -16,7 +16,7 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
 if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -2077,4 +2077,37 @@ async def voice_trigger(request: Request, payload: dict):
         pass
 
     return {"status": "ok"}
+
+
+@app.post("/api/voice/transcribe")
+async def voice_transcribe(
+    audio: UploadFile = File(...),
+    model: str = Form("whisper-large-v3-turbo"),
+    language: str | None = Form(None),
+):
+    """Transcribe audio via fallback chain of ASR providers.
+
+    Attempts each provider in the fallback chain for the given model.
+    Returns the first successful transcription. If no provider succeeds or
+    the chain is empty, returns {fallback: "webspeech"} to signal
+    client-side Web Speech fallback. Errors are collected and returned.
+    """
+    from aede import asr
+
+    chain = asr.build_fallback_chain(model)
+    if not chain:
+        return {"fallback": "webspeech"}
+    data = await audio.read()
+    mime = audio.content_type or "audio/webm"
+    errors: list[str] = []
+    for provider, name in chain:
+        try:
+            t = await provider.transcribe(
+                audio=data, mime=mime, model=model, language=language
+            )
+            if t.text.strip():
+                return {"text": t.text, "model": t.model, "provider": t.provider}
+        except Exception as exc:  # noqa: BLE001 — error returned, not hidden
+            errors.append(f"{name}: {exc}")
+    return {"fallback": "webspeech", "errors": errors}
 
