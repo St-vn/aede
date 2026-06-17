@@ -18,11 +18,23 @@ export function AssistantMessage({ content, isStreaming, thinking, isThinkingAct
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
           components={{
-            code({ className, children, ...props }) {
-              const match = /language-(\w+)/.exec(className || '')
-              return match ? (
-                <CodeBlock language={match[1]} code={String(children).replace(/\n$/, '')} />
-              ) : (
+            // Fenced/indented code blocks arrive as <pre><code>…</code></pre>.
+            // Route the whole block through CodeBlock so EVERY block — with or
+            // without a language tag — gets the same full-width collapsible
+            // chrome (a bare ``` block has no language- class but is still a
+            // block, not inline code).
+            pre({ children }) {
+              const child: any = Array.isArray(children) ? children[0] : children
+              const codeProps = child?.props ?? {}
+              const className: string = codeProps.className || ''
+              const match = /language-(\w+)/.exec(className)
+              const code = String(codeProps.children ?? '').replace(/\n$/, '')
+              return <CodeBlock language={match?.[1]} code={code} />
+            },
+            // `code` now only handles true inline code (block code is consumed
+            // by the `pre` override above).
+            code({ children, ...props }) {
+              return (
                 <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs" {...props}>
                   {children}
                 </code>

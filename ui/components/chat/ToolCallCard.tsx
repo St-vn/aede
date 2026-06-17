@@ -45,7 +45,10 @@ function computeLineDiff(oldStr: string, newStr: string): DiffLine[] {
 }
 
 function DiffView({ filePath, oldStr, newStr, startLine }: { filePath: string; oldStr: string; newStr: string; startLine?: number }) {
-  const lines = computeLineDiff(oldStr, newStr)
+  // A single trailing newline difference (old ends with \n, new doesn't or vice
+  // versa) otherwise shows up as a phantom blank +/- row. Normalise it away so
+  // the diff reflects real content changes.
+  const lines = computeLineDiff(oldStr.replace(/\n$/, ''), newStr.replace(/\n$/, ''))
   const fileName = filePath.split(/[\\/]/).pop() || filePath
   let added = 0, removed = 0
   for (const dl of lines) {
