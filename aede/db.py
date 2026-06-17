@@ -43,6 +43,13 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     duration_ms INTEGER,
     created_at  INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS thinking_segments (
+    id          TEXT PRIMARY KEY,
+    message_id  TEXT NOT NULL REFERENCES messages(id),
+    text        TEXT NOT NULL,
+    seq         INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS token_usage (
     id              TEXT PRIMARY KEY,
     session_id      TEXT NOT NULL REFERENCES sessions(id),
@@ -450,6 +457,32 @@ class DB:
             if mid not in result:
                 result[mid] = []
             result[mid].append(r)
+        return result
+
+    def insert_thinking_segment(self, message_id: str, text: str, seq: int) -> None:
+        """Persist one thinking segment for an assistant message (ACP path)."""
+        import uuid
+        self.con.execute(
+            "INSERT INTO thinking_segments (id, message_id, text, seq, created_at) VALUES (?,?,?,?,?)",
+            (str(uuid.uuid4()), message_id, text, seq, _now_ms()),
+        )
+        self.con.commit()
+
+    def get_thinking_segments_for_message_ids(self, message_ids: list[str]) -> dict[str, list[dict]]:
+        """Return thinking segments keyed by message_id, ordered by seq ASC."""
+        if not message_ids:
+            return {}
+        placeholders = ",".join("?" for _ in message_ids)
+        rows = self.con.execute(
+            f"SELECT * FROM thinking_segments WHERE message_id IN ({placeholders}) ORDER BY seq ASC",
+            message_ids,
+        ).fetchall()
+        result: dict[str, list[dict]] = {}
+        for row in rows:
+            mid = row["message_id"]
+            if mid not in result:
+                result[mid] = []
+            result[mid].append(dict(row))
         return result
 
     def insert_token_usage(

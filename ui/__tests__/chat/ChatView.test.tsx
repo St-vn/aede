@@ -69,3 +69,35 @@ test('input bar disabled while gate is open', () => {
   }))
   expect(screen.getByRole('textbox')).toBeDisabled()
 })
+
+test('persisted messages with thinking_segments render interleaved blocks', () => {
+  // Test the persisted path: messages with thinking_segments + tool_calls
+  // render in the correct interleaved order via AssistantMessage.
+  const msgsWithSegments = [
+    {
+      id: 'm-acp', role: 'assistant' as const, content: 'final answer',
+      created_at: new Date().toISOString(),
+      thinking_segments: [
+        { text: 'I think...', seq: 0 },
+        { text: 'Done thinking', seq: 2 },
+      ],
+      tool_calls: [
+        { id: 'tc1', name: 'Read', args: {}, status: 'success', output: 'file content' }
+      ],
+    },
+  ]
+  renderWithClient(<ChatView sessionId="s1" messages={msgsWithSegments} />)
+  expect(screen.getByText(/I think\.\.\./)).toBeInTheDocument()
+  expect(screen.getByText(/Done thinking/)).toBeInTheDocument()
+})
+
+test('turn_done clears streamingBlocks', () => {
+  renderWithClient(<ChatView sessionId="s1" messages={[]} />)
+  act(() => {
+    wsEventHandler?.({ type: 'thinking_delta', text: 'thought', seq: 0 })
+  })
+  act(() => {
+    wsEventHandler?.({ type: 'turn_done' })
+  })
+  expect(screen.queryByText(/thought/)).not.toBeInTheDocument()
+})

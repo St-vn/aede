@@ -702,6 +702,13 @@ class AcpProvider:
         # Cache populated args from middle tool_call_update so the terminal
         # update can re-emit a tool_call with _start_line injected.
         _pending_args: dict[str, dict] = {}
+        # seq_counter tracks execution order across thinking chunks and tool calls
+        # so the UI can reconstruct the interleaved timeline.  Thinking chunks
+        # within the SAME block (consecutive agent_thought_chunk events) share a
+        # seq; a new tool_call bumps the counter, and the next thinking block gets
+        # a higher seq.  We use a mutable list as a nonlocal-friendly counter.
+        _seq = [0]
+        _current_thinking_seq: list[int | None] = [None]
 
         def on_update(update: dict):
             update_type = update.get("sessionUpdate")
@@ -709,7 +716,12 @@ class AcpProvider:
             if update_type == "agent_thought_chunk":
                 text = content.get("text", "") if isinstance(content, dict) else ""
                 if text and stream_thinking:
-                    asyncio.ensure_future(stream_thinking(text))
+                    # All chunks of a continuous thinking run share one seq value;
+                    # a new thinking run (after a tool call) gets a fresh seq.
+                    if _current_thinking_seq[0] is None:
+                        _current_thinking_seq[0] = _seq[0]
+                        _seq[0] += 1
+                    asyncio.ensure_future(stream_thinking(text, _current_thinking_seq[0]))
             elif update_type == "agent_message_chunk":
                 if isinstance(content, dict) and content.get("type") == "text":
                     text = content.get("text", "")
@@ -718,10 +730,14 @@ class AcpProvider:
             elif update_type == "tool_call" and stream_tool_call:
                 # Start-of-tool-call. rawInput is usually {} here; the populated
                 # args arrive in a later tool_call_update for the same id.
+                # A new tool call ends any current thinking run — reset seq slot.
+                _current_thinking_seq[0] = None
                 call_id = update.get("toolCallId", "")
                 name = _acp_tool_name(update)
                 args = update.get("rawInput") or {}
-                asyncio.ensure_future(stream_tool_call(call_id, name, args))
+                tc_seq = _seq[0]
+                _seq[0] += 1
+                asyncio.ensure_future(stream_tool_call(call_id, name, args, tc_seq))
             elif update_type == "tool_call_update":
                 call_id = update.get("toolCallId", "")
                 # Middle update: carry real args (old_string/new_string/file_path).

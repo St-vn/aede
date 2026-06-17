@@ -4,6 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 import { ToolCallCard } from './ToolCallCard'
+import { ThinkingBlock } from './ThinkingBlock'
 import { GateCard } from './GateCard'
 import { GateBatchCard } from './GateBatchCard'
 import { InputBar } from '@/components/input/InputBar'
@@ -14,9 +15,16 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 
-interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean; thinking?: string; tool_calls?: ToolCall[] }
+interface ThinkingSegment { text: string; seq: number }
+interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean; thinking?: string; thinking_segments?: ThinkingSegment[]; tool_calls?: ToolCall[] }
 interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number; streamingOutput?: string }
 interface GateRequest { gateId: string; toolName: string; args: Record<string, unknown> }
+
+// A streaming block is either an in-progress thinking segment or a tool call,
+// ordered by seq so they render in true execution order.
+type StreamingBlock =
+  | { kind: 'thinking'; seq: number; text: string }
+  | { kind: 'tool'; seq: number; id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number; streamingOutput?: string }
 
 interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void; onOpenSettings?: (tab?: string) => void; onOpenHelp?: () => void; defaultModel?: string; onModelChange?: (model: string) => void }
 
@@ -25,12 +33,9 @@ const _stripRich = (text: string): string =>
 
 export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp, defaultModel, onModelChange }: Props) {
   const [streamingText, setStreamingText] = useState('')
-  const [streamingThinking, setStreamingThinking] = useState('')
-  const streamingThinkingRef = useRef('')
-  streamingThinkingRef.current = streamingThinking
   const [isStreaming, setIsStreaming] = useState(false)
-  const [isThinkingActive, setIsThinkingActive] = useState(false)
-  const [toolCalls, setToolCalls] = useState<ToolCall[]>([])
+  // streamingBlocks holds interleaved thinking+tool blocks in seq order during streaming.
+  const [streamingBlocks, setStreamingBlocks] = useState<StreamingBlock[]>([])
   const [gates, setGates] = useState<GateRequest[]>([])
   const [pendingMessages, setPendingMessages] = useState<{ content: string; id: string }[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
@@ -51,12 +56,10 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   }, [isStreaming, messages.length])
 
   useEffect(() => {
-    setToolCalls([])
+    setStreamingBlocks([])
     setGates([])
     setStreamingText('')
-    setStreamingThinking('')
     setIsStreaming(false)
-    setIsThinkingActive(false)
     setPendingMessages([])
   }, [sessionId])
 
@@ -70,42 +73,61 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       if (!content.trim()) return
       setStreamingText(t => t + content + '\n')
     } else if (ev.type === 'tool_call') {
+      setIsStreaming(true)
       const id = ev.id as string
       const name = ev.name as string
       const args = ev.args as Record<string, unknown>
-      setToolCalls(tc => {
-        const existing = tc.find(c => c.id === id)
+      const seq = typeof ev.seq === 'number' ? ev.seq as number : 999
+      setStreamingBlocks(blocks => {
+        const existing = blocks.find(b => b.kind === 'tool' && b.id === id)
         if (existing) {
-          // Later updates carry populated args (e.g. ACP rawInput); merge them in
-          // without resetting a status already advanced to success/error.
-          return tc.map(c => c.id === id
-            ? { ...c, name, args: Object.keys(args).length ? args : c.args }
-            : c)
+          // Later updates carry populated args (ACP rawInput); merge without
+          // resetting a status already advanced to success/error.
+          return blocks.map(b =>
+            b.kind === 'tool' && b.id === id
+              ? { ...b, name, args: Object.keys(args).length ? args : b.args }
+              : b
+          )
         }
-        return [...tc, { id, name, args, status: 'running' }]
+        return [...blocks, { kind: 'tool' as const, seq, id, name, args, status: 'running' }]
       })
     } else if (ev.type === 'thinking_start') {
       setIsStreaming(true)
-      setIsThinkingActive(true)
     } else if (ev.type === 'thinking_delta') {
       setIsStreaming(true)
-      setStreamingThinking(t => t + (ev.text as string))
+      const seq = typeof ev.seq === 'number' ? ev.seq as number : 0
+      const text = ev.text as string
+      setStreamingBlocks(blocks => {
+        // Find an existing thinking block with this seq to append to.
+        const idx = blocks.findIndex(b => b.kind === 'thinking' && b.seq === seq)
+        if (idx !== -1) {
+          return blocks.map((b, i) =>
+            i === idx && b.kind === 'thinking'
+              ? { ...b, text: b.text + text }
+              : b
+          )
+        }
+        return [...blocks, { kind: 'thinking' as const, seq, text }]
+      })
     } else if (ev.type === 'tool_output_delta') {
-      setToolCalls(tc => tc.map(c => c.id === (ev.call_id as string)
-        ? { ...c, streamingOutput: (c.streamingOutput || '') + (ev.text as string) }
-        : c))
+      setStreamingBlocks(blocks => blocks.map(b =>
+        b.kind === 'tool' && b.id === (ev.call_id as string)
+          ? { ...b, streamingOutput: (b.streamingOutput || '') + (ev.text as string) }
+          : b
+      ))
     } else if (ev.type === 'tool_result') {
-      setToolCalls(tc => tc.map(c => c.id === ev.id
-        ? { ...c, status: ev.status as string, output: ev.output as string, durationMs: ev.duration_ms as number }
-        : c))
+      setStreamingBlocks(blocks => blocks.map(b =>
+        b.kind === 'tool' && b.id === (ev.id as string)
+          ? { ...b, status: ev.status as string, output: ev.output as string, durationMs: ev.duration_ms as number }
+          : b
+      ))
     } else if (ev.type === 'gate_request') {
       setGates(gs => [...gs, { gateId: ev.gate_id as string, toolName: ev.tool_name as string, args: ev.args as Record<string, unknown> }])
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
       setIsStreaming(false)
-      setIsThinkingActive(false)
-      setToolCalls([])
+      setStreamingBlocks([])
       setGates([])
-      setStreamingThinking('')
+      setStreamingText('')
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
     } else if (ev.type === 'error') {
       toast.error(ev.message as string, { duration: 8000 })
@@ -148,7 +170,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     send({ type: 'user_turn', content, model })
     setStreamingText('')
     setIsStreaming(true)
-    setIsThinkingActive(true)
+    setStreamingBlocks([])
   }
 
   const handleGateDecision = ({ gateId, decision, message }: { gateId: string; decision: string; message?: string }) => {
@@ -174,10 +196,13 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
 
   const inputDisabled = isStreaming || gates.length > 0
 
+  // Sort streaming blocks by seq for display.
+  const sortedBlocks = [...streamingBlocks].sort((a, b) => a.seq - b.seq)
+
   return (
     <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
       <ScrollArea className="flex-1 min-h-0 px-4">
-        <div className="max-w-[760px] mx-auto py-4 space-y-1">
+        <div className="max-w-[760px] mx-auto py-4 px-4 space-y-1">
           {messages.map(m =>
             m.is_branch_point
               ? <div key={m.id} className="flex items-center gap-3 py-4 px-4 select-none">
@@ -187,21 +212,31 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
                 </div>
               : m.role === 'user'
                 ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} />
-                : <React.Fragment key={m.id}><AssistantMessage content={m.content} isStreaming={false} thinking={m.thinking} />
+                : <React.Fragment key={m.id}>
+                    <AssistantMessage
+                      content={m.content}
+                      isStreaming={false}
+                      thinking={m.thinking}
+                      thinkingSegments={m.thinking_segments}
+                    />
                     {!isStreaming && m.tool_calls?.map(tc => (
                       <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
                         args={tc.args} output={tc.output} durationMs={tc.durationMs} />
-                    ))}</React.Fragment>
+                    ))}
+                  </React.Fragment>
           )}
           {pendingMessages.map(pm => (
             <UserMessage key={pm.id} content={pm.content} timestamp={new Date().toISOString()} />
           ))}
-          {toolCalls.map(tc => (
-            <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
-              args={tc.args} output={tc.output} durationMs={tc.durationMs} streamingOutput={tc.streamingOutput} />
-          ))}
-          {(streamingText || streamingThinking || isThinkingActive || isStreaming) && (
-            <AssistantMessage content={streamingText} isStreaming={isStreaming} thinking={streamingThinking} isThinkingActive={isThinkingActive} />
+          {/* Interleaved streaming blocks: thinking + tool calls in execution order */}
+          {sortedBlocks.map(block =>
+            block.kind === 'thinking'
+              ? <ThinkingBlock key={`thinking-${block.seq}`} thinking={block.text} isStreaming={isStreaming} />
+              : <ToolCallCard key={block.id} toolName={block.name} status={block.status as 'running' | 'success' | 'error' | 'denied'}
+                  args={block.args} output={block.output} durationMs={block.durationMs} streamingOutput={block.streamingOutput} />
+          )}
+          {(streamingText || isStreaming) && (
+            <AssistantMessage content={streamingText} isStreaming={isStreaming} />
           )}
           {gates.length > 1 && (
             <GateBatchCard gates={gates} onDecision={(gateId, decision) =>

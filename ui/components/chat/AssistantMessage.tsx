@@ -7,12 +7,27 @@ import rehypeKatex from 'rehype-katex'
 import { CodeBlock } from './CodeBlock'
 import { ThinkingBlock } from './ThinkingBlock'
 
-interface Props { content: string; isStreaming: boolean; thinking?: string; isThinkingActive?: boolean }
+interface ThinkingSegment { text: string; seq: number }
+interface Props {
+  content: string
+  isStreaming: boolean
+  thinking?: string
+  isThinkingActive?: boolean
+  /** Ordered per-step thinking segments (ACP turns). When present these are
+   *  rendered as separate blocks instead of the single `thinking` blob, so a
+   *  multi-step turn shows one thinking block per reasoning step. */
+  thinkingSegments?: ThinkingSegment[]
+}
 
-export function AssistantMessage({ content, isStreaming, thinking, isThinkingActive }: Props) {
+export function AssistantMessage({ content, isStreaming, thinking, isThinkingActive, thinkingSegments }: Props) {
+  const segments = thinkingSegments && thinkingSegments.length > 0
+    ? [...thinkingSegments].sort((a, b) => a.seq - b.seq)
+    : null
   return (
-    <div className="group px-4 py-2 text-sm" aria-live={isStreaming ? 'polite' : undefined}>
-      {(thinking || isThinkingActive) && <ThinkingBlock thinking={thinking ?? ''} isStreaming={isStreaming} isThinkingActive={isThinkingActive} />}
+    <div className="group py-2 text-sm" aria-live={isStreaming ? 'polite' : undefined}>
+      {segments
+        ? segments.map(s => <ThinkingBlock key={s.seq} thinking={s.text} isStreaming={false} />)
+        : (thinking || isThinkingActive) && <ThinkingBlock thinking={thinking ?? ''} isStreaming={isStreaming} isThinkingActive={isThinkingActive} />}
       <div className="prose prose-invert prose-sm max-w-none">
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}

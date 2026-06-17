@@ -263,13 +263,18 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     session.set_title(db, make_title(content))
 
                 _thinking_started = False
+                # Accumulate thinking segments for ACP persistence.
+                # For ACP, thinking flows: on_update → _stream_thinking (here) → WS.
+                # We capture (text, seq) pairs so we can write them to DB after the turn.
+                _pending_thinking_segments: list[dict] = []
 
-                async def _stream_thinking(text: str):
+                async def _stream_thinking(text: str, seq: int = 0):
                     nonlocal _thinking_started
                     if not _thinking_started:
                         _thinking_started = True
                         await send_live({"type": "thinking_start"})
-                    await send_live({"type": "thinking_delta", "text": text})
+                    _pending_thinking_segments.append({"text": text, "seq": seq})
+                    await send_live({"type": "thinking_delta", "text": text, "seq": seq})
 
                 gate_store = PermissionStore()
                 gate_store.load_from_config(cfg.auto_approve)
@@ -292,7 +297,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 async def _stream_text(text: str):
                     await send_live({"type": "text_delta", "text": text})
 
-                async def _stream_tool_call(call_id: str, name: str, args: dict):
+                async def _stream_tool_call(call_id: str, name: str, args: dict, seq: int = 0):
                     try:
                         # Persist to DB (ACP tools run in-subprocess, reported via on_update)
                         if agent._current_assist_id:
@@ -304,7 +309,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                                 args=_json.dumps(args),
                                 status="running",
                             )
-                        await send_live({"type": "tool_call", "id": call_id, "name": name, "args": args})
+                        await send_live({"type": "tool_call", "id": call_id, "name": name, "args": args, "seq": seq})
                     except Exception:
                         pass
 
@@ -382,6 +387,27 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     try:
                         fut.result()
                         print(f"[WS#{hid}] run_turn completed successfully", flush=True)
+                        # Persist ACP thinking segments. Segments are grouped by
+                        # seq so the UI can reconstruct the interleaved timeline
+                        # (think → tool → think → answer) after a page reload.
+                        # We write one row per unique seq value (merging all text
+                        # chunks with the same seq into a single segment).
+                        if _pending_thinking_segments and agent._current_assist_id:
+                            mid = agent._current_assist_id
+                            # Merge chunks with the same seq into one row.
+                            merged: dict[int, str] = {}
+                            for seg in _pending_thinking_segments:
+                                s = seg["seq"]
+                                merged[s] = merged.get(s, "") + seg["text"]
+                            for seq_val in sorted(merged):
+                                try:
+                                    db.insert_thinking_segment(
+                                        message_id=mid,
+                                        text=merged[seq_val],
+                                        seq=seq_val,
+                                    )
+                                except Exception as e:
+                                    print(f"[WS#{hid}] thinking_segment insert error: {e}", flush=True)
                         asyncio.create_task(send_live({"type": "turn_completed"}))
                         # Emit context usage info
                         try:
@@ -645,9 +671,14 @@ async def get_messages(request: Request, session_id: str):
                 tc["durationMs"] = tc.pop("duration_ms", None)
         for m in all_msgs:
             m["tool_calls"] = tc_map.get(m["id"], [])
+        # Attach thinking segments (ACP path; empty list for native providers)
+        seg_map = db.get_thinking_segments_for_message_ids(msg_ids)
+        for m in all_msgs:
+            m["thinking_segments"] = seg_map.get(m["id"], [])
     else:
         for m in all_msgs:
             m["tool_calls"] = []
+            m["thinking_segments"] = []
 
     return all_msgs
 
