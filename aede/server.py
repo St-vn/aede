@@ -369,11 +369,13 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
                 # Run the turn in the background so we can still receive gate responses
                 print(f"[WS#{hid}] Starting agent.run_turn...", flush=True)
+                from aede.db import _now_ms as _turn_now_ms
+                turn_start_ms = _turn_now_ms()
                 turn_task = asyncio.create_task(agent.run_turn(resolved_content))
                 print(f"[WS#{hid}] agent.run_turn task created", flush=True)
                 
                 def on_turn_done(fut):
-                    nonlocal hid
+                    nonlocal hid, turn_start_ms
                     print(f"[WS#{hid}] on_turn_done CALLED", flush=True)
                     # Restore original model after turn
                     cfg.model = _original_model
@@ -408,7 +410,14 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                                     )
                                 except Exception as e:
                                     print(f"[WS#{hid}] thinking_segment insert error: {e}", flush=True)
-                        asyncio.create_task(send_live({"type": "turn_completed"}))
+                        # Calculate and persist wall-clock turn duration
+                        turn_duration_ms = _turn_now_ms() - turn_start_ms
+                        if agent._current_assist_id and turn_duration_ms > 0:
+                            try:
+                                db.set_message_duration(agent._current_assist_id, turn_duration_ms)
+                            except Exception as e:
+                                print(f"[WS#{hid}] turn_duration persist error: {e}", flush=True)
+                        asyncio.create_task(send_live({"type": "turn_completed", "turn_duration_ms": turn_duration_ms}))
                         # Emit context usage info
                         try:
                             if hasattr(agent, 'count_context_tokens'):
@@ -1086,7 +1095,7 @@ _PHASE1_TOOLS = ["powershell", "read_file", "write_file", "create_file",
 
 
 def _get_agent_registry(request: Request) -> dict:
-    if not hasattr(request.app.state, 'agent_registry'):
+    if not hasattr(request.app.state, 'agent_registry') or request.app.state.agent_registry is None:
         from aede.agents.loader import load_agents
         from aede.skills.loader import load_skills
         home = request.app.state.cfg.home
@@ -1101,7 +1110,7 @@ def _get_agent_registry(request: Request) -> dict:
 
 
 def _get_skill_registry(request: Request) -> dict:
-    if not hasattr(request.app.state, 'skill_registry'):
+    if not hasattr(request.app.state, 'skill_registry') or request.app.state.skill_registry is None:
         from aede.skills.loader import load_skills
         home = request.app.state.cfg.home
         request.app.state.skill_registry = load_skills(global_dir=home, project_dir=home)

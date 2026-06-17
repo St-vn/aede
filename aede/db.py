@@ -203,6 +203,12 @@ class DB:
             self.con.commit()
         except Exception:
             pass
+        # TD-01 migration: add turn_duration_ms column to messages if missing.
+        try:
+            self.con.execute("ALTER TABLE messages ADD COLUMN turn_duration_ms INTEGER")
+            self.con.commit()
+        except Exception:
+            pass
         # Set row_factory after schema is created
         self.con.row_factory = _row_factory
 
@@ -345,6 +351,22 @@ class DB:
         self.con.execute(
             "UPDATE messages SET content=?, token_count=?, thinking=? WHERE id=?",
             (content, token_count, thinking, id),
+        )
+        self.con.commit()
+
+    def set_message_duration(
+        self,
+        id: str,
+        turn_duration_ms: int,
+    ) -> None:
+        """Persist the wall-clock turn duration (ms) onto an assistant message row.
+
+        Called from the ``on_turn_done`` callback after ``run_turn`` completes,
+        so it sets only ``turn_duration_ms`` without overwriting content/tokens.
+        """
+        self.con.execute(
+            "UPDATE messages SET turn_duration_ms=? WHERE id=?",
+            (turn_duration_ms, id),
         )
         self.con.commit()
 
@@ -499,7 +521,7 @@ class DB:
         self.con.execute(
             "INSERT INTO token_usage (id, session_id, turn_number, input_tokens, output_tokens, cached_tokens, created_at, role) VALUES (?,?,?,?,?,?,?,?)",
             (id, session_id, turn_number, input_tokens, output_tokens, cached_tokens, _now_ms(), role),
-        )
+        ),
         self.con.commit()
 
     def get_token_totals(self, session_id: str) -> dict[str, int]:

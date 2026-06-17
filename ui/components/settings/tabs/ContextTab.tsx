@@ -63,10 +63,10 @@ export function ContextTab({ sessionId }: Props) {
                   <div key={i} className="flex items-center gap-2 text-[11px] font-mono px-2 py-1 rounded hover:bg-muted/50">
                     <span className="text-muted-foreground w-6">#{turn.turn_number}</span>
                     <span className="flex-1">
-                      <span className="text-blue-500">I:{turn.input_tokens}</span>
+                      <span className="text-blue-500">Input:{turn.input_tokens}</span>
                       {' '}
-                      <span className="text-green-500">O:{turn.output_tokens}</span>
-                      {turn.cached_tokens > 0 && <span className="text-yellow-500 ml-1">C:{turn.cached_tokens}</span>}
+                      <span className="text-green-500">Output:{turn.output_tokens}</span>
+                      {turn.cached_tokens > 0 && <span className="text-yellow-500 ml-1">Cached:{turn.cached_tokens}</span>}
                     </span>
                     <span className="text-[10px] text-muted-foreground">{turn.role}</span>
                   </div>

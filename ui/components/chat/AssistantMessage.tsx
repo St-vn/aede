@@ -17,6 +17,28 @@ const STREAMING_VERBS = [
   'Orchestrating...', 'Assembling...', 'Welding...', 'Creating...',
 ]
 
+/** Format a duration in milliseconds to a human-readable string.
+ *  Examples: "0.3s", "2.7s", "45s", "1m 23s", "12m 7s", "1h 5m", "2d 14h" */
+function formatDuration(ms: number): string {
+  if (ms < 0) return '0s'
+
+  const totalSeconds = Math.round(ms / 1000)
+  if (totalSeconds === 0) return (ms / 1000).toFixed(1) + 's'
+
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  const parts: string[] = []
+  if (days > 0) parts.push(`${days}d`)
+  if (hours > 0) parts.push(`${hours}h`)
+  if (minutes > 0) parts.push(`${minutes}m`)
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`)
+
+  return parts.join(' ')
+}
+
 interface ThinkingSegment { text: string; seq: number }
 interface Props {
   content: string
@@ -83,9 +105,9 @@ export function AssistantMessage({ content, isStreaming, thinking, isThinkingAct
         )}
       </div>
       {!isStreaming && turnDurationMs !== undefined && turnDurationMs > 0 && (
-        <div className="flex justify-end mt-1">
-          <span className="text-[10px] text-muted-foreground/50 tabular-nums">
-            {(turnDurationMs / 1000).toFixed(1)}s
+        <div className="flex justify-start mt-2">
+          <span className="text-sm text-muted-foreground/60 tabular-nums font-medium">
+            {formatDuration(turnDurationMs)}
           </span>
         </div>
       )}

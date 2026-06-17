@@ -16,7 +16,7 @@ import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 
 interface ThinkingSegment { text: string; seq: number }
-interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean; thinking?: string; thinking_segments?: ThinkingSegment[]; tool_calls?: ToolCall[] }
+interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean; thinking?: string; thinking_segments?: ThinkingSegment[]; turn_duration_ms?: number | null; tool_calls?: ToolCall[] }
 interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number; streamingOutput?: string }
 interface GateRequest { gateId: string; toolName: string; args: Record<string, unknown> }
 
@@ -128,7 +128,10 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     } else if (ev.type === 'gate_request') {
       setGates(gs => [...gs, { gateId: ev.gate_id as string, toolName: ev.tool_name as string, args: ev.args as Record<string, unknown> }])
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
-      if (turnStartRef.current) {
+      // Use server-provided turn_duration_ms if available, fall back to client-side timing
+      if (typeof ev.turn_duration_ms === 'number') {
+        setLastTurnDurationMs(ev.turn_duration_ms)
+      } else if (turnStartRef.current) {
         setLastTurnDurationMs(Date.now() - turnStartRef.current)
       }
       turnStartRef.current = null
@@ -209,6 +212,21 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   // Sort streaming blocks by seq for display.
   const sortedBlocks = [...streamingBlocks].sort((a, b) => a.seq - b.seq)
 
+  // Resolve the turn duration for a given message: prefer persisted DB value,
+  // then the ephemeral client-side value for the most recent turn.
+  const getTurnDuration = (msg: Message, idx: number): number | undefined => {
+    // The persisted value from DB is the source of truth when available.
+    if (typeof msg.turn_duration_ms === 'number' && msg.turn_duration_ms > 0) {
+      return msg.turn_duration_ms
+    }
+    // For the last assistant message, fall back to the ephemeral value
+    // that arrived via the turn_completed WS event.
+    if (idx === lastAssistantIdx && lastTurnDurationMs !== null) {
+      return lastTurnDurationMs
+    }
+    return undefined
+  }
+
   // Find the index of the last assistant message so we can show turn duration on it.
   const lastAssistantIdx = (() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -236,7 +254,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
                       isStreaming={false}
                       thinking={m.thinking}
                       thinkingSegments={m.thinking_segments}
-                      turnDurationMs={mi === lastAssistantIdx ? lastTurnDurationMs ?? undefined : undefined}
+                      turnDurationMs={getTurnDuration(m, mi)}
                     />
                     {!isStreaming && m.tool_calls?.map(tc => (
                       <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
@@ -255,7 +273,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
                   args={block.args} output={block.output} durationMs={block.durationMs} streamingOutput={block.streamingOutput} />
           )}
           {(streamingText || isStreaming) && (
-            <AssistantMessage content={streamingText} isStreaming={isStreaming} />
+            <AssistantMessage content={streamingText} isStreaming={isStreaming} turnDurationMs={lastTurnDurationMs ?? undefined} />
           )}
           {gates.length > 1 && (
             <GateBatchCard gates={gates} onDecision={(gateId, decision) =>

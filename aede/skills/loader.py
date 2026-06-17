@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 
-from aede.skills.schema import SkillDef, SkillLoadError
+from aede.skills.schema import SkillDef
 
 
 _SKILL_EXTS = {".md", ".skill"}
@@ -18,7 +18,7 @@ def _scan_dir(skills_dir: Path) -> dict[str, SkillDef]:
             try:
                 sd = SkillDef.from_file(md_path)
                 registry[sd.name] = sd
-            except SkillLoadError as e:
+            except Exception as e:
                 import sys
                 print(f"[yellow]⚠ Skill load error in {md_path.name}: {e}[/yellow]", file=sys.stderr)
     return registry
@@ -27,6 +27,7 @@ def _scan_dir(skills_dir: Path) -> dict[str, SkillDef]:
 def load_skills(global_dir: Path, project_dir: Path) -> dict[str, SkillDef]:
     """Scan global and project skills dirs, return {name -> SkillDef}.
 
+    Also falls back to ~/.claude/skills for skills shared with Claude Code.
     Project skills shadow global skills with the same name.
     """
     global_skills_dir = global_dir / "skills"
@@ -35,4 +36,7 @@ def load_skills(global_dir: Path, project_dir: Path) -> dict[str, SkillDef]:
     registry: dict[str, SkillDef] = {}
     registry.update(_scan_dir(global_skills_dir))
     registry.update(_scan_dir(project_skills_dir))
+    claude_skills = Path.home() / ".claude" / "skills"
+    if claude_skills != global_skills_dir and claude_skills != project_skills_dir:
+        registry.update(_scan_dir(claude_skills))
     return registry

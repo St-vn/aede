@@ -16,6 +16,9 @@ export interface Message {
   content: string
   created_at: string
   is_branch_point?: boolean
+  thinking?: string
+  thinking_segments?: Array<{ text: string; seq: number }>
+  turn_duration_ms?: number | null
 }
 
 export const useSessions = () =>
