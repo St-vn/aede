@@ -41,9 +41,15 @@ export class ClipRecorder {
   constructor(private stream: MediaStream, private ctx: AudioContext) {}
 
   start(opts: ClipRecorderOptions): void {
-    const threshold = opts.silenceThreshold ?? 5
-    const stopAfter = opts.silenceFrames ?? 30
+    const threshold = opts.silenceThreshold ?? 3
+    // Frames of consecutive silence before stopping. rAF ~60Hz, so ~90 ≈ 1.5s.
+    const stopAfter = opts.silenceFrames ?? 90
     const maxMs = opts.maxMs ?? 15000
+    // Give the speaker a moment to start talking after the wake word before the
+    // cost gate can discard. Without this, an instant rAF tick on a quiet frame
+    // could end the clip before any speech arrives.
+    const speechGraceMs = 4000
+    const startedAt = performance.now()
 
     this.analyser = this.ctx.createAnalyser()
     this.analyser.fftSize = 2048
@@ -57,7 +63,8 @@ export class ClipRecorder {
       const clip = this.hadSpeech ? new Blob(this.chunks, { type: this.recorder?.mimeType || 'audio/webm' }) : null
       opts.onSilence(clip)
     }
-    this.recorder.start()
+    // timeslice so chunks accrue during recording, not only at stop()
+    this.recorder.start(250)
 
     this.hardTimer = setTimeout(() => this.stop(), maxMs)
 
@@ -70,6 +77,10 @@ export class ClipRecorder {
         if (!this.hadSpeech) { this.hadSpeech = true; opts.onSpeech?.() }
         this.silentFrames = 0
       }
+      // Before any speech: only give up after the grace window (cost gate).
+      // After speech: stop once enough trailing silence accrues.
+      const graceElapsed = performance.now() - startedAt > speechGraceMs
+      if (!this.hadSpeech && graceElapsed) { this.stop(); return }
       if (shouldStopOnSilence({ hadSpeech: this.hadSpeech, silentFrames: this.silentFrames, threshold: stopAfter })) {
         this.stop()
         return

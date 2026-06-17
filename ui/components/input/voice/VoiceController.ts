@@ -94,13 +94,20 @@ export class VoiceController {
   // Open one stream, record until end-of-speech, transcribe. Returns '' when no
   // speech was detected (cost gate) — caller makes zero transcription request.
   private async _recordAndTranscribe(model?: string): Promise<string> {
+    console.debug('[voice] recording command clip…')
     const stream = await this.deps.getStream()
     this.stream = stream
-    const ctx = new AudioContext({ sampleRate: 16000 })
+    const ctx = new AudioContext()  // default rate; recording, not 16k wake inference
 
     const blob = await new Promise<Blob | null>((resolve) => {
       this.recorder = new ClipRecorder(stream, ctx)
-      this.recorder.start({ onSilence: (clip) => resolve(clip) })
+      this.recorder.start({
+        onSpeech: () => console.debug('[voice] speech detected, recording…'),
+        onSilence: (clip) => {
+          console.debug('[voice] clip done. hadSpeech=', this.recorder?.hadSpeech, 'bytes=', clip?.size ?? 0)
+          resolve(clip)
+        },
+      })
     })
 
     stream.getTracks().forEach(t => t.stop())
@@ -108,8 +115,12 @@ export class VoiceController {
     void ctx.close()
     this.recorder = null
 
-    if (!blob) return ''  // cost gate: no speech → no ASR call
+    if (!blob) { console.debug('[voice] no speech after wake — cost gate, no ASR call'); return '' }
     this.state = 'transcribing'
-    return await this.deps.transcribe(blob, model ?? this.deps.model)
+    const m = model ?? this.deps.model
+    console.debug('[voice] transcribing via model:', m)
+    const text = await this.deps.transcribe(blob, m)
+    console.debug('[voice] transcript:', JSON.stringify(text))
+    return text
   }
 }
