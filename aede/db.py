@@ -138,6 +138,19 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _normalize_path(path: str | None) -> str | None:
+    """Normalize a filesystem path to use forward slashes.
+
+    SQLite string comparison is exact, so on Windows a path stored with
+    backslashes (from ``Path.cwd()``) won't match one with forward slashes
+    (from the browser/web API).  Normalizing at the write boundary keeps
+    lookups consistent regardless of the caller's platform or input source.
+    """
+    if path is None:
+        return None
+    return path.replace("\\", "/")
+
+
 def _row_factory(cursor: sqlite3.Cursor, row: tuple) -> dict[str, Any]:
     """sqlite3 row factory that returns each row as a ``{column: value}`` dict."""
     return {col[0]: row[i] for i, col in enumerate(cursor.description)}
@@ -224,7 +237,7 @@ class DB:
         now = _now_ms()
         self.con.execute(
             "INSERT INTO sessions (id, parent_id, title, created_at, updated_at, model, project_dir) VALUES (?,?,?,?,?,?,?)",
-            (id, parent_id, title, now, now, model, project_dir),
+            (id, parent_id, title, now, now, model, _normalize_path(project_dir)),
         )
         self.con.commit()
 
@@ -272,11 +285,41 @@ class DB:
             "SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ?", (limit,)
         ).fetchall()
 
+    def list_project_sessions(self, project_dir: str) -> list[dict[str, Any]]:
+        """Return ALL sessions for a project directory, unlimited, ordered by updated_at DESC.
+
+        Returns an empty list if ``project_dir`` is None or empty.
+        """
+        if not project_dir:
+            return []
+        return self.con.execute(
+            "SELECT * FROM sessions WHERE project_dir = ? ORDER BY updated_at DESC",
+            (project_dir,),
+        ).fetchall()
+
+    def list_global_sessions(
+        self, limit: int = 50, offset: int = 0
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return paginated sessions with no project_dir, plus total count.
+
+        Returns:
+            Tuple of (sessions_list, total_count).  Total is the number of
+            rows *without* a project_dir, regardless of pagination.
+        """
+        total = self.con.execute(
+            "SELECT COUNT(*) as cnt FROM sessions WHERE project_dir IS NULL"
+        ).fetchone()["cnt"]
+        rows = self.con.execute(
+            "SELECT * FROM sessions WHERE project_dir IS NULL ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        return rows, total
+
     def set_session_project_dir(self, id: str, project_dir: str) -> None:
-        """Update the project directory for a session."""
+        """Update the session's project directory."""
         self.con.execute(
             "UPDATE sessions SET project_dir = ?, updated_at = ? WHERE id = ?",
-            (project_dir, _now_ms(), id),
+            (_normalize_path(project_dir), _now_ms(), id),
         )
         self.con.commit()
 
@@ -290,7 +333,7 @@ class DB:
         now = _now_ms()
         self.con.execute(
             "INSERT OR IGNORE INTO projects (id, project_dir, display_name, created_at, updated_at) VALUES (?,?,?,?,?)",
-            (id, project_dir, display_name, now, now),
+            (id, _normalize_path(project_dir), display_name, now, now),
         )
         self.con.commit()
 
@@ -309,7 +352,7 @@ class DB:
     def get_project_by_dir(self, project_dir: str) -> dict[str, Any] | None:
         """Return a project by its directory path."""
         return self.con.execute(
-            "SELECT * FROM projects WHERE project_dir = ?", (project_dir,)
+            "SELECT * FROM projects WHERE project_dir = ?", (_normalize_path(project_dir),)
         ).fetchone()
 
     def delete_project(self, id: str) -> None:
