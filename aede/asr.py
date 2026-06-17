@@ -133,8 +133,8 @@ ASR_MODELS: dict[str, dict[str, Any]] = {
         "providers": ["groq", "openai", "openrouter"],
         "ids": {
             "groq": "whisper-large-v3-turbo",
-            "openai": "whisper-1",
-            "openrouter": "openai/whisper-1",
+            "openai": "whisper-1",  # OpenAI's own API only exposes whisper-1
+            "openrouter": "openai/whisper-large-v3-turbo",
         },
     },
     "whisper-large-v3": {
@@ -143,7 +143,7 @@ ASR_MODELS: dict[str, dict[str, Any]] = {
         "ids": {
             "groq": "whisper-large-v3",
             "openai": "whisper-1",
-            "openrouter": "openai/whisper-1",
+            "openrouter": "openai/whisper-large-v3",
         },
     },
     "chirp-3": {
@@ -159,7 +159,7 @@ ASR_MODELS: dict[str, dict[str, Any]] = {
     "qwen3-asr-flash": {
         "default_provider": "openrouter",
         "providers": ["openrouter"],
-        "ids": {"openrouter": "qwen/qwen3-asr-flash"},
+        "ids": {"openrouter": "qwen/qwen3-asr-flash-2026-02-10"},
     },
     "voxtral-mini-transcribe": {
         "default_provider": "openrouter",

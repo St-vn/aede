@@ -19,14 +19,15 @@ interface Props {
   projectDir?: string | null
 }
 
-// ASR transcription models (mirrors aede/asr.py ASR_MODELS). label → model id.
+// ASR transcription models (mirrors aede/asr.py ASR_MODELS). Ordered cheapest
+// first; prices verified against provider docs 2026-06-17. label → model id.
 const ASR_CHOICES: { id: string; label: string }[] = [
-  { id: 'whisper-large-v3-turbo', label: 'Whisper Large V3 Turbo (Groq · default, fast)' },
-  { id: 'whisper-large-v3', label: 'Whisper Large V3 (Groq/OpenAI · most accurate)' },
-  { id: 'chirp-3', label: 'Chirp 3 (Google)' },
-  { id: 'parakeet-tdt-0.6b-v3', label: 'Parakeet TDT 0.6B v3 (OpenRouter)' },
-  { id: 'qwen3-asr-flash', label: 'Qwen3 ASR Flash (OpenRouter)' },
-  { id: 'voxtral-mini-transcribe', label: 'Voxtral Mini Transcribe (OpenRouter)' },
+  { id: 'whisper-large-v3-turbo', label: 'Whisper Turbo · Groq · ~$0.04/hr (free tier, cheapest)' },
+  { id: 'parakeet-tdt-0.6b-v3', label: 'Parakeet TDT 0.6B · OpenRouter · $0.0015/min' },
+  { id: 'qwen3-asr-flash', label: 'Qwen3 ASR Flash · OpenRouter · ~$0.0021/min' },
+  { id: 'voxtral-mini-transcribe', label: 'Voxtral Mini · OpenRouter · $0.003/min' },
+  { id: 'whisper-large-v3', label: 'Whisper Large V3 · Groq/OpenRouter · most accurate' },
+  { id: 'chirp-3', label: 'Chirp 3 · Google/OpenRouter' },
 ]
 
 // Prebuilt wake-word models bundled with openwakeword-wasm-browser.
