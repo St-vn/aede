@@ -31,9 +31,13 @@ export class VoiceController {
     if (this.deps.createWake) {
       this.state = 'listening'
       this.wake = await this.deps.createWake(this.deps.wakeOpts)
-      this.wake.on('detect', () => { void this._onWake() })
+      // Surface engine errors — the engine swallows mel/embedding/VAD failures
+      // into an 'error' event; without this listener detection dies silently.
+      this.wake.on('error', (e) => { console.error('[voice] wake engine error:', e) })
+      this.wake.on('detect', (p) => { console.debug('[voice] wake detected:', p); void this._onWake().catch(err => console.error('[voice] onWake failed:', err)) })
       await this.wake.load()
       await this.wake.start()  // engine owns its own mic stream while listening
+      console.debug('[voice] wake engine armed, listening for wake word')
       return
     }
 
@@ -58,14 +62,18 @@ export class VoiceController {
     this.state = 'captured'
     await this.wake?.stop()  // hand off the mic — never two streams at once
 
-    const text = await this._recordAndTranscribe()
-    if (text) this.deps.onTranscript?.(text)
-
-    // Re-arm the wake engine for the next activation. stop() clears this.wake,
-    // so a still-present engine means we were not torn down mid-transcription.
-    if (this.wake) {
-      this.state = 'listening'
-      await this.wake.start()
+    try {
+      const text = await this._recordAndTranscribe()
+      if (text) this.deps.onTranscript?.(text)
+    } catch (err) {
+      console.error('[voice] capture/transcribe failed:', err)
+    } finally {
+      // Always re-arm for the next activation unless stop() tore us down
+      // (stop() clears this.wake).
+      if (this.wake) {
+        this.state = 'listening'
+        await this.wake.start().catch(e => console.error('[voice] re-arm failed:', e))
+      }
     }
   }
 
