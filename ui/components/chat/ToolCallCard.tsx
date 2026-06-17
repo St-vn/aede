@@ -201,11 +201,11 @@ export function ToolCallCard({ toolName, status, args, output, durationMs, strea
         </div>
       )}
       {streamingOutput && (
-        <pre className="text-xs bg-muted/50 rounded mx-2 mb-2 p-2 overflow-x-auto font-mono text-muted-foreground">
+        <pre className="text-xs bg-muted/50 rounded mx-2 mb-2 p-2 overflow-y-auto max-h-[300px] scroll-thin whitespace-pre-wrap font-mono text-muted-foreground">
           {streamingOutput}
         </pre>
       )}
-      {output && !isEdit && <pre className="text-xs bg-muted rounded mx-2 mb-2 p-2 overflow-x-auto font-mono">{output}</pre>}
+      {output && !isEdit && <pre className="text-xs bg-muted rounded mx-2 mb-2 p-2 overflow-y-auto max-h-[300px] scroll-thin whitespace-pre-wrap font-mono">{output}</pre>}
     </CollapsibleBlock>
   )
 }
