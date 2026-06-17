@@ -1,7 +1,12 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
-import type { SoulData } from './matchWakeWord'
+
+export interface SoulData {
+  name: string | null
+  wake_word: string | null
+  aliases: string[]
+}
 
 export function useSoulFetch(): { soul: SoulData | null; loading: boolean } {
   const [soul, setSoul] = useState<SoulData | null>(null)
