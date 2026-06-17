@@ -84,3 +84,38 @@ class OpenRouterAsrProvider:
         return Transcript(
             text=data.get("text", "") or "", model=model, provider="openrouter"
         )
+
+
+class GoogleAsrProvider:
+    BASE = "https://speech.googleapis.com/v2/speech:recognize"
+
+    def __init__(self, api_key: str) -> None:
+        self._api_key = api_key
+
+    async def _post(self, url: str, **kwargs: Any) -> Any:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=60) as c:
+            return await c.post(url, **kwargs)
+
+    async def transcribe(
+        self, *, audio: bytes, mime: str, model: str, language: str | None = None
+    ) -> Transcript:
+        b64 = base64.b64encode(audio).decode("ascii")
+        payload: dict[str, Any] = {
+            "config": {
+                "model": model,
+                "languageCodes": [language or "en-US"],
+                "autoDecodingConfig": {},
+            },
+            "content": b64,
+        }
+        resp = await self._post(f"{self.BASE}?key={self._api_key}", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        text = ""
+        for r in data.get("results", []):
+            alts = r.get("alternatives", [])
+            if alts:
+                text += alts[0].get("transcript", "")
+        return Transcript(text=text, model=model, provider="google")

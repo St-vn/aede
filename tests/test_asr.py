@@ -78,3 +78,30 @@ async def test_openrouter_transcribe(monkeypatch):
     assert t.text == "openrouter result"
     assert t.provider == "openrouter"
     assert t.model == "parakeet-tdt-0.6b-v3"
+
+
+@pytest.mark.asyncio
+async def test_google_transcribe(monkeypatch):
+    from aede.asr import GoogleAsrProvider, Transcript
+
+    async def fake_post(url, **kwargs):
+        class R:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "results": [
+                        {"alternatives": [{"transcript": "chirp text"}]}
+                    ]
+                }
+
+            def raise_for_status(self):
+                pass
+
+        return R()
+
+    p = GoogleAsrProvider(api_key="k")
+    monkeypatch.setattr(p, "_post", fake_post)
+    t = await p.transcribe(audio=b"abc", mime="audio/webm", model="chirp-3")
+    assert t.text == "chirp text"
+    assert t.provider == "google"
