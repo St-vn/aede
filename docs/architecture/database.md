@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, architecture]
-date_updated: 2026-06-10
+date_updated: 2026-06-16
 ---
 
 # Database
@@ -41,7 +41,19 @@ The database is at `~/.aede/data/aede.db`. WAL mode provides better concurrent r
 
 ### tool_calls
 
-Tracks every tool execution: name, arguments (JSON), result, status (`success`/`error`), and duration in milliseconds.
+Tracks every tool execution: name, arguments (JSON), result, status (`success`/`error`/`running`), and duration in milliseconds. Supports upsert semantics — ACP may re-emit the same call ID with updated args.
+
+### thinking_segments
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT (PK) | ULID |
+| `message_id` | TEXT (FK) | Parent assistant message |
+| `text` | TEXT | Per-step thinking block content |
+| `seq` | INTEGER | Execution ordering (interleaved with tool calls) |
+| `created_at` | INTEGER | Unix ms |
+
+Stores per-step thinking blocks for ACP turns, keyed by message and ordered by `seq`. Rendered as separate `ThinkingBlock`s on page reload, matching the interleaved timeline the user saw during streaming.
 
 ### token_usage
 

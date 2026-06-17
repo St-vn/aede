@@ -45,9 +45,6 @@ function computeLineDiff(oldStr: string, newStr: string): DiffLine[] {
 }
 
 function DiffView({ filePath, oldStr, newStr, startLine }: { filePath: string; oldStr: string; newStr: string; startLine?: number }) {
-  // A single trailing newline difference (old ends with \n, new doesn't or vice
-  // versa) otherwise shows up as a phantom blank +/- row. Normalise it away so
-  // the diff reflects real content changes.
   const lines = computeLineDiff(oldStr.replace(/\n$/, ''), newStr.replace(/\n$/, ''))
   const fileName = filePath.split(/[\\/]/).pop() || filePath
   let added = 0, removed = 0
@@ -56,11 +53,8 @@ function DiffView({ filePath, oldStr, newStr, startLine }: { filePath: string; o
     else if (dl.type === 'remove') removed++
   }
 
-  // Separate old/new line counters, both anchored at the real file start line
-  // (1-based; falls back to 1 when the position is unknown).
   const base = startLine && startLine > 0 ? startLine : 1
   let oldNo = base, newNo = base
-  // Width of the gutter scales with the largest line number shown.
   const maxNo = base + lines.length
   const gutterCh = String(maxNo).length
 
@@ -78,8 +72,6 @@ function DiffView({ filePath, oldStr, newStr, startLine }: { filePath: string; o
       <div className="overflow-x-auto bg-background/40 py-1">
         {lines.map((dl, idx) => {
           const isAdd = dl.type === 'add', isRem = dl.type === 'remove'
-          // A single line-number column: new-side number for added/context,
-          // old-side number for removed lines (GitHub-style unified diff).
           let lineNo: number
           if (isAdd) { lineNo = newNo; newNo++ }
           else if (isRem) { lineNo = oldNo; oldNo++ }
@@ -106,17 +98,54 @@ function DiffView({ filePath, oldStr, newStr, startLine }: { filePath: string; o
   )
 }
 
+const PRIMARY_KEYS = ['file_path', 'path', 'command', 'cmd', 'query', 'url', 'pattern', 'name', 'repo', 'branch', 'content', 'message', 'code']
+
+function getPrimaryValue(args: Record<string, unknown>): string | undefined {
+  for (const key of PRIMARY_KEYS) {
+    const v = args[key]
+    if (typeof v === 'string' && v.length > 0) return v
+  }
+  const first = Object.values(args)[0]
+  return typeof first === 'string' ? first : undefined
+}
+
+function ArgsView({ args, exclude }: { args: Record<string, unknown>; exclude?: string }) {
+  const entries = Object.entries(args).filter(([k]) => k !== exclude && PRIMARY_KEYS.indexOf(k) === -1 || k === exclude)
+    .filter(([k]) => k !== exclude)
+  if (entries.length === 0) return null
+  return (
+    <div className="text-xs font-mono space-y-0.5">
+      {entries.map(([k, v]) => {
+        let display: string
+        if (typeof v === 'string') display = v
+        else if (v === null || v === undefined) display = String(v)
+        else if (typeof v === 'object') display = JSON.stringify(v)
+        else display = String(v)
+        if (display.length > 300) display = display.slice(0, 300) + '...'
+        return (
+          <div key={k} className="flex gap-2 py-0.5">
+            <span className="text-muted-foreground shrink-0">{k}:</span>
+            <span className="text-foreground/80 break-all whitespace-pre-wrap">{display}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function ToolCallCard({ toolName, status, args, output, durationMs, streamingOutput }: Props) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.running
   const canExpand = status === 'success' || status === 'error'
-  // Any tool that supplies an old/new string pair renders as a diff,
-  // regardless of name (ACP "Edit", a future native edit tool, etc.).
   const isEdit = typeof args.old_string === 'string'
     && typeof args.new_string === 'string'
   const startLine = typeof args._start_line === 'number' ? args._start_line : undefined
 
-  // Running / denied: nothing to expand yet — show a flat row, but keep the
-  // same bordered container so it lines up with the other blocks.
+  // Primary value for the header (file path, command, query, etc.)
+  const primaryValue = !isEdit ? getPrimaryValue(args) : undefined
+  const primaryName = primaryValue
+    ? primaryValue.split(/[\\/]/).pop() || primaryValue
+    : toolName
+
   if (!canExpand) {
     return (
       <CollapsibleBlock
@@ -149,7 +178,7 @@ export function ToolCallCard({ toolName, status, args, output, durationMs, strea
           {cfg.label && <span className={cfg.color}>{cfg.label}</span>}
         </span>
       }
-      bodyClassName="px-3 pb-2 space-y-1"
+      bodyClassName="p-0"
     >
       {isEdit ? (
         <DiffView
@@ -159,16 +188,24 @@ export function ToolCallCard({ toolName, status, args, output, durationMs, strea
           startLine={startLine}
         />
       ) : (
-        <pre className="text-xs bg-muted rounded p-2 overflow-x-auto font-mono">
-          {JSON.stringify(args, null, 2)}
-        </pre>
+        <div className="text-xs rounded-md overflow-hidden font-mono border border-border">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/60 border-b border-border">
+            <span className="truncate text-foreground/80" title={primaryValue}>{primaryName}</span>
+            {primaryValue && primaryName !== primaryValue && (
+              <span className="truncate text-muted-foreground/50 text-[10px]" title={primaryValue}>{primaryValue}</span>
+            )}
+          </div>
+          <div className="overflow-x-auto bg-background/40 py-2 px-3">
+            <ArgsView args={args} />
+          </div>
+        </div>
       )}
       {streamingOutput && (
-        <pre className="text-xs bg-muted/50 rounded p-2 overflow-x-auto font-mono text-muted-foreground">
+        <pre className="text-xs bg-muted/50 rounded mx-2 mb-2 p-2 overflow-x-auto font-mono text-muted-foreground">
           {streamingOutput}
         </pre>
       )}
-      {output && !isEdit && <pre className="text-xs bg-muted rounded p-2 overflow-x-auto font-mono">{output}</pre>}
+      {output && !isEdit && <pre className="text-xs bg-muted rounded mx-2 mb-2 p-2 overflow-x-auto font-mono">{output}</pre>}
     </CollapsibleBlock>
   )
 }

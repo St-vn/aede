@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, features]
-date_updated: 2026-06-10
+date_updated: 2026-06-16
 ---
 
 # Agent Client Protocol (ACP)
@@ -10,7 +10,7 @@ ACP allows aede to connect to external agent processes as backends, using their 
 
 ## How It Works
 
-When the configured model is an ACP agent (e.g., `claude-code`, `codex`, `goose`, `gemini`, `agy`, `cline`, `cursor`, `opencode`), aede routes conversation turns to that agent via JSON-RPC over a subprocess's stdio.
+When the configured model is an ACP agent (e.g., `claude-code`, `codex`, `goose`, `gemini`, `agy`, `cline`, `cursor`), aede routes conversation turns to that agent via JSON-RPC over a subprocess's stdio.
 
 The ACP client uses an async message-pump design:
 
@@ -26,6 +26,9 @@ The ACP client uses an async message-pump design:
 - **Reentrant requests** — handles agent-to-client requests during a turn (e.g., file reads, permission requests)
 - **Sub-model routing** — use notation like `claude-code/opus-4-8` to specify which model the agent should use
 - **Auth flow** — `drive_auth` async generator handles the connection authentication (browser login, API key, or existing session)
+- **Tool call streaming** — ACP tool calls are streamed to the UI in real time with inline unified diffs for Edit operations (line numbers, green/red highlights)
+- **Interleaved thinking blocks** — multi-step reasoning is split into sequential per-step thinking blocks, interleaved with tool calls in true execution order
+- **Persistence** — tool calls and thinking segments survive page reload via the database
 
 ## Managing ACP Agents
 
@@ -44,5 +47,4 @@ ACP agent definitions are stored in `~/.aede/agents.json`. The 7 base agents are
 ## Future Plans
 
 - Full permission routing through aede's approval gate instead of auto-approve
-- Enhanced streaming with richer event types
 - Long-running agent coordination patterns

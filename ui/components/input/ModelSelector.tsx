@@ -31,7 +31,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   cline: 'Cline',
   cursor: 'Cursor',
   goose: 'Goose',
-  opencode: 'OpenCode',
+  'opencode-zen': 'OpenCode Zen',
+  'opencode-go': 'OpenCode Go',
 }
 
 interface EffortOption { value: string; label: string }

@@ -37,7 +37,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   cline: "Cline (ACP)",
   cursor: "Cursor (ACP)",
   goose: "Goose (ACP)",
-  opencode: "OpenCode",
+  "opencode-zen": "OpenCode Zen",
+  "opencode-go": "OpenCode Go",
 };
 
 const AUTH_CATEGORIES = Object.entries(PROVIDER_LABELS).map(
@@ -101,6 +102,17 @@ const MODEL_SUGGESTIONS: ModelSuggestion[] = [
     provider: "openrouter",
   },
   { label: "MiMo V2 Pro", id: "xiaomi/mimo-v2-pro", provider: "openrouter" },
+  {
+    label: "Qwen 3.7 Max",
+    id: "qwen/qwen3.7-max",
+    provider: "openrouter",
+  },
+  { label: "MiMo V2.5", id: "xiaomi/mimo-v2.5", provider: "openrouter" },
+  {
+    label: "MiMo V2.5 Pro",
+    id: "xiaomi/mimo-v2.5-pro",
+    provider: "openrouter",
+  },
   { label: "Gemini 3.5 Flash", id: "gemini-3.5-flash", provider: "google-ai" },
   {
     label: "Gemini 3.1 Flash Lite",
@@ -176,7 +188,30 @@ const MODEL_SUGGESTIONS: ModelSuggestion[] = [
     provider: "goose",
   },
   { label: "Goose / GPT-4o", id: "goose/openai-gpt-4o", provider: "goose" },
-  { label: "OpenCode", id: "opencode", provider: "opencode" },
+  // OpenCode Zen (free + paid)
+  { label: "DeepSeek V4 Flash Free", id: "deepseek-v4-flash-free", provider: "opencode-zen" },
+  { label: "Nemotron 3 Ultra Free", id: "nemotron-3-ultra-free", provider: "opencode-zen" },
+  { label: "Big Pickle", id: "big-pickle", provider: "opencode-zen" },
+  { label: "MIMO V2.5 Free", id: "mimo-v2.5-free", provider: "opencode-zen" },
+  { label: "North Mini Code Free", id: "north-mini-code-free", provider: "opencode-zen" },
+  { label: "Grok Build 0.1", id: "grok-build-0.1", provider: "opencode-zen" },
+  { label: "Kimi K2.5", id: "kimi-k2.5", provider: "opencode-zen" },
+  // OpenCode Go (OpenAI-compatible)
+  { label: "DeepSeek V4 Pro (Go)", id: "deepseek-v4-pro", provider: "opencode-go" },
+  { label: "DeepSeek V4 Flash (Go)", id: "deepseek-v4-flash", provider: "opencode-go" },
+  { label: "GLM-5.1 (Go)", id: "glm-5.1", provider: "opencode-go" },
+  { label: "GLM-5 (Go)", id: "glm-5", provider: "opencode-go" },
+  { label: "Kimi K2.7 (Go)", id: "kimi-k2.7", provider: "opencode-go" },
+  { label: "Kimi K2.6 (Go)", id: "kimi-k2.6", provider: "opencode-go" },
+  { label: "MIMO V2.5 (Go)", id: "mimo-v2.5", provider: "opencode-go" },
+  { label: "MIMO V2.5 Pro (Go)", id: "mimo-v2.5-pro", provider: "opencode-go" },
+  // OpenCode Go (Anthropic-compatible)
+  { label: "MiniMax M3 (Go)", id: "minimax-m3", provider: "opencode-go" },
+  { label: "MiniMax M2.7 (Go)", id: "minimax-m2.7", provider: "opencode-go" },
+  { label: "MiniMax M2.5 (Go)", id: "minimax-m2.5", provider: "opencode-go" },
+  { label: "Qwen 3.7 Max (Go)", id: "qwen3.7-max", provider: "opencode-go" },
+  { label: "Qwen 3.7 Plus (Go)", id: "qwen3.7-plus", provider: "opencode-go" },
+  { label: "Qwen 3.6 Plus (Go)", id: "qwen3.6-plus", provider: "opencode-go" },
 ];
 
 function autoLabel(modelId: string, provider: string): string {

@@ -16,6 +16,7 @@ function SidebarItem({ item, depth = 0 }: { item: NavItem; depth?: number }) {
   const pathname = usePathname()
   const isActive = item.href ? pathname === item.href || pathname === item.href + '/' : false
   const hasChildren = item.children && item.children.length > 0
+  const pl = 8 + depth * 16
 
   if (hasChildren && item.children) {
     const isActiveParent = item.children.some(c =>
@@ -23,16 +24,19 @@ function SidebarItem({ item, depth = 0 }: { item: NavItem; depth?: number }) {
     )
     return (
       <Collapsible defaultOpen={depth < 2 || isActiveParent}>
-        <CollapsibleTrigger className={cn(
-          'flex w-full items-center gap-1 px-2 py-1.5 text-sm font-medium rounded-sm transition-colors',
-          depth === 0 ? 'text-foreground' : 'text-muted-foreground',
-          'hover:text-foreground hover:bg-accent',
-        )}>
+        <CollapsibleTrigger
+          className={cn(
+            'flex w-full items-center gap-1 py-1.5 text-sm font-medium rounded-sm transition-colors',
+            depth === 0 ? 'text-foreground' : 'text-muted-foreground',
+            'hover:text-foreground hover:bg-accent',
+          )}
+          style={{ paddingLeft: pl, paddingRight: 8 }}
+        >
           <ChevronDown className="h-3 w-3 shrink-0 -rotate-90 transition-transform duration-200 text-muted-foreground chevron-collapsible" />
           {item.title}
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="ml-1">
+          <div>
             {item.children.map((child, i) => (
               <SidebarItem key={i} item={child} depth={depth + 1} />
             ))}
@@ -47,11 +51,12 @@ function SidebarItem({ item, depth = 0 }: { item: NavItem; depth?: number }) {
       <Link
         href={item.href}
         className={cn(
-          'block px-2 py-1 text-sm rounded-sm transition-colors',
+          'block py-1 text-sm rounded-sm transition-colors',
           isActive
             ? 'bg-primary/10 text-primary font-medium'
             : 'text-muted-foreground hover:text-foreground hover:bg-accent',
         )}
+        style={{ paddingLeft: pl, paddingRight: 8 }}
       >
         {item.title}
       </Link>
@@ -59,7 +64,10 @@ function SidebarItem({ item, depth = 0 }: { item: NavItem; depth?: number }) {
   }
 
   return (
-    <div className="px-2 py-1 text-sm font-medium text-foreground">
+    <div
+      className="py-1 text-sm font-medium text-foreground"
+      style={{ paddingLeft: pl, paddingRight: 8 }}
+    >
       {item.title}
     </div>
   )

@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, architecture]
-date_updated: 2026-06-10
+date_updated: 2026-06-16
 ---
 
 # Architecture Overview
@@ -79,8 +79,8 @@ aede/
 ## Data Flow
 
 1. **User input** arrives via CLI prompt or WebSocket message
-2. **AgentLoop** builds the system prompt (stable prefix + dynamic configuration, skills, and learnings)
-3. **Provider** sends the conversation to the LLM and streams the response
+2. **AgentLoop** builds the system prompt (stable prefix + dynamic configuration, skills, and learnings), pre-allocates an assistant message row for reliable FK targets
+3. **Provider** sends the conversation to the LLM and streams the response — text, thinking blocks (with seq ordering), and tool calls (with inline diffs for edits) are forwarded to the UI in real time via callbacks
 4. If the LLM requests a tool, **AgentLoop** validates the name, runs safety hooks, gates approval, validates parameters, and executes
 5. Tool results are appended to the conversation and sent back to the LLM
 6. The loop repeats until the LLM produces a final text response

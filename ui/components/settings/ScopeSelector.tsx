@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
-import { FolderOpen, Globe, Plus, BookOpen } from 'lucide-react'
+import { FolderOpen, Globe, Plus, MessageCircle } from 'lucide-react'
 import { useProjects, useAddProject } from '@/hooks/useProjects'
 import { FolderPicker } from '@/components/workspace/FolderPicker'
 
@@ -61,7 +61,7 @@ export function ScopeSelector({ value, onChange }: Props) {
               return (
                 <DropdownMenuItem key={p.id} className={isSelected ? 'bg-accent' : ''}
                   onClick={() => handleSelectProject(p.project_dir)}>
-                  <BookOpen className="w-4 h-4 mr-2 shrink-0 text-muted-foreground" />
+                  <MessageCircle className="w-4 h-4 mr-2 shrink-0 text-muted-foreground" />
                   <div className="flex flex-col min-w-0 flex-1">
                     <span className="text-sm truncate">{p.display_name}</span>
                     <span className="text-[10px] text-muted-foreground truncate max-w-[180px]">{p.project_dir}</span>

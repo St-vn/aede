@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, features]
-date_updated: 2026-06-14
+date_updated: 2026-06-16
 ---
 
 # SOUL.md
@@ -59,10 +59,7 @@ Allowed keys: `name`, `phonetic`, `wake_word`, `wake_word_phonetic`,
 
 ## Web UI
 
-The settings modal has a new **Soul** tab. Each frontmatter field is a
-labeled input; the persona is a textarea. The Save button writes to the
-selected scope (global or project) and refreshes the in-process
-`cfg.soul` so the next CLI `/soul` reflects the change without restart.
+The settings modal **Soul** tab has a scope selector to switch between **Global** (`~/.aede/SOUL.md`) and **Project** (`./SOUL.md`) files. Each frontmatter field is a labeled input; the persona body is an editable textarea. The Save button writes to the selected scope and refreshes `cfg.soul` so the next CLI `/soul` reflects the change without restart. An "Edit file" button opens the file in your OS default editor.
 
 ## Failure modes
 

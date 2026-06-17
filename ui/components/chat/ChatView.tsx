@@ -41,6 +41,8 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   const containerRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const prevMessagesLenRef = useRef(messages.length)
+  const turnStartRef = useRef<number | null>(null)
+  const [lastTurnDurationMs, setLastTurnDurationMs] = useState<number | null>(null)
 
   useEffect(() => {
     if (messages.length > prevMessagesLenRef.current && streamingText && !isStreaming) {
@@ -61,6 +63,8 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     setStreamingText('')
     setIsStreaming(false)
     setPendingMessages([])
+    turnStartRef.current = null
+    setLastTurnDurationMs(null)
   }, [sessionId])
 
   const onEvent = useCallback((ev: WSEvent) => {
@@ -124,6 +128,10 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     } else if (ev.type === 'gate_request') {
       setGates(gs => [...gs, { gateId: ev.gate_id as string, toolName: ev.tool_name as string, args: ev.args as Record<string, unknown> }])
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
+      if (turnStartRef.current) {
+        setLastTurnDurationMs(Date.now() - turnStartRef.current)
+      }
+      turnStartRef.current = null
       setIsStreaming(false)
       setStreamingBlocks([])
       setGates([])
@@ -171,6 +179,8 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     setStreamingText('')
     setIsStreaming(true)
     setStreamingBlocks([])
+    turnStartRef.current = Date.now()
+    setLastTurnDurationMs(null)
   }
 
   const handleGateDecision = ({ gateId, decision, message }: { gateId: string; decision: string; message?: string }) => {
@@ -199,11 +209,19 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   // Sort streaming blocks by seq for display.
   const sortedBlocks = [...streamingBlocks].sort((a, b) => a.seq - b.seq)
 
+  // Find the index of the last assistant message so we can show turn duration on it.
+  const lastAssistantIdx = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant' && !messages[i].is_branch_point) return i
+    }
+    return -1
+  })()
+
   return (
     <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
       <ScrollArea className="flex-1 min-h-0 px-4">
         <div className="max-w-[760px] mx-auto py-4 px-4 space-y-1">
-          {messages.map(m =>
+          {messages.map((m, mi) =>
             m.is_branch_point
               ? <div key={m.id} className="flex items-center gap-3 py-4 px-4 select-none">
                   <div className="flex-1 h-px bg-border" />
@@ -218,6 +236,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
                       isStreaming={false}
                       thinking={m.thinking}
                       thinkingSegments={m.thinking_segments}
+                      turnDurationMs={mi === lastAssistantIdx ? lastTurnDurationMs ?? undefined : undefined}
                     />
                     {!isStreaming && m.tool_calls?.map(tc => (
                       <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}

@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, developer]
-date_updated: 2026-06-10
+date_updated: 2026-06-16
 ---
 
 # Tests
@@ -45,7 +45,10 @@ The test suite covers:
 | Agents | Schema parsing, directory scanning + validation |
 | MCP | Bridge, router, config |
 | ACP | Async message-pump, streaming, cancel, manager, session, registry, auth |
-| Server | FastAPI endpoints |
+| Server | FastAPI endpoints, soul API, project instructions API, gate cancel, gate reconnect |
 | Import | Claude Code, OpenCode, skills, MCP |
 | Project model | CRUD |
-| UI | 10 vitest files for React components |
+| ACP | Async message-pump, streaming, cancel, manager, session, registry, auth, thinking sequencing, tool call persistence |
+| Soul | Layouts, edition, scope selector |
+| Thinking segments | Server-side storage and retrieval |
+| UI | 11 vitest files for React components |

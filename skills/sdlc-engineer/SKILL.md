@@ -31,5 +31,6 @@ Follow these phases sequentially:
 
 Most tool calls delegate to aede's built-in tools. The following skills are composed:
 - `/skill configure` — first-run interview and project configuration
+- `/skill conventions` — codebase pattern audit, DRY enforcement, and source-of-truth convention docs
 - `/skill research` — market, technical, and compliance research
 - `/skill kaizen` — post-mortem logging and continuous improvement

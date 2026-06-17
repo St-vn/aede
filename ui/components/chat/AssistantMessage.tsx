@@ -1,11 +1,21 @@
 'use client'
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import { LoaderCircle } from 'lucide-react'
 import { CodeBlock } from './CodeBlock'
 import { ThinkingBlock } from './ThinkingBlock'
+
+/** Cycling status verbs shown next to the spinner while the assistant streams.
+ *  Edit this array to customise the messages (e.g. add domain-specific terms). */
+const STREAMING_VERBS = [
+  'Thinking...', 'Reasoning...', 'Processing...', 'Analysing...',
+  'Stir frying...', 'Drafting...', 'Cooking...', 'Deep frying...',
+  'Ideating...', 'Building...', 'Architecting...', 'Designing...',
+  'Orchestrating...', 'Assembling...', 'Welding...', 'Creating...',
+]
 
 interface ThinkingSegment { text: string; seq: number }
 interface Props {
@@ -13,13 +23,22 @@ interface Props {
   isStreaming: boolean
   thinking?: string
   isThinkingActive?: boolean
-  /** Ordered per-step thinking segments (ACP turns). When present these are
-   *  rendered as separate blocks instead of the single `thinking` blob, so a
-   *  multi-step turn shows one thinking block per reasoning step. */
   thinkingSegments?: ThinkingSegment[]
+  /** Total wall-clock milliseconds the current agent turn has taken so far. */
+  turnDurationMs?: number
 }
 
-export function AssistantMessage({ content, isStreaming, thinking, isThinkingActive, thinkingSegments }: Props) {
+export function AssistantMessage({ content, isStreaming, thinking, isThinkingActive, thinkingSegments, turnDurationMs }: Props) {
+  const [verbIdx, setVerbIdx] = useState(0)
+
+  // Cycle through streaming verbs while streaming.
+  useEffect(() => {
+    if (!isStreaming) return
+    setVerbIdx(0)
+    const id = setInterval(() => setVerbIdx(i => (i + 1) % STREAMING_VERBS.length), 2500)
+    return () => clearInterval(id)
+  }, [isStreaming])
+
   const segments = thinkingSegments && thinkingSegments.length > 0
     ? [...thinkingSegments].sort((a, b) => a.seq - b.seq)
     : null
@@ -33,11 +52,6 @@ export function AssistantMessage({ content, isStreaming, thinking, isThinkingAct
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
           components={{
-            // Fenced/indented code blocks arrive as <pre><code>…</code></pre>.
-            // Route the whole block through CodeBlock so EVERY block — with or
-            // without a language tag — gets the same full-width collapsible
-            // chrome (a bare ``` block has no language- class but is still a
-            // block, not inline code).
             pre({ children }) {
               const child: any = Array.isArray(children) ? children[0] : children
               const codeProps = child?.props ?? {}
@@ -46,8 +60,6 @@ export function AssistantMessage({ content, isStreaming, thinking, isThinkingAct
               const code = String(codeProps.children ?? '').replace(/\n$/, '')
               return <CodeBlock language={match?.[1]} code={code} />
             },
-            // `code` now only handles true inline code (block code is consumed
-            // by the `pre` override above).
             code({ children, ...props }) {
               return (
                 <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs" {...props}>
@@ -64,11 +76,19 @@ export function AssistantMessage({ content, isStreaming, thinking, isThinkingAct
           {content}
         </ReactMarkdown>
         {isStreaming && (
-          <span aria-hidden="true" className="inline-block cursor-blink font-mono ml-0.5 align-middle">
-            ▌
+          <span aria-hidden="true" className="inline-flex items-center gap-1.5 text-muted-foreground/70 ml-1 align-middle">
+            <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
+            <span className="text-xs">{STREAMING_VERBS[verbIdx]}</span>
           </span>
         )}
       </div>
+      {!isStreaming && turnDurationMs !== undefined && turnDurationMs > 0 && (
+        <div className="flex justify-end mt-1">
+          <span className="text-[10px] text-muted-foreground/50 tabular-nums">
+            {(turnDurationMs / 1000).toFixed(1)}s
+          </span>
+        </div>
+      )}
     </div>
   )
 }

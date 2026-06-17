@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useMemo } from 'react'
-import { Menu, Plus, User, Settings, FolderOpen, BookOpen, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Menu, Plus, User, Settings, FolderOpen, MessageCircle, MoreHorizontal, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -167,7 +167,7 @@ export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectS
             {groupedByProject.noProject.length > 0 && (
               <Collapsible defaultOpen className="mb-1 mt-2">
                 <CollapsibleTrigger className="flex items-center gap-2 w-full px-1 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
-                  <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                  <MessageCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>Chats</span>
                   <span className="ml-auto text-[10px] text-muted-foreground/60">{groupedByProject.noProject.length}</span>
                 </CollapsibleTrigger>
@@ -183,7 +183,7 @@ export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectS
         {/* Bottom */}
         <div className="flex flex-col gap-1 px-2 py-2 border-t border-border">
           {[{ icon: <User className="w-4 h-4" />, label: 'Profile' },
-            { icon: <Settings className="w-4 h-4" />, label: 'Settings', onClick: onOpenSettings }]
+          { icon: <Settings className="w-4 h-4" />, label: 'Settings', onClick: onOpenSettings }]
             .map(({ icon, label, onClick }) => (
               <Tooltip key={label}>
                 <TooltipTrigger render={

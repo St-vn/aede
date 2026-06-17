@@ -1,24 +1,36 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CollapsibleBlock } from './CollapsibleBlock'
 
 interface Props { language?: string; code: string }
 
+let highlighterPromise: Promise<import('shiki').Highlighter> | null = null
+async function getHighlighter(language?: string) {
+  if (!highlighterPromise) {
+    highlighterPromise = (async () => {
+      const { createHighlighter } = await import('shiki')
+      return createHighlighter({
+        themes: ['github-dark'],
+        langs: language ? [language as import('shiki').BuiltinLanguage] : [],
+      })
+    })()
+  }
+  return highlighterPromise
+}
+
 export function CodeBlock({ language, code }: Props) {
   const [highlighted, setHighlighted] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const hlRef = useRef<import('shiki').Highlighter | null>(null)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const { createHighlighter } = await import('shiki')
-        const hl = await createHighlighter({
-          themes: ['github-dark'],
-          langs: language ? [language as import('shiki').BuiltinLanguage] : [],
-        })
+        const hl = await getHighlighter(language)
+        hlRef.current = hl
         if (!cancelled) {
           setHighlighted(hl.codeToHtml(code, { lang: language ?? 'text', theme: 'github-dark' }))
         }

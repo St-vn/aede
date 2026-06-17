@@ -13,14 +13,14 @@ test('renders markdown header', () => {
   expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
 })
 
-test('shows blinking cursor while streaming', () => {
+test('shows spinning loader while streaming', () => {
   const { container } = render(<AssistantMessage content="hello" isStreaming={true} />)
-  expect(container.textContent).toContain('▌')
+  expect(container.querySelector('.animate-spin')).not.toBeNull()
 })
 
-test('no cursor when not streaming', () => {
+test('no spinner when not streaming', () => {
   const { container } = render(<AssistantMessage content="done" isStreaming={false} />)
-  expect(container.textContent).not.toContain('▌')
+  expect(container.querySelector('.animate-spin')).toBeNull()
 })
 
 test('has aria-live on streaming region', () => {

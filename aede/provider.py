@@ -914,6 +914,9 @@ def get_provider(cfg: Any, acp_manager: Any = None) -> AnthropicProvider | OpenA
         go_cfg: dict = providers.get("opencode-go", {}) if providers else {}
         env_key = go_cfg.get("api_key_env", "OPENCODE_GO_API_KEY")
         base = go_cfg.get("base_url", "https://opencode.ai/zen/go/v1")
+        # Anthropic SDK appends /v1/messages automatically, so strip trailing /v1
+        if base.endswith("/v1"):
+            base = base[:-3]
         api_key = os.environ.get(env_key)
         if not api_key:
             raise RuntimeError(
