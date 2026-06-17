@@ -49,3 +49,32 @@ async def test_openai_compatible_transcribe(monkeypatch):
     assert isinstance(t, Transcript)
     assert t.text == "transcribed text"
     assert t.provider == "groq"
+
+
+@pytest.mark.asyncio
+async def test_openrouter_transcribe(monkeypatch):
+    from aede.asr import OpenRouterAsrProvider, Transcript
+
+    captured = {}
+
+    async def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs.get("json")
+
+        class R:
+            status_code = 200
+
+            def json(self):
+                return {"text": "openrouter result"}
+
+            def raise_for_status(self):
+                pass
+
+        return R()
+
+    p = OpenRouterAsrProvider(api_key="k")
+    monkeypatch.setattr(p, "_post", fake_post)
+    t = await p.transcribe(audio=b"abc", mime="audio/webm", model="parakeet-tdt-0.6b-v3")
+    assert t.text == "openrouter result"
+    assert t.provider == "openrouter"
+    assert t.model == "parakeet-tdt-0.6b-v3"
