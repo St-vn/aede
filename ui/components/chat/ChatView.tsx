@@ -41,6 +41,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   const containerRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const prevMessagesLenRef = useRef(messages.length)
+  const prevSessionIdRef = useRef<string | null>(null)
   const turnStartRef = useRef<number | null>(null)
   const [lastTurnDurationMs, setLastTurnDurationMs] = useState<number | null>(null)
 
@@ -58,13 +59,16 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   }, [isStreaming, messages.length])
 
   useEffect(() => {
-    setStreamingBlocks([])
-    setGates([])
-    setStreamingText('')
-    setIsStreaming(false)
-    setPendingMessages([])
-    turnStartRef.current = null
-    setLastTurnDurationMs(null)
+    if (prevSessionIdRef.current !== sessionId) {
+      setStreamingBlocks([])
+      setGates([])
+      setStreamingText('')
+      setIsStreaming(false)
+      setPendingMessages([])
+      turnStartRef.current = null
+      setLastTurnDurationMs(null)
+    }
+    prevSessionIdRef.current = sessionId
   }, [sessionId])
 
   const onEvent = useCallback((ev: WSEvent) => {
