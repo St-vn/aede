@@ -2081,6 +2081,7 @@ async def voice_trigger(request: Request, payload: dict):
 
 
 @app.post("/api/voice/transcribe")
+@app.post("/api/voice/transcribe/")  # tolerate trailingSlash configs (no 307 on POST)
 async def voice_transcribe(
     audio: UploadFile = File(...),
     model: str = Form("whisper-large-v3-turbo"),

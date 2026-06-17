@@ -22,6 +22,9 @@ export interface WakeWordHandle {
 
 const DEFAULTS = {
   baseAssetUrl: '/openwakeword/models',
+  // Vendored onnxruntime-web wasm binaries (public/onnxruntime/). Without this,
+  // ort tries to load its .wasm from a default path that 404s under Next.js.
+  ortWasmPath: '/onnxruntime/',
   keywords: ['hey_jarvis'],
   detectionThreshold: 0.5,
   cooldownMs: 2000,
