@@ -19,6 +19,7 @@ import { VoiceController } from './voice/VoiceController'
 import { PermissionGate } from './voice/PermissionGate'
 import { useSoulFetch } from './voice/useSoulFetch'
 import { transcribe } from './voice/AsrClient'
+import { apiFetch } from '@/lib/api'
 
 interface Props {
   onSend: (content: string, model?: string) => void
@@ -60,17 +61,22 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
   const [permDenied, setPermDenied] = useState(false)
   const { soul } = useSoulFetch()
 
-  // VoiceController for push-to-talk
+  // VoiceController for push-to-talk. ASR model comes from config (NOT the chat
+  // model); held in a ref so config updates apply without re-creating it.
+  const asrModelRef = useRef('whisper-large-v3-turbo')
   const voiceControllerRef = useRef<VoiceController | null>(null)
   useEffect(() => {
     voiceControllerRef.current = new VoiceController({
       getStream: () => navigator.mediaDevices.getUserMedia({ audio: true }),
-      transcribe: (blob, mdl?: string) => transcribe(blob, mdl ?? model),
+      transcribe: (blob) => transcribe(blob, asrModelRef.current),
     })
+    apiFetch<{ voice_asr_model?: string }>('/api/config')
+      .then(cfg => { if (cfg.voice_asr_model) asrModelRef.current = cfg.voice_asr_model })
+      .catch(() => {})
     return () => {
       voiceControllerRef.current?.stop()
     }
-  }, [model])
+  }, [])
 
   // submitRef avoids a stale-closure: the wake controller's onTranscript is
   // created in an effect but must always call the latest submit().
@@ -82,27 +88,35 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
   const wakeControllerRef = useRef<VoiceController | null>(null)
   useEffect(() => {
     if (!soul?.wake_word) return
-    let cancelled = false
-    const vc = new VoiceController({
-      getStream: () => navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true } }),
-      transcribe: (blob, mdl?: string) => transcribe(blob, mdl ?? model),
-      onTranscript: (txt) => { if (txt.trim()) submitRef.current(txt) },
-      createWake: async (opts) => {
-        const { createWakeWordEngine } = await import('./voice/wakeWorklet')
-        return createWakeWordEngine(opts)
-      },
-      wakeOpts: { keywords: ['hey_jarvis'] },
-    })
-    wakeControllerRef.current = vc
-    // Lazy-arm: load WASM + models only now that voice is enabled.
-    void vc.start().catch(() => { /* permission/load failure is non-fatal */ })
+    let vc: VoiceController | null = null
+    let disposed = false
+    // Read voice settings (ASR + wake model) from config, then arm.
+    apiFetch<{ voice_asr_model?: string; voice_wake_model?: string; voice_wake_word_enabled?: boolean }>('/api/config')
+      .then(cfg => {
+        if (disposed || cfg.voice_wake_word_enabled === false) return
+        const asrModel = cfg.voice_asr_model ?? 'whisper-large-v3-turbo'
+        const wakeKeyword = cfg.voice_wake_model ?? 'hey_jarvis'
+        vc = new VoiceController({
+          getStream: () => navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true } }),
+          transcribe: (blob) => transcribe(blob, asrModel),  // ASR model, NOT the chat model
+          onTranscript: (txt) => { if (txt.trim()) submitRef.current(txt) },
+          createWake: async (opts) => {
+            const { createWakeWordEngine } = await import('./voice/wakeWorklet')
+            return createWakeWordEngine(opts)
+          },
+          wakeOpts: { keywords: [wakeKeyword] },
+        })
+        wakeControllerRef.current = vc
+        // Lazy-arm: load WASM + models only now that voice is enabled.
+        void vc.start().catch(() => { /* permission/load failure is non-fatal */ })
+      })
+      .catch(() => { /* config fetch failure → wake stays disarmed */ })
     return () => {
-      cancelled = true
-      vc.stop()
+      disposed = true
+      vc?.stop()
       wakeControllerRef.current = null
-      void cancelled
     }
-  }, [soul?.wake_word, model])
+  }, [soul?.wake_word])
 
   // Auto-resize
   useEffect(() => {
@@ -469,7 +483,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
             <AcpConnectChip model={model} />
             <VoiceButton
               enabled={true}
-              captureOnce={() => voiceControllerRef.current?.captureOnce(model) ?? Promise.resolve('')}
+              captureOnce={() => voiceControllerRef.current?.captureOnce() ?? Promise.resolve('')}
               textareaRef={ref}
               setText={setText}
               onPermissionDenied={() => setPermDenied(true)}

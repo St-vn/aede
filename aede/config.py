@@ -46,6 +46,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # P0.9 Voice Input
     "voice_input_enabled": False,
     "voice_wake_word_enabled": False,
+    "voice_asr_model": "whisper-large-v3-turbo",
+    "voice_wake_model": "hey_jarvis",
     # Sandboxing (Phase 2 — P0.2)
     "sandbox": {},
     # Plugin/skill toggle configuration
@@ -162,6 +164,8 @@ class AedeConfig:
         # P0.9 Voice Input
         self.voice_input_enabled: bool = data.get("voice_input_enabled", DEFAULT_CONFIG["voice_input_enabled"])
         self.voice_wake_word_enabled: bool = data.get("voice_wake_word_enabled", DEFAULT_CONFIG["voice_wake_word_enabled"])
+        self.voice_asr_model: str = data.get("voice_asr_model", DEFAULT_CONFIG["voice_asr_model"])
+        self.voice_wake_model: str = data.get("voice_wake_model", DEFAULT_CONFIG["voice_wake_model"])
         # FDE (fair-data-ethics) capture
         self.fde_enabled: bool = data.get("fde_enabled", False)
         self.fde_endpoint: str | None = data.get("fde_endpoint") or None

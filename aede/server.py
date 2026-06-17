@@ -746,7 +746,8 @@ async def get_config(request: Request):
                  "critic_api_base_url", "ollama_base_url", "ollama_embed_model",
                  "ollama_timeout_s", "learnings_top_k", "learnings_max_tokens",
                  "reasoning_effort", "thinking_budget",
-                 "voice_input_enabled", "voice_wake_word_enabled"):
+                 "voice_input_enabled", "voice_wake_word_enabled",
+                 "voice_asr_model", "voice_wake_model"):
         val = getattr(cfg, key, None)
         if val is not None:
             d[key] = val

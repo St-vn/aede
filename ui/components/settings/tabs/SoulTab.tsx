@@ -19,6 +19,32 @@ interface Props {
   projectDir?: string | null
 }
 
+// ASR transcription models (mirrors aede/asr.py ASR_MODELS). label → model id.
+const ASR_CHOICES: { id: string; label: string }[] = [
+  { id: 'whisper-large-v3-turbo', label: 'Whisper Large V3 Turbo (Groq · default, fast)' },
+  { id: 'whisper-large-v3', label: 'Whisper Large V3 (Groq/OpenAI · most accurate)' },
+  { id: 'chirp-3', label: 'Chirp 3 (Google)' },
+  { id: 'parakeet-tdt-0.6b-v3', label: 'Parakeet TDT 0.6B v3 (OpenRouter)' },
+  { id: 'qwen3-asr-flash', label: 'Qwen3 ASR Flash (OpenRouter)' },
+  { id: 'voxtral-mini-transcribe', label: 'Voxtral Mini Transcribe (OpenRouter)' },
+]
+
+// Prebuilt wake-word models bundled with openwakeword-wasm-browser.
+const WAKE_CHOICES: { id: string; label: string }[] = [
+  { id: 'hey_jarvis', label: '"Hey Jarvis"' },
+  { id: 'alexa', label: '"Alexa"' },
+  { id: 'hey_mycroft', label: '"Hey Mycroft"' },
+  { id: 'hey_rhasspy', label: '"Hey Rhasspy"' },
+]
+
+// Per-provider API key env names for BYOK (keys stored in aede's vault).
+const PROVIDER_KEYS: { env: string; provider: string; label: string }[] = [
+  { env: 'GROQ_API_KEY', provider: 'groq', label: 'Groq (free tier — default)' },
+  { env: 'OPENAI_API_KEY', provider: 'openai', label: 'OpenAI' },
+  { env: 'GOOGLE_API_KEY', provider: 'google', label: 'Google AI (Chirp 3)' },
+  { env: 'OPENROUTER_API_KEY', provider: 'openrouter', label: 'OpenRouter (Parakeet/Qwen3/Voxtral)' },
+]
+
 // scope is 'global' or a project_dir path (the ScopeSelector contract).
 function scopeParams(scope: string) {
   const isGlobal = scope === 'global'
@@ -34,6 +60,10 @@ export function SoulTab({ projectDir }: Props) {
   const [scope, setScope] = useState<string>(projectDir || 'global')
   const [voiceInputEnabled, setVoiceInputEnabled] = useState(false)
   const [voiceWakeWordEnabled, setVoiceWakeWordEnabled] = useState(false)
+  const [asrModel, setAsrModel] = useState('whisper-large-v3-turbo')
+  const [wakeModel, setWakeModel] = useState('hey_jarvis')
+  const [credNames, setCredNames] = useState<string[]>([])
+  const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({})
 
   // Reload identity for the selected scope so the editor shows that file's content.
   useEffect(() => {
@@ -43,14 +73,18 @@ export function SoulTab({ projectDir }: Props) {
     if (project_dir) qs.set('project_dir', project_dir)
     Promise.all([
       apiFetch<SoulData>(`/api/soul?${qs.toString()}`),
-      apiFetch<{ voice_input_enabled?: boolean; voice_wake_word_enabled?: boolean }>('/api/config'),
-    ]).then(([soulData, configData]) => {
+      apiFetch<{ voice_input_enabled?: boolean; voice_wake_word_enabled?: boolean; voice_asr_model?: string; voice_wake_model?: string }>('/api/config'),
+      apiFetch<{ name: string }[]>('/api/credentials').catch(() => []),
+    ]).then(([soulData, configData, creds]) => {
       setName(soulData.name || '')
       setPhonetic(soulData.phonetic || '')
       setWakeWord(soulData.wake_word || '')
       setPersona(soulData.persona || '')
       setVoiceInputEnabled(configData.voice_input_enabled ?? false)
       setVoiceWakeWordEnabled(configData.voice_wake_word_enabled ?? false)
+      setAsrModel(configData.voice_asr_model ?? 'whisper-large-v3-turbo')
+      setWakeModel(configData.voice_wake_model ?? 'hey_jarvis')
+      setCredNames(creds.map(c => c.name))
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [scope])
@@ -83,6 +117,26 @@ export function SoulTab({ projectDir }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scope: s, project_dir }),
     }).catch(() => {})
+  }
+
+  const saveConfigKey = async (key: string, value: string) => {
+    await apiFetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value, scope: 'global' }),
+    })
+  }
+
+  const saveKey = async (envName: string, provider: string) => {
+    const value = keyDrafts[envName]?.trim()
+    if (!value) return
+    await apiFetch('/api/credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: envName, value, provider }),
+    })
+    setCredNames(prev => prev.includes(envName) ? prev : [...prev, envName])
+    setKeyDrafts(prev => ({ ...prev, [envName]: '' }))
   }
 
   const toggleVoiceInput = async (val: boolean) => {
@@ -178,7 +232,7 @@ export function SoulTab({ projectDir }: Props) {
       <div>
         <h3 className="text-sm font-medium">Voice Input</h3>
         <p className="text-xs text-muted-foreground">
-          Enable voice input via browser speech recognition. Audio is sent to your browser&apos;s STT service (Chrome routes to Google). Only recognized text is sent to the agent.
+          Wake word runs on-device (openWakeWord). Spoken commands are transcribed by your chosen ASR model below. With no API key, voice falls back to the browser&apos;s built-in speech recognition.
         </p>
       </div>
       <div className="space-y-3">
@@ -200,9 +254,60 @@ export function SoulTab({ projectDir }: Props) {
           />
           <span className="text-xs font-medium">Continuous wake word listening</span>
         </label>
-        <p className="text-xs text-muted-foreground">
-          Voice input uses your browser&apos;s speech-to-text (Chrome routes audio to Google). Audio is not recorded by aede; only the resulting text is sent to the agent. Requires an internet connection.
-        </p>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium">Wake word model</label>
+          <select
+            value={wakeModel}
+            onChange={e => { setWakeModel(e.target.value); void saveConfigKey('voice_wake_model', e.target.value) }}
+            className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {WAKE_CHOICES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+          <p className="text-[10px] text-muted-foreground">
+            On-device, no network. Only these prebuilt phrases are supported; a custom phrase requires training a model. (The &quot;Wake word&quot; text field above is for the agent&apos;s spoken-name display.)
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium">Transcription model (ASR)</label>
+          <select
+            value={asrModel}
+            onChange={e => { setAsrModel(e.target.value); void saveConfigKey('voice_asr_model', e.target.value) }}
+            className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {ASR_CHOICES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-medium">API keys (bring your own)</label>
+          <p className="text-[10px] text-muted-foreground">
+            Stored in aede&apos;s credential vault. Set a key for the provider of your chosen model. No key = free browser speech fallback.
+          </p>
+          {PROVIDER_KEYS.map(pk => {
+            const isSet = credNames.includes(pk.env)
+            return (
+              <div key={pk.env} className="flex items-center gap-2">
+                <span className="text-[10px] w-44 shrink-0 text-muted-foreground">
+                  {pk.label}{isSet ? ' ✓' : ''}
+                </span>
+                <input
+                  type="password"
+                  value={keyDrafts[pk.env] ?? ''}
+                  onChange={e => setKeyDrafts(prev => ({ ...prev, [pk.env]: e.target.value }))}
+                  placeholder={isSet ? 'saved — enter to replace' : pk.env}
+                  className="flex h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                <Button size="sm" variant="outline" className="h-7 text-[10px]"
+                  disabled={!keyDrafts[pk.env]?.trim()}
+                  onClick={() => saveKey(pk.env, pk.provider)}>
+                  Save
+                </Button>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
