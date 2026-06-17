@@ -1,0 +1,87 @@
+[     637ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb610_next_dist_compiled_react-dom_c8e63228._.js:14537
+[    6777ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[    7062ms] [LOG] [Fast Refresh] done in 394ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[   28628ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[   28871ms] [LOG] [Fast Refresh] done in 342ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  123553ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  123554ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  123571ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  123574ms] [LOG] [WS] send deferred - socket not OPEN yet, retrying... @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1376
+[  123579ms] [LOG] [WS] cleanup - readyState: 0 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1339
+[  123580ms] [LOG] [WS] cleanup - readyState: 0 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1339
+[  123581ms] [LOG] [WS] cleanup - readyState: 0 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1339
+[  123582ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  123584ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  123588ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  124185ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1319
+[  124185ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1319
+[  124201ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1319
+[  124276ms] [LOG] [WS] send success - sending payload type: user_message @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1368
+[  124276ms] [LOG] [WS] send succeeded after 7 retries @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1384
+[  135505ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  135963ms] [LOG] [Fast Refresh] done in 561ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  142334ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  142663ms] [LOG] [Fast Refresh] done in 431ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  169850ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  170133ms] [LOG] [Fast Refresh] done in 387ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  224154ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  224483ms] [LOG] [Fast Refresh] done in 433ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  275800ms] [LOG] [WS] send success - sending payload type: user_message @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1368
+[  281456ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  281727ms] [LOG] [Fast Refresh] done in 372ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  317239ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  317613ms] [LOG] [Fast Refresh] done in 482ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  540845ms] [LOG] [WS] onclose - code: 1006 reason:  wasClean: false session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1334
+[  540847ms] [LOG] [WS] onclose - code: 1006 reason:  wasClean: false session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1334
+[  540847ms] [LOG] [WS] onclose - code: 1006 reason:  wasClean: false session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1334
+[  546489ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/acp/status:0
+[  549854ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/acp/status:0
+[  554220ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/acp/status:0
+[  560585ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/acp/status:0
+[  567958ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/acp/status:0
+[  568955ms] [LOG] [WS] cleanup - readyState: 3 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1339
+[  568957ms] [LOG] [WS] cleanup - readyState: 3 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1339
+[  568958ms] [LOG] [WS] cleanup - readyState: 3 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1339
+[  568959ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  568963ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  568972ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  571104ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/workspace/info?session_id=01KV8K98WJ0T9N7HMYDADPN2PQ:0
+[  571105ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/workspace/files?session_id=01KV8K98WJ0T9N7HMYDADPN2PQ:0
+[  571341ms] [ERROR] WebSocket connection to 'ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1315
+[  571342ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/workspace/files?session_id=01KV8HDH4MZGEGRH7Q62VB5G0M:0
+[  571342ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/workspace/info?session_id=01KV8HDH4MZGEGRH7Q62VB5G0M:0
+[  571348ms] [ERROR] [WS] onerror: Event session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/bb610_next_dist_5a5d6006._.js:2405
+[  571353ms] [LOG] [WS] onclose - code: 1006 reason:  wasClean: false session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1334
+[  571368ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M/messages:0
+[  571393ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/acp/status:0
+[  571630ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  571841ms] [LOG] [Fast Refresh] done in 320ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  573408ms] [ERROR] WebSocket connection to 'ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1315
+[  573408ms] [ERROR] [WS] onerror: Event session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/bb610_next_dist_5a5d6006._.js:2405
+[  573409ms] [LOG] [WS] onclose - code: 1006 reason:  wasClean: false session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1334
+[  574081ms] [LOG] [WS] cleanup - readyState: 3 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1339
+[  574082ms] [LOG] [WS] cleanup - readyState: 3 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1339
+[  574083ms] [LOG] [WS] cleanup - readyState: 0 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1339
+[  574084ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  574087ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  574092ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1314
+[  574711ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/workspace/files?session_id=01KV8HDH4MZGEGRH7Q62VB5G0M:0
+[  574711ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/workspace/info?session_id=01KV8HDH4MZGEGRH7Q62VB5G0M:0
+[  574725ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M/messages:0
+[  574973ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/acp/status:0
+[  575471ms] [ERROR] WebSocket connection to 'ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1315
+[  575768ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/workspace/files?session_id=01KV8K98WJ0T9N7HMYDADPN2PQ:0
+[  576451ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/workspace/info?session_id=01KV8K98WJ0T9N7HMYDADPN2PQ:0
+[  577071ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ/messages:0
+[  577552ms] [ERROR] WebSocket connection to 'ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1315
+[  577553ms] [ERROR] [WS] onerror: Event session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/bb610_next_dist_5a5d6006._.js:2405
+[  577553ms] [LOG] [WS] onclose - code: 1006 reason:  wasClean: false session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1334
+[  577767ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  577870ms] [LOG] [Fast Refresh] done in 214ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  579205ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/workspace/files?session_id=01KV8K98WJ0T9N7HMYDADPN2PQ:0
+[  579607ms] [ERROR] WebSocket connection to 'ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1315
+[  579608ms] [ERROR] [WS] onerror: Event session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/bb610_next_dist_5a5d6006._.js:2405
+[  579608ms] [LOG] [WS] onclose - code: 1006 reason:  wasClean: false session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1334
+[  579948ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/workspace/info?session_id=01KV8K98WJ0T9N7HMYDADPN2PQ:0
+[  580445ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ/messages:0
+[  581182ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1319

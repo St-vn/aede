@@ -1,0 +1,15 @@
+[     307ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[     942ms] [LOG] [Fast Refresh] done in 737ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[    1107ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb610_next_dist_compiled_react-dom_c8e63228._.js:14537
+[   38359ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[   38360ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[   38367ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[   38713ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[   38715ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[   38717ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[   58163ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[   58349ms] [LOG] [Fast Refresh] done in 290ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  101921ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  102191ms] [LOG] [Fast Refresh] done in 309ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  180752ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  180896ms] [LOG] [Fast Refresh] done in 222ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824

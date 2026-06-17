@@ -1,0 +1,295 @@
+[     342ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[    1159ms] [LOG] [Fast Refresh] done in 920ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[    1310ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb610_next_dist_compiled_react-dom_c8e63228._.js:14537
+[   36816ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[   36817ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[   36825ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[   37206ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[   37207ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[   37208ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[   45380ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[   45566ms] [LOG] [Fast Refresh] done in 293ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[   81289ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[   81291ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[   81293ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[   81790ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[   81791ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[   81791ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[   81942ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[   82014ms] [LOG] [Fast Refresh] done in 188ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[   89133ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[   89336ms] [LOG] [Fast Refresh] done in 307ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  108065ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  108317ms] [LOG] [Fast Refresh] done in 354ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  188271ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  188395ms] [LOG] [Fast Refresh] done in 225ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  188714ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  190692ms] [LOG] [Fast Refresh] done in 1740ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  190797ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  191620ms] [LOG] [Fast Refresh] done in 927ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  191881ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb610_next_dist_compiled_react-dom_c8e63228._.js:14537
+[  216405ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  217474ms] [LOG] [Fast Refresh] done in 1173ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  275935ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  275937ms] [LOG] [Fast Refresh] done in 105ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  309974ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  309975ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  309982ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  310288ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  310302ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  310318ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  325200ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  325201ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  325204ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  325537ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  325537ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  325552ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  326564ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  326565ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  326567ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  326874ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  326889ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  326905ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  334710ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5964
+[  334720ms] [LOG] [Fast Refresh] done in 115ms @ http://localhost:3000/_next/static/chunks/bb610_next_dist_client_56815ff6._.js:5824
+[  484554ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  484555ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  484557ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  484957ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  484959ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  484959ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  493120ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  493121ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  493123ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  493439ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  493455ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  493470ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  509757ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  509758ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  509760ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  510063ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  510081ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  510096ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  511263ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  511264ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  511266ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  511599ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  511601ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  511614ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  513220ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  513220ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  513223ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  513541ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  513557ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  513573ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  514610ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  514611ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  514613ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  514934ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  514936ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  514951ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  515675ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  515676ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  515679ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  515992ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  516008ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  516023ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  516539ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  516541ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  516544ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  516858ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  516874ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  516889ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  517392ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  517393ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  517396ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  517699ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  517714ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  517730ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  518823ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  518824ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  518826ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  519145ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  519160ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  519177ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  519579ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  519580ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  519583ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  519891ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  519906ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  519921ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  521793ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  521794ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  521796ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  522108ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  522120ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  522136ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  523277ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  523278ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  523281ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  523646ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  523647ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  523648ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  540317ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  540319ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  540322ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  540727ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  540728ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  540728ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  544366ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  544368ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  544370ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  544673ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  544689ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  544704ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTFM04F7VNC9NCNTSJ5Z84A @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  577747ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  577749ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  577754ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  578065ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  578081ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  578095ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTGF62HN24P03W3JJ0VJ4DE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  582607ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  582608ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  582611ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  582626ms] [WARNING] [Shiki] 10 instances have been created. Shiki is supposed to be used as a singleton, consider refactoring your code to cache your highlighter instance; Or call `highlighter.dispose()` to release unused instances. @ http://localhost:3000/_next/static/chunks/bb610_212f3d1c._.js:7264
+[  582917ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  582933ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  582948ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8HDH4MZGEGRH7Q62VB5G0M @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  591101ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  591102ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  591105ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  591408ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  591424ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  591438ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8K98WJ0T9N7HMYDADPN2PQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  594754ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  594755ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  594757ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  595069ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  595085ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  595100ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8KRVTAGF6Z1HBVB1XFAQ1W @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  596359ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  596360ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  596363ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  596668ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  596684ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  596701ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8M4AGNAHT48680MCRGERTM @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  598423ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MNEWEJEFRW7G1NX8WNNYE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  598424ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MNEWEJEFRW7G1NX8WNNYE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  598427ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MNEWEJEFRW7G1NX8WNNYE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  598771ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MNEWEJEFRW7G1NX8WNNYE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  598773ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MNEWEJEFRW7G1NX8WNNYE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  598773ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MNEWEJEFRW7G1NX8WNNYE @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  599575ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  599576ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  599579ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  599889ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  599906ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  599921ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8MV5XKYQKQ56CTHC4EW9EX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  601696ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8NWND9VAYSW85AMMT9H74Y @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  601698ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8NWND9VAYSW85AMMT9H74Y @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  601701ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8NWND9VAYSW85AMMT9H74Y @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  602085ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8NWND9VAYSW85AMMT9H74Y @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  602085ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8NWND9VAYSW85AMMT9H74Y @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  602086ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8NWND9VAYSW85AMMT9H74Y @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  603305ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8P4SCK5VJYD0SF13ZWVSCA @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  603306ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8P4SCK5VJYD0SF13ZWVSCA @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  603309ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8P4SCK5VJYD0SF13ZWVSCA @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  603681ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8P4SCK5VJYD0SF13ZWVSCA @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  603681ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8P4SCK5VJYD0SF13ZWVSCA @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  603681ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8P4SCK5VJYD0SF13ZWVSCA @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  604733ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  604734ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  604738ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  605040ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  605055ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  605069ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8R60C7Z4BPME1JJ3APAJRW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  605979ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8TJK985VQJPJ0BXSXA0DYF @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  605980ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8TJK985VQJPJ0BXSXA0DYF @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  605983ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8TJK985VQJPJ0BXSXA0DYF @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  606327ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8TJK985VQJPJ0BXSXA0DYF @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  606329ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8TJK985VQJPJ0BXSXA0DYF @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  606336ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8TJK985VQJPJ0BXSXA0DYF @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  608063ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8TWADMHP2ZAZ9QAMY5KSBV @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  608064ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8TWADMHP2ZAZ9QAMY5KSBV @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  608067ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV8TWADMHP2ZAZ9QAMY5KSBV @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  608383ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8TWADMHP2ZAZ9QAMY5KSBV @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  608472ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8TWADMHP2ZAZ9QAMY5KSBV @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  608473ms] [LOG] [WS] onopen - readyState: 1 session: 01KV8TWADMHP2ZAZ9QAMY5KSBV @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  609755ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV92ZPG00NA01BB3TXKGT6VQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  609756ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV92ZPG00NA01BB3TXKGT6VQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  609759ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV92ZPG00NA01BB3TXKGT6VQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  610100ms] [LOG] [WS] onopen - readyState: 1 session: 01KV92ZPG00NA01BB3TXKGT6VQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  610100ms] [LOG] [WS] onopen - readyState: 1 session: 01KV92ZPG00NA01BB3TXKGT6VQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  610101ms] [LOG] [WS] onopen - readyState: 1 session: 01KV92ZPG00NA01BB3TXKGT6VQ @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  625635ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV97VY168AYTC6YQR7AD735S @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  625636ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV97VY168AYTC6YQR7AD735S @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  625640ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV97VY168AYTC6YQR7AD735S @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  625977ms] [LOG] [WS] onopen - readyState: 1 session: 01KV97VY168AYTC6YQR7AD735S @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  625979ms] [LOG] [WS] onopen - readyState: 1 session: 01KV97VY168AYTC6YQR7AD735S @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  625982ms] [LOG] [WS] onopen - readyState: 1 session: 01KV97VY168AYTC6YQR7AD735S @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  628769ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9C7690FBNVND5B0A3QV35J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  628770ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9C7690FBNVND5B0A3QV35J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  628772ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9C7690FBNVND5B0A3QV35J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  629119ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9C7690FBNVND5B0A3QV35J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  629119ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9C7690FBNVND5B0A3QV35J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  629119ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9C7690FBNVND5B0A3QV35J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  630523ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTE5TDQC34V6C98PVX962RX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  630525ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTE5TDQC34V6C98PVX962RX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  630528ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTTE5TDQC34V6C98PVX962RX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  631042ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTE5TDQC34V6C98PVX962RX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  631042ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTE5TDQC34V6C98PVX962RX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  631043ms] [LOG] [WS] onopen - readyState: 1 session: 01KTTE5TDQC34V6C98PVX962RX @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  632212ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTT9YN7R1F521ES631EENZAW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  632213ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTT9YN7R1F521ES631EENZAW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  632216ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KTT9YN7R1F521ES631EENZAW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  632616ms] [LOG] [WS] onopen - readyState: 1 session: 01KTT9YN7R1F521ES631EENZAW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  632650ms] [LOG] [WS] onopen - readyState: 1 session: 01KTT9YN7R1F521ES631EENZAW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  632650ms] [LOG] [WS] onopen - readyState: 1 session: 01KTT9YN7R1F521ES631EENZAW @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  635465ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  635466ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  635468ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  635781ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  635797ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  635812ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  652309ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  652310ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  652313ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  652625ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  652640ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  652655ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  653445ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  653446ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  653450ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  653758ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  653774ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  653790ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  659748ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  659749ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  659753ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  660067ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  660084ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  660098ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  662919ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  662920ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  662922ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  663226ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  663242ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  663258ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  663694ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  663695ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  663699ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  664004ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  664020ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  664034ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DCFEF3S7VKN4B5SHGM95J @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  698047ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  698049ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  698052ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  698370ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  698384ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  698403ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9CABVNPJ7S66WZ45SPF76C @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  711343ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  711345ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  711349ms] [LOG] [WS] creating socket: ws://localhost:8000/ws/sessions/01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1356
+[  711731ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  711752ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361
+[  711766ms] [LOG] [WS] onopen - readyState: 1 session: 01KV9DHJVE5WW7H1G5WENWT21G @ http://localhost:3000/_next/static/chunks/Documents_GitHub_aede_ui_49f4b20c._.js:1361

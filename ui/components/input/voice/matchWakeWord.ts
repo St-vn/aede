@@ -23,12 +23,20 @@ export function matchWakeWord(transcript: string, soul: SoulData): string | null
   const norm = transcript.toLowerCase().replace(/[^\w\s']/g, '').trim()
   const candidates = [soul.wake_word, ...(soul.aliases || [])].filter(Boolean) as string[]
   for (const c of candidates) {
-    if (norm.endsWith(c.toLowerCase())) return c
-    if (norm.includes(' ' + c.toLowerCase() + ' ')) return c
+    const lc = c.toLowerCase()
+    if (norm === lc) return c
+    if (norm.startsWith(lc + ' ')) return c
+    if (norm.endsWith(' ' + lc)) return c
+    if (norm.includes(' ' + lc + ' ')) return c
   }
+  // fuzzy: check first word of transcript against first word of wake word
+  const firstWord = norm.split(/\s+/)[0] ?? ''
   const lastWord = norm.split(/\s+/).pop() ?? ''
   for (const c of candidates) {
-    const targetLast = c.toLowerCase().split(/\s+/).pop() ?? ''
+    const lc = c.toLowerCase()
+    const targetFirst = lc.split(/\s+/)[0] ?? ''
+    const targetLast = lc.split(/\s+/).pop() ?? ''
+    if (levenshtein(firstWord, targetFirst) <= 1 && targetFirst.length >= 4) return c
     if (levenshtein(lastWord, targetLast) <= 2 && targetLast.length >= 4) return c
   }
   return null

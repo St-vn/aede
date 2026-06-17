@@ -74,8 +74,8 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
     }
   }, [urlPromptOpen])
 
-  const submit = () => {
-    const trimmed = text.trim()
+  const submit = (override?: string) => {
+    const trimmed = (override ?? text).trim()
     if ((!trimmed && imageAttachments.length === 0) || disabled) return
     const message = buildMessageText(trimmed, imageAttachments)
     onSend(message, model)
@@ -439,7 +439,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
             <Tooltip>
               <TooltipTrigger render={
                 <Button size="icon" className="w-7 h-7" aria-label="Send message"
-                  disabled={disabled || (!text.trim() && imageAttachments.length === 0)} onClick={submit}>
+                  disabled={disabled || (!text.trim() && imageAttachments.length === 0)} onClick={() => submit()}>
                   <ArrowUp className="w-4 h-4" />
                 </Button>
               } />

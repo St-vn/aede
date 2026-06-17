@@ -1,0 +1,247 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: aede
+        - button "Collapse sidebar" [ref=e7]:
+          - img
+      - button "New session" [ref=e9]:
+        - img
+        - generic [ref=e10]: New Session
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]:
+            - button "aede 2" [expanded] [ref=e14]:
+              - img [ref=e15]
+              - generic [ref=e17]: aede
+              - generic [ref=e18]: "2"
+            - button "Project actions" [ref=e19]:
+              - img
+            - button "New session in project" [ref=e20]:
+              - img [ref=e21]
+          - generic [ref=e23]:
+            - generic [ref=e24]:
+              - img
+              - searchbox "Search sessions" [ref=e25]
+            - generic [ref=e26]:
+              - generic [ref=e27]:
+                - button "ok i want to improve the visuals for the chatting experience 6 days ago · code/sonnet-4" [ref=e28]:
+                  - generic [ref=e29]:
+                    - paragraph [ref=e30]: ok i want to improve the visuals for the chatting experience
+                    - paragraph [ref=e31]: 6 days ago · code/sonnet-4
+                - button "Session actions" [ref=e33]:
+                  - img
+              - generic [ref=e34]:
+                - button "can you tell me how adding providers via the models tab in s 6 days ago · code/haiku-4" [ref=e35]:
+                  - generic [ref=e36]:
+                    - paragraph [ref=e37]: can you tell me how adding providers via the models tab in s
+                    - paragraph [ref=e38]: 6 days ago · code/haiku-4
+                - button "Session actions" [ref=e40]:
+                  - img
+        - button "Add project" [ref=e41]:
+          - img [ref=e42]
+          - text: Add project
+        - generic [ref=e43]:
+          - button "Chats 18" [expanded] [ref=e44]:
+            - img [ref=e45]
+            - generic [ref=e47]: Chats
+            - generic [ref=e48]: "18"
+          - generic [ref=e50]:
+            - generic [ref=e51]:
+              - img
+              - searchbox "Search sessions" [ref=e52]
+            - generic [ref=e53]:
+              - generic [ref=e219]:
+                - button "Untitled less than a minute ago · code/haiku-4" [ref=e221]:
+                  - generic [ref=e222]:
+                    - paragraph [ref=e223]: Untitled
+                    - paragraph [ref=e224]: less than a minute ago · code/haiku-4
+                - button "Session actions" [ref=e226]:
+                  - img
+              - generic [ref=e54]:
+                - button "Use your Edit tool to change \"hello\" to \"goodbye world\" in C 19 minutes ago · code/haiku-4" [ref=e271]:
+                  - generic [ref=e56]:
+                    - paragraph [ref=e57]: Use your Edit tool to change "hello" to "goodbye world" in C
+                    - paragraph [ref=e58]: 19 minutes ago · code/haiku-4
+                - button "Session actions" [ref=e60]:
+                  - img
+              - generic [ref=e61]:
+                - button "Read the file C:/Users/megas/Documents/GitHub/aede/test_diff 22 minutes ago · code/sonnet-4" [ref=e272]:
+                  - generic [ref=e63]:
+                    - paragraph [ref=e64]: Read the file C:/Users/megas/Documents/GitHub/aede/test_diff
+                    - paragraph [ref=e65]: 22 minutes ago · code/sonnet-4
+                - button "Session actions" [ref=e67]:
+                  - img
+              - generic [ref=e68]:
+                - button "Use write_file to write \"hello\" to C:/Users/megas/Documents/ 31 minutes ago · code/sonnet-4" [ref=e227]:
+                  - generic [ref=e70]:
+                    - paragraph [ref=e71]: Use write_file to write "hello" to C:/Users/megas/Documents/
+                    - paragraph [ref=e72]: 31 minutes ago · code/sonnet-4
+                - button "Session actions" [ref=e74]:
+                  - img
+              - generic [ref=e75]:
+                - button "Use the Edit tool to change \"aide\" back to \"aid\" in C:/Users 37 minutes ago · code/sonnet-4" [ref=e228]:
+                  - generic [ref=e77]:
+                    - paragraph [ref=e78]: Use the Edit tool to change "aide" back to "aid" in C:/Users
+                    - paragraph [ref=e79]: 37 minutes ago · code/sonnet-4
+                - button "Session actions" [ref=e81]:
+                  - img
+              - generic [ref=e82]:
+                - button "Use the Edit tool to change the word \"hello\" to \"goodbye\" in about 1 hour ago · code/sonnet-4" [ref=e83]:
+                  - generic [ref=e84]:
+                    - paragraph [ref=e85]: Use the Edit tool to change the word "hello" to "goodbye" in
+                    - paragraph [ref=e86]: about 1 hour ago · code/sonnet-4
+                - button "Session actions" [ref=e88]:
+                  - img
+              - generic [ref=e89]:
+                - button "do your code blocks work? about 1 hour ago · code/sonnet-4" [ref=e90]:
+                  - generic [ref=e91]:
+                    - paragraph [ref=e92]: do your code blocks work?
+                    - paragraph [ref=e93]: about 1 hour ago · code/sonnet-4
+                - button "Session actions" [ref=e95]:
+                  - img
+              - generic [ref=e96]:
+                - button "what is tung tung tung sahur? 6 days ago · code/sonnet-4" [ref=e97]:
+                  - generic [ref=e98]:
+                    - paragraph [ref=e99]: what is tung tung tung sahur?
+                    - paragraph [ref=e100]: 6 days ago · code/sonnet-4
+                - button "Session actions" [ref=e102]:
+                  - img
+              - generic [ref=e103]:
+                - button "who is the better knicks player? darren watkins jr or symere 6 days ago · code/sonnet-4" [ref=e104]:
+                  - generic [ref=e105]:
+                    - paragraph [ref=e106]: who is the better knicks player? darren watkins jr or symere
+                    - paragraph [ref=e107]: 6 days ago · code/sonnet-4
+                - button "Session actions" [ref=e109]:
+                  - img
+              - generic [ref=e110]:
+                - button "what is a larper? 6 days ago · code/haiku-4" [ref=e111]:
+                  - generic [ref=e112]:
+                    - paragraph [ref=e113]: what is a larper?
+                    - paragraph [ref=e114]: 6 days ago · code/haiku-4
+                - button "Session actions" [ref=e116]:
+                  - img
+              - generic [ref=e117]:
+                - button "what is openclaw? 6 days ago · code/haiku-4" [ref=e118]:
+                  - generic [ref=e119]:
+                    - paragraph [ref=e120]: what is openclaw?
+                    - paragraph [ref=e121]: 6 days ago · code/haiku-4
+                - button "Session actions" [ref=e123]:
+                  - img
+              - generic [ref=e124]:
+                - button "can you tell me what the weather will be like tomorrow? 6 days ago · gemini" [ref=e125]:
+                  - generic [ref=e126]:
+                    - paragraph [ref=e127]: can you tell me what the weather will be like tomorrow?
+                    - paragraph [ref=e128]: 6 days ago · gemini
+                - button "Session actions" [ref=e130]:
+                  - img
+              - generic [ref=e131]:
+                - button "Say hello in exactly 5 words. 6 days ago · gemini" [ref=e132]:
+                  - generic [ref=e133]:
+                    - paragraph [ref=e134]: Say hello in exactly 5 words.
+                    - paragraph [ref=e135]: 6 days ago · gemini
+                - button "Session actions" [ref=e137]:
+                  - img
+              - generic [ref=e138]:
+                - button "what is le sserafim? 6 days ago · gemini" [ref=e139]:
+                  - generic [ref=e140]:
+                    - paragraph [ref=e141]: what is le sserafim?
+                    - paragraph [ref=e142]: 6 days ago · gemini
+                - button "Session actions" [ref=e144]:
+                  - img
+              - generic [ref=e145]:
+                - button "Say hello in exactly 5 words. 6 days ago · sonnet-4" [ref=e146]:
+                  - generic [ref=e147]:
+                    - paragraph [ref=e148]: Say hello in exactly 5 words.
+                    - paragraph [ref=e149]: 6 days ago · sonnet-4
+                - button "Session actions" [ref=e151]:
+                  - img
+              - generic [ref=e152]:
+                - button "can you look up hermes agent's features that make it stand o 6 days ago · code/sonnet-4" [ref=e153]:
+                  - generic [ref=e154]:
+                    - paragraph [ref=e155]: can you look up hermes agent's features that make it stand o
+                    - paragraph [ref=e156]: 6 days ago · code/sonnet-4
+                - button "Session actions" [ref=e158]:
+                  - img
+              - generic [ref=e159]:
+                - button "can you look up hermes agent's features that make it stand o 6 days ago · code/sonnet-4" [ref=e160]:
+                  - generic [ref=e161]:
+                    - paragraph [ref=e162]: can you look up hermes agent's features that make it stand o
+                    - paragraph [ref=e163]: 6 days ago · code/sonnet-4
+                - button "Session actions" [ref=e165]:
+                  - img
+              - generic [ref=e166]:
+                - button "who is nmixx? 6 days ago · code/haiku-4" [ref=e167]:
+                  - generic [ref=e168]:
+                    - paragraph [ref=e169]: who is nmixx?
+                    - paragraph [ref=e170]: 6 days ago · code/haiku-4
+                - button "Session actions" [ref=e172]:
+                  - img
+      - generic [ref=e180]:
+        - button "Profile" [ref=e181]:
+          - img
+        - button "Settings" [ref=e182]:
+          - img
+    - main [ref=e183]:
+      - generic [ref=e229]:
+        - generic [ref=e231]:
+          - generic [ref=e273]:
+            - generic [ref=e274]:
+              - paragraph [ref=e277]: Use your Edit tool to change "hello" to "goodbye world" in C:/Users/megas/Documents/GitHub/aede/test_diff_ui.txt
+              - generic [ref=e278]: 12:58
+            - generic [ref=e279]: S
+          - generic [ref=e280]:
+            - generic [ref=e281]:
+              - button "Thinking 329 chars" [ref=e282]:
+                - img [ref=e283]
+                - generic [ref=e291]: Thinking
+                - generic [ref=e292]: 329 chars
+                - img [ref=e293]
+              - generic [ref=e296]: "The user is asking me to edit the file again. Let me read it first to see the current state.Now the file has different content. It shows: - line one - hello - line three The user wants to change \"hello\" to \"goodbye world\". I need to edit just the \"hello\" part on line 2.Good, edit successful. Changed \"hello\" to \"goodbye world\"."
+            - paragraph [ref=e298]: Done. Changed "hello" → "goodbye world".
+          - button "Read" [ref=e300]:
+            - img [ref=e301]
+            - generic [ref=e303]: Read
+            - img [ref=e304]
+          - generic [ref=e307]:
+            - button "Edit" [expanded] [active] [ref=e308]:
+              - img [ref=e309]
+              - generic [ref=e311]: Edit
+              - img [ref=e312]
+            - generic [ref=e317]:
+              - generic [ref=e318]:
+                - generic "C:/Users/megas/Documents/GitHub/aede/test_diff_ui.txt" [ref=e319]: test_diff_ui.txt
+                - generic [ref=e320]:
+                  - generic [ref=e321]: "+1"
+                  - generic [ref=e322]: "-1"
+              - generic [ref=e323]:
+                - generic [ref=e324]:
+                  - generic [ref=e325]: "1"
+                  - generic [ref=e326]: "-"
+                  - generic [ref=e327]: hello
+                - generic [ref=e328]:
+                  - generic [ref=e329]: "1"
+                  - generic [ref=e330]: +
+                  - generic [ref=e331]: goodbye world
+        - generic [ref=e258]:
+          - textbox "Message" [ref=e259]:
+            - /placeholder: Write a message... Use @ to mention files.
+          - generic [ref=e260]:
+            - button "Add context" [ref=e315]:
+              - img
+            - generic [ref=e261]:
+              - button "Select model" [ref=e262]: Claude Code / Haiku 4.5
+              - generic [ref=e263]:
+                - generic [ref=e264]:
+                  - img [ref=e265]
+                  - text: Connected
+                - button [ref=e269]:
+                  - img
+              - button "Voice input" [ref=e270]:
+                - img
+              - button "Send message" [disabled]:
+                - img
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e213] [cursor=pointer]:
+    - img [ref=e214]
+  - alert [ref=e217]

@@ -1,0 +1,238 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: aede
+        - button "Collapse sidebar" [ref=e7]:
+          - img
+      - button "New session" [ref=e9]:
+        - img
+        - generic [ref=e10]: New Session
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]:
+            - button "aede 2" [expanded] [ref=e14]:
+              - img [ref=e15]
+              - generic [ref=e17]: aede
+              - generic [ref=e18]: "2"
+            - button "Project actions" [ref=e19]:
+              - img
+            - button "New session in project" [ref=e20]:
+              - img [ref=e21]
+          - generic [ref=e23]:
+            - generic [ref=e24]:
+              - img
+              - searchbox "Search sessions" [ref=e25]
+            - generic [ref=e26]:
+              - generic [ref=e27]:
+                - button "ok i want to improve the visuals for the chatting experience 6 days ago · code/sonnet-4" [ref=e28]:
+                  - generic [ref=e29]:
+                    - paragraph [ref=e30]: ok i want to improve the visuals for the chatting experience
+                    - paragraph [ref=e31]: 6 days ago · code/sonnet-4
+                - button "Session actions" [ref=e33]:
+                  - img
+              - generic [ref=e34]:
+                - button "can you tell me how adding providers via the models tab in s 6 days ago · code/haiku-4" [ref=e35]:
+                  - generic [ref=e36]:
+                    - paragraph [ref=e37]: can you tell me how adding providers via the models tab in s
+                    - paragraph [ref=e38]: 6 days ago · code/haiku-4
+                - button "Session actions" [ref=e40]:
+                  - img
+        - button "Add project" [ref=e41]:
+          - img [ref=e42]
+          - text: Add project
+        - generic [ref=e43]:
+          - button "Chats 18" [expanded] [ref=e44]:
+            - img [ref=e45]
+            - generic [ref=e47]: Chats
+            - generic [ref=e48]: "18"
+          - generic [ref=e50]:
+            - generic [ref=e51]:
+              - img
+              - searchbox "Search sessions" [ref=e52]
+            - generic [ref=e53]:
+              - generic [ref=e310]:
+                - button "Untitled less than a minute ago · code/sonnet-4" [ref=e312]:
+                  - generic [ref=e313]:
+                    - paragraph [ref=e314]: Untitled
+                    - paragraph [ref=e315]: less than a minute ago · code/sonnet-4
+                - button "Session actions" [ref=e317]:
+                  - img
+              - generic [ref=e54]:
+                - button "do your code blocks work? 33 minutes ago · code/sonnet-4" [ref=e318]:
+                  - generic [ref=e56]:
+                    - paragraph [ref=e57]: do your code blocks work?
+                    - paragraph [ref=e58]: 33 minutes ago · code/sonnet-4
+                - button "Session actions" [ref=e60]:
+                  - img
+              - generic [ref=e61]:
+                - button "what is tung tung tung sahur? 5 days ago · code/sonnet-4" [ref=e62]:
+                  - generic [ref=e63]:
+                    - paragraph [ref=e64]: what is tung tung tung sahur?
+                    - paragraph [ref=e65]: 5 days ago · code/sonnet-4
+                - button "Session actions" [ref=e67]:
+                  - img
+              - generic [ref=e68]:
+                - button "who is the better knicks player? darren watkins jr or symere 5 days ago · code/sonnet-4" [ref=e69]:
+                  - generic [ref=e70]:
+                    - paragraph [ref=e71]: who is the better knicks player? darren watkins jr or symere
+                    - paragraph [ref=e72]: 5 days ago · code/sonnet-4
+                - button "Session actions" [ref=e74]:
+                  - img
+              - generic [ref=e75]:
+                - button "what is a larper? 5 days ago · code/haiku-4" [ref=e76]:
+                  - generic [ref=e77]:
+                    - paragraph [ref=e78]: what is a larper?
+                    - paragraph [ref=e79]: 5 days ago · code/haiku-4
+                - button "Session actions" [ref=e81]:
+                  - img
+              - generic [ref=e82]:
+                - button "what is openclaw? 6 days ago · code/haiku-4" [ref=e83]:
+                  - generic [ref=e84]:
+                    - paragraph [ref=e85]: what is openclaw?
+                    - paragraph [ref=e86]: 6 days ago · code/haiku-4
+                - button "Session actions" [ref=e88]:
+                  - img
+              - generic [ref=e89]:
+                - button "can you tell me what the weather will be like tomorrow? 6 days ago · gemini" [ref=e90]:
+                  - generic [ref=e91]:
+                    - paragraph [ref=e92]: can you tell me what the weather will be like tomorrow?
+                    - paragraph [ref=e93]: 6 days ago · gemini
+                - button "Session actions" [ref=e95]:
+                  - img
+              - generic [ref=e96]:
+                - button "Say hello in exactly 5 words. 6 days ago · gemini" [ref=e97]:
+                  - generic [ref=e98]:
+                    - paragraph [ref=e99]: Say hello in exactly 5 words.
+                    - paragraph [ref=e100]: 6 days ago · gemini
+                - button "Session actions" [ref=e102]:
+                  - img
+              - generic [ref=e103]:
+                - button "what is le sserafim? 6 days ago · gemini" [ref=e104]:
+                  - generic [ref=e105]:
+                    - paragraph [ref=e106]: what is le sserafim?
+                    - paragraph [ref=e107]: 6 days ago · gemini
+                - button "Session actions" [ref=e109]:
+                  - img
+              - generic [ref=e110]:
+                - button "Say hello in exactly 5 words. 6 days ago · sonnet-4" [ref=e111]:
+                  - generic [ref=e112]:
+                    - paragraph [ref=e113]: Say hello in exactly 5 words.
+                    - paragraph [ref=e114]: 6 days ago · sonnet-4
+                - button "Session actions" [ref=e116]:
+                  - img
+              - generic [ref=e117]:
+                - button "can you look up hermes agent's features that make it stand o 6 days ago · code/sonnet-4" [ref=e118]:
+                  - generic [ref=e119]:
+                    - paragraph [ref=e120]: can you look up hermes agent's features that make it stand o
+                    - paragraph [ref=e121]: 6 days ago · code/sonnet-4
+                - button "Session actions" [ref=e123]:
+                  - img
+              - generic [ref=e124]:
+                - button "can you look up hermes agent's features that make it stand o 6 days ago · code/sonnet-4" [ref=e125]:
+                  - generic [ref=e126]:
+                    - paragraph [ref=e127]: can you look up hermes agent's features that make it stand o
+                    - paragraph [ref=e128]: 6 days ago · code/sonnet-4
+                - button "Session actions" [ref=e130]:
+                  - img
+              - generic [ref=e131]:
+                - button "who is nmixx? 6 days ago · code/haiku-4" [ref=e132]:
+                  - generic [ref=e133]:
+                    - paragraph [ref=e134]: who is nmixx?
+                    - paragraph [ref=e135]: 6 days ago · code/haiku-4
+                - button "Session actions" [ref=e137]:
+                  - img
+              - generic [ref=e138]:
+                - button "connecting to ACP with claude code does not work, i keep get 6 days ago · gemini" [ref=e139]:
+                  - generic [ref=e140]:
+                    - paragraph [ref=e141]: connecting to ACP with claude code does not work, i keep get
+                    - paragraph [ref=e142]: 6 days ago · gemini
+                - button "Session actions" [ref=e144]:
+                  - img
+              - generic [ref=e145]:
+                - button "list · 2026-06-09 06:15 7 days ago · chat" [ref=e146]:
+                  - generic [ref=e147]:
+                    - paragraph [ref=e148]: list · 2026-06-09 06:15
+                    - paragraph [ref=e149]: 7 days ago · chat
+                - button "Session actions" [ref=e151]:
+                  - img
+              - generic [ref=e152]:
+                - button "serve · 2026-06-08 00:52 9 days ago · 2.5-flash" [ref=e153]:
+                  - generic [ref=e154]:
+                    - paragraph [ref=e155]: serve · 2026-06-08 00:52
+                    - paragraph [ref=e156]: 9 days ago · 2.5-flash
+                - button "Session actions" [ref=e158]:
+                  - img
+              - generic [ref=e159]:
+                - button "serve · 2026-06-08 00:41 9 days ago · 2.5-flash" [ref=e160]:
+                  - generic [ref=e161]:
+                    - paragraph [ref=e162]: serve · 2026-06-08 00:41
+                    - paragraph [ref=e163]: 9 days ago · 2.5-flash
+                - button "Session actions" [ref=e165]:
+                  - img
+              - generic [ref=e166]:
+                - button "working newjeans query 11 days ago · 2.5-flash" [ref=e167]:
+                  - generic [ref=e168]:
+                    - paragraph [ref=e169]: working newjeans query
+                    - paragraph [ref=e170]: 11 days ago · 2.5-flash
+                - button "Session actions" [ref=e172]:
+                  - img
+      - generic [ref=e180]:
+        - button "Profile" [ref=e181]:
+          - img
+        - button "Settings" [ref=e182]:
+          - img
+    - main [ref=e183]:
+      - generic [ref=e319]:
+        - generic [ref=e321]:
+          - generic [ref=e361]:
+            - generic [ref=e362]:
+              - paragraph [ref=e365]: Use the Edit tool to change the word "hello" to "goodbye" in the file C:/Users/megas/Documents/GitHub/aede/README.md — just one small edit to test the diff view
+              - generic [ref=e366]: 12:12
+            - generic [ref=e367]: S
+          - generic [ref=e368]:
+            - generic [ref=e369]:
+              - button "Thinking 82 chars" [ref=e370]:
+                - img [ref=e371]
+                - generic [ref=e379]: Thinking
+                - generic [ref=e380]: 82 chars
+                - img [ref=e381]
+              - generic [ref=e384]: The user wants me to make a small edit to README.md to test the diff view in aede.
+            - paragraph [ref=e386]:
+              - text: No "hello" in README.md. Making an obvious demo edit instead:Check aede now — that Edit should render as a diff card. One
+              - code [ref=e390]: "`-`"
+              - text: line (old) in red, one
+              - code [ref=e391]: "`+`"
+              - text: line (new) in green. Reverting:Two diff cards should now be visible — one for each Edit. Did it render?
+          - generic [ref=e392]:
+            - generic [ref=e393]:
+              - paragraph [ref=e396]: "Use the Edit tool right now to change \"aid\" to \"aide\" in C:/Users/megas/Documents/GitHub/aede/README.md. The old_string is exactly: pronounced \"aid\" and the new_string is: pronounced \"aide\". Do it now."
+              - generic [ref=e397]: 12:15
+            - generic [ref=e398]: S
+          - generic [ref=e399]:
+            - button "Thinking" [disabled] [ref=e401]:
+              - img [ref=e402]
+              - generic [ref=e410]: Thinking
+            - generic [ref=e414]: ▌
+        - generic [ref=e348]:
+          - textbox "Message" [disabled] [ref=e349]:
+            - /placeholder: Write a message... Use @ to mention files.
+          - generic [ref=e350]:
+            - button "Add context" [disabled]:
+              - img
+            - generic [ref=e351]:
+              - button "Select model" [ref=e352]: Claude Code / Sonnet 4.6
+              - generic [ref=e353]:
+                - generic [ref=e354]:
+                  - img [ref=e355]
+                  - text: Connected
+                - button [ref=e359]:
+                  - img
+              - button "Voice input" [ref=e360]:
+                - img
+              - button "Send message" [disabled]:
+                - img
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e213] [cursor=pointer]:
+    - img [ref=e214]
+  - alert [ref=e217]

@@ -1,0 +1,261 @@
+- generic [ref=e1]:
+  - generic [ref=e4]:
+    - complementary [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: aede
+        - button "Collapse sidebar" [ref=e8]:
+          - img
+      - button "New session" [ref=e10]:
+        - img
+        - generic [ref=e11]: New Session
+      - generic [ref=e12]:
+        - generic [ref=e13]:
+          - generic [ref=e14]:
+            - button "aede 0" [expanded] [ref=e15]:
+              - img [ref=e16]
+              - generic [ref=e18]: aede
+              - generic [ref=e19]: "0"
+            - button "Project actions" [ref=e20]:
+              - img
+            - button "New session in project" [ref=e21]:
+              - img [ref=e22]
+          - paragraph [ref=e24]: No sessions yet
+        - button "Add project" [ref=e25]:
+          - img [ref=e26]
+          - text: Add project
+        - generic [ref=e27]:
+          - button "Chats 19" [expanded] [ref=e28]:
+            - img [ref=e29]
+            - generic [ref=e31]: Chats
+            - generic [ref=e32]: "19"
+          - generic [ref=e34]:
+            - generic [ref=e35]:
+              - img
+              - searchbox "Search sessions" [ref=e36]
+            - generic [ref=e37]:
+              - generic [ref=e38]:
+                - button "First read C:/Users/megas/Documents/GitHub/aede/pw_multistep 1 minute ago · code/haiku-4" [active] [ref=e40]:
+                  - generic [ref=e41]:
+                    - paragraph [ref=e42]: First read C:/Users/megas/Documents/GitHub/aede/pw_multistep
+                    - paragraph [ref=e43]: 1 minute ago · code/haiku-4
+                - button "Session actions" [ref=e45]:
+                  - img
+              - generic [ref=e46]:
+                - button "Use the write_file tool to overwrite C:/Users/megas/Document about 1 hour ago · v4-pro" [ref=e47]:
+                  - generic [ref=e48]:
+                    - paragraph [ref=e49]: Use the write_file tool to overwrite C:/Users/megas/Document
+                    - paragraph [ref=e50]: about 1 hour ago · v4-pro
+                - button "Session actions" [ref=e52]:
+                  - img
+              - generic [ref=e53]:
+                - button "Use your Edit tool to change \"hello world\" to \"goodbye world about 1 hour ago · code/haiku-4" [ref=e54]:
+                  - generic [ref=e55]:
+                    - paragraph [ref=e56]: Use your Edit tool to change "hello world" to "goodbye world
+                    - paragraph [ref=e57]: about 1 hour ago · code/haiku-4
+                - button "Session actions" [ref=e59]:
+                  - img
+              - generic [ref=e60]:
+                - 'button "edit test_diff_ui.txt: change hello to goodbye world please about 1 hour ago · code/haiku-4" [ref=e61]':
+                  - generic [ref=e62]:
+                    - paragraph [ref=e63]: "edit test_diff_ui.txt: change hello to goodbye world please"
+                    - paragraph [ref=e64]: about 1 hour ago · code/haiku-4
+                - button "Session actions" [ref=e66]:
+                  - img
+              - generic [ref=e67]:
+                - 'button "edit test_diff_ui.txt: change hello to goodbye world please about 1 hour ago · v4-flash" [ref=e68]':
+                  - generic [ref=e69]:
+                    - paragraph [ref=e70]: "edit test_diff_ui.txt: change hello to goodbye world please"
+                    - paragraph [ref=e71]: about 1 hour ago · v4-flash
+                - button "Session actions" [ref=e73]:
+                  - img
+              - generic [ref=e74]:
+                - 'button "edit test_diff_ui.txt: change hello to goodbye world please about 3 hours ago · v4-flash" [ref=e75]':
+                  - generic [ref=e76]:
+                    - paragraph [ref=e77]: "edit test_diff_ui.txt: change hello to goodbye world please"
+                    - paragraph [ref=e78]: about 3 hours ago · v4-flash
+                - button "Session actions" [ref=e80]:
+                  - img
+              - generic [ref=e81]:
+                - button "--serve · 2026-06-16 20:46 about 4 hours ago · v4-pro" [ref=e82]:
+                  - generic [ref=e83]:
+                    - paragraph [ref=e84]: "--serve · 2026-06-16 20:46"
+                    - paragraph [ref=e85]: about 4 hours ago · v4-pro
+                - button "Session actions" [ref=e87]:
+                  - img
+              - generic [ref=e88]:
+                - 'button "edit test_diff_ui.txt: change hello to goodbye world please about 6 hours ago · opencode" [ref=e89]':
+                  - generic [ref=e90]:
+                    - paragraph [ref=e91]: "edit test_diff_ui.txt: change hello to goodbye world please"
+                    - paragraph [ref=e92]: about 6 hours ago · opencode
+                - button "Session actions" [ref=e94]:
+                  - img
+              - generic [ref=e95]:
+                - button "Use your Edit tool to change \"hello\" to \"goodbye world\" in C about 7 hours ago · gemini" [ref=e96]:
+                  - generic [ref=e97]:
+                    - paragraph [ref=e98]: Use your Edit tool to change "hello" to "goodbye world" in C
+                    - paragraph [ref=e99]: about 7 hours ago · gemini
+                - button "Session actions" [ref=e101]:
+                  - img
+              - generic [ref=e102]:
+                - button "Read the file C:/Users/megas/Documents/GitHub/aede/test_diff about 8 hours ago · code/sonnet-4" [ref=e103]:
+                  - generic [ref=e104]:
+                    - paragraph [ref=e105]: Read the file C:/Users/megas/Documents/GitHub/aede/test_diff
+                    - paragraph [ref=e106]: about 8 hours ago · code/sonnet-4
+                - button "Session actions" [ref=e108]:
+                  - img
+              - generic [ref=e109]:
+                - button "Use write_file to write \"hello\" to C:/Users/megas/Documents/ about 8 hours ago · code/sonnet-4" [ref=e110]:
+                  - generic [ref=e111]:
+                    - paragraph [ref=e112]: Use write_file to write "hello" to C:/Users/megas/Documents/
+                    - paragraph [ref=e113]: about 8 hours ago · code/sonnet-4
+                - button "Session actions" [ref=e115]:
+                  - img
+              - generic [ref=e116]:
+                - button "Use the Edit tool to change \"aide\" back to \"aid\" in C:/Users about 9 hours ago · code/sonnet-4" [ref=e117]:
+                  - generic [ref=e118]:
+                    - paragraph [ref=e119]: Use the Edit tool to change "aide" back to "aid" in C:/Users
+                    - paragraph [ref=e120]: about 9 hours ago · code/sonnet-4
+                - button "Session actions" [ref=e122]:
+                  - img
+              - generic [ref=e123]:
+                - button "Use the Edit tool to change the word \"hello\" to \"goodbye\" in about 9 hours ago · code/sonnet-4" [ref=e124]:
+                  - generic [ref=e125]:
+                    - paragraph [ref=e126]: Use the Edit tool to change the word "hello" to "goodbye" in
+                    - paragraph [ref=e127]: about 9 hours ago · code/sonnet-4
+                - button "Session actions" [ref=e129]:
+                  - img
+              - generic [ref=e130]:
+                - button "do your code blocks work? about 9 hours ago · code/sonnet-4" [ref=e131]:
+                  - generic [ref=e132]:
+                    - paragraph [ref=e133]: do your code blocks work?
+                    - paragraph [ref=e134]: about 9 hours ago · code/sonnet-4
+                - button "Session actions" [ref=e136]:
+                  - img
+              - generic [ref=e137]:
+                - button "what is tung tung tung sahur? 6 days ago · code/sonnet-4" [ref=e138]:
+                  - generic [ref=e139]:
+                    - paragraph [ref=e140]: what is tung tung tung sahur?
+                    - paragraph [ref=e141]: 6 days ago · code/sonnet-4
+                - button "Session actions" [ref=e143]:
+                  - img
+              - generic [ref=e144]:
+                - button "who is the better knicks player? darren watkins jr or symere 6 days ago · code/sonnet-4" [ref=e145]:
+                  - generic [ref=e146]:
+                    - paragraph [ref=e147]: who is the better knicks player? darren watkins jr or symere
+                    - paragraph [ref=e148]: 6 days ago · code/sonnet-4
+                - button "Session actions" [ref=e150]:
+                  - img
+              - generic [ref=e151]:
+                - button "what is a larper? 6 days ago · code/haiku-4" [ref=e152]:
+                  - generic [ref=e153]:
+                    - paragraph [ref=e154]: what is a larper?
+                    - paragraph [ref=e155]: 6 days ago · code/haiku-4
+                - button "Session actions" [ref=e157]:
+                  - img
+              - generic [ref=e158]:
+                - button "what is openclaw? 6 days ago · code/haiku-4" [ref=e159]:
+                  - generic [ref=e160]:
+                    - paragraph [ref=e161]: what is openclaw?
+                    - paragraph [ref=e162]: 6 days ago · code/haiku-4
+                - button "Session actions" [ref=e164]:
+                  - img
+              - generic [ref=e165]:
+                - button "can you tell me what the weather will be like tomorrow? 6 days ago · gemini" [ref=e166]:
+                  - generic [ref=e167]:
+                    - paragraph [ref=e168]: can you tell me what the weather will be like tomorrow?
+                    - paragraph [ref=e169]: 6 days ago · gemini
+                - button "Session actions" [ref=e171]:
+                  - img
+      - generic [ref=e172]:
+        - button "Profile" [ref=e173]:
+          - img
+        - button "Settings" [ref=e174]:
+          - img
+    - main [ref=e175]:
+      - generic [ref=e176]:
+        - generic [ref=e178]:
+          - generic [ref=e179]:
+            - generic [ref=e180]:
+              - paragraph [ref=e183]: First read C:/Users/megas/Documents/GitHub/aede/pw_multistep.txt, then use your Edit tool to change "alpha" to "ALPHA" and separately change "gamma" to "GAMMA". Think between each step.
+              - generic [ref=e184]: 20:52
+            - generic [ref=e185]: S
+          - paragraph [ref=e188]: Reading file first.File has alpha, beta, gamma. Changing alpha → ALPHA first.First change done. Now changing gamma → GAMMA.Done. Changed alpha → ALPHA and gamma → GAMMA.
+          - generic [ref=e189]:
+            - generic [ref=e190]:
+              - button "Read" [ref=e191]:
+                - generic [ref=e192]: Read
+              - generic [ref=e193]:
+                - img [ref=e195]
+                - button "Expand" [ref=e198]:
+                  - img [ref=e199]
+            - generic [ref=e201]:
+              - generic [ref=e202]: "{ \"file_path\": \"C:/Users/megas/Documents/GitHub/aede/pw_multistep.txt\" }"
+              - generic [ref=e203]: "``` 1 alpha 2 beta 3 gamma 4 <system-reminder> Whenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior. </system-reminder> ```"
+          - generic [ref=e204]:
+            - generic [ref=e205]:
+              - button "Edit" [ref=e206]:
+                - generic [ref=e207]: Edit
+              - generic [ref=e208]:
+                - img [ref=e210]
+                - button "Expand" [ref=e213]:
+                  - img [ref=e214]
+            - generic [ref=e217]:
+              - generic [ref=e218]:
+                - generic "C:/Users/megas/Documents/GitHub/aede/pw_multistep.txt" [ref=e219]: pw_multistep.txt
+                - generic [ref=e220]:
+                  - generic [ref=e221]: "+1"
+                  - generic [ref=e222]: "-1"
+              - generic [ref=e223]:
+                - generic [ref=e224]:
+                  - generic [ref=e225]: "1"
+                  - generic [ref=e226]: "-"
+                  - generic [ref=e227]: alpha
+                - generic [ref=e228]:
+                  - generic [ref=e229]: "1"
+                  - generic [ref=e230]: +
+                  - generic [ref=e231]: ALPHA
+          - generic [ref=e232]:
+            - generic [ref=e233]:
+              - button "Edit" [ref=e234]:
+                - generic [ref=e235]: Edit
+              - generic [ref=e236]:
+                - img [ref=e238]
+                - button "Expand" [ref=e241]:
+                  - img [ref=e242]
+            - generic [ref=e245]:
+              - generic [ref=e246]:
+                - generic "C:/Users/megas/Documents/GitHub/aede/pw_multistep.txt" [ref=e247]: pw_multistep.txt
+                - generic [ref=e248]:
+                  - generic [ref=e249]: "+1"
+                  - generic [ref=e250]: "-1"
+              - generic [ref=e251]:
+                - generic [ref=e252]:
+                  - generic [ref=e253]: "1"
+                  - generic [ref=e254]: "-"
+                  - generic [ref=e255]: gamma
+                - generic [ref=e256]:
+                  - generic [ref=e257]: "1"
+                  - generic [ref=e258]: +
+                  - generic [ref=e259]: GAMMA
+        - generic [ref=e263]:
+          - textbox "Message" [ref=e264]:
+            - /placeholder: Write a message... Use @ to mention files.
+          - generic [ref=e265]:
+            - button "Add context" [ref=e266]:
+              - img
+            - generic [ref=e267]:
+              - button "Select model" [ref=e268]: Claude Code / Haiku 4.5
+              - generic [ref=e269]:
+                - generic [ref=e270]:
+                  - img [ref=e271]
+                  - text: Connected
+                - button [ref=e275]:
+                  - img
+              - button "Voice input" [ref=e276]:
+                - img
+              - button "Send message" [disabled]:
+                - img
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e282] [cursor=pointer]:
+    - img [ref=e283]
+  - alert [ref=e3]
