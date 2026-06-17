@@ -133,3 +133,16 @@ def test_build_chain_falls_through_to_webspeech(monkeypatch):
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     chain = build_fallback_chain("whisper-large-v3-turbo")
     assert chain == []  # no keyed providers → caller signals webspeech floor
+
+
+def test_openrouter_model_id_is_namespaced(monkeypatch):
+    """OpenRouter needs namespaced slugs (openai/whisper-1), not bare canonical ids."""
+    from aede.asr import build_fallback_chain
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    chain = build_fallback_chain("voxtral-mini-transcribe")
+    assert len(chain) == 1
+    _provider, name, provider_model_id = chain[0]
+    assert name == "openrouter"
+    assert provider_model_id == "mistralai/voxtral-mini-transcribe"

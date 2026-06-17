@@ -10,7 +10,7 @@ def test_transcribe_returns_text_when_provider_keyed(monkeypatch):
         async def transcribe(self, *, audio, mime, model, language=None):
             return Transcript(text="hello world", model=model, provider="groq")
 
-    monkeypatch.setattr(asr, "build_fallback_chain", lambda model: [(FakeProvider(), "groq")])
+    monkeypatch.setattr(asr, "build_fallback_chain", lambda model: [(FakeProvider(), "groq", "whisper-large-v3-turbo")])
 
     client = TestClient(server.app)
     resp = client.post(

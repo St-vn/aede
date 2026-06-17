@@ -2102,10 +2102,10 @@ async def voice_transcribe(
     data = await audio.read()
     mime = audio.content_type or "audio/webm"
     errors: list[str] = []
-    for provider, name in chain:
+    for provider, name, provider_model_id in chain:
         try:
             t = await provider.transcribe(
-                audio=data, mime=mime, model=model, language=language
+                audio=data, mime=mime, model=provider_model_id, language=language
             )
             if t.text.strip():
                 return {"text": t.text, "model": t.model, "provider": t.provider}

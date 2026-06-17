@@ -69,9 +69,11 @@ class OpenRouterAsrProvider:
         self, *, audio: bytes, mime: str, model: str, language: str | None = None
     ) -> Transcript:
         b64 = base64.b64encode(audio).decode("ascii")
+        # OpenRouter /audio/transcriptions expects "input_audio", not "audio".
+        fmt = mime.split("/")[-1].split(";")[0]  # "audio/webm;codecs=opus" -> "webm"
         payload: dict[str, Any] = {
             "model": model,
-            "audio": {"data": b64, "format": mime.split("/")[-1]},
+            "input_audio": {"data": b64, "format": fmt},
         }
         if language:
             payload["language"] = language
@@ -122,24 +124,47 @@ class GoogleAsrProvider:
         return Transcript(text=text, model=model, provider="google")
 
 
+# Each model maps to an ordered list of providers, plus the provider-specific
+# model id ("ids") since the same model is named differently per provider
+# (Groq: bare "whisper-large-v3-turbo"; OpenRouter: namespaced "openai/whisper-1").
 ASR_MODELS: dict[str, dict[str, Any]] = {
     "whisper-large-v3-turbo": {
         "default_provider": "groq",
         "providers": ["groq", "openai", "openrouter"],
+        "ids": {
+            "groq": "whisper-large-v3-turbo",
+            "openai": "whisper-1",
+            "openrouter": "openai/whisper-1",
+        },
     },
     "whisper-large-v3": {
         "default_provider": "groq",
         "providers": ["groq", "openai", "openrouter"],
+        "ids": {
+            "groq": "whisper-large-v3",
+            "openai": "whisper-1",
+            "openrouter": "openai/whisper-1",
+        },
     },
-    "chirp-3": {"default_provider": "google", "providers": ["google", "openrouter"]},
+    "chirp-3": {
+        "default_provider": "google",
+        "providers": ["google", "openrouter"],
+        "ids": {"google": "chirp_3", "openrouter": "google/chirp-3"},
+    },
     "parakeet-tdt-0.6b-v3": {
         "default_provider": "openrouter",
         "providers": ["openrouter"],
+        "ids": {"openrouter": "nvidia/parakeet-tdt-0.6b-v3"},
     },
-    "qwen3-asr-flash": {"default_provider": "openrouter", "providers": ["openrouter"]},
+    "qwen3-asr-flash": {
+        "default_provider": "openrouter",
+        "providers": ["openrouter"],
+        "ids": {"openrouter": "qwen/qwen3-asr-flash"},
+    },
     "voxtral-mini-transcribe": {
         "default_provider": "openrouter",
         "providers": ["openrouter"],
+        "ids": {"openrouter": "mistralai/voxtral-mini-transcribe"},
     },
 }
 
@@ -167,6 +192,11 @@ def _build_provider(name: str, api_key: str) -> Any:
     raise ValueError(f"unknown ASR provider {name}")
 
 
+def _provider_model_id(spec: dict[str, Any], provider: str, canonical: str) -> str:
+    """Resolve the provider-specific model id, falling back to the canonical."""
+    return spec.get("ids", {}).get(provider, canonical)
+
+
 def get_asr_provider(model: str, provider: str | None = None) -> tuple[Any, str]:
     spec = ASR_MODELS.get(model)
     if spec is None:
@@ -175,14 +205,15 @@ def get_asr_provider(model: str, provider: str | None = None) -> tuple[Any, str]
     key = os.environ.get(_PROVIDER_ENV[name])
     if not key:
         raise RuntimeError(f"{_PROVIDER_ENV[name]} not set for provider {name}")
-    return _build_provider(name, key), model
+    return _build_provider(name, key), _provider_model_id(spec, name, model)
 
 
-def build_fallback_chain(model: str) -> list[tuple[Any, str]]:
+def build_fallback_chain(model: str) -> list[tuple[Any, str, str]]:
+    """Returns (provider_instance, provider_name, provider_model_id) tuples."""
     spec = ASR_MODELS.get(model, {"providers": []})
-    chain: list[tuple[Any, str]] = []
+    chain: list[tuple[Any, str, str]] = []
     for name in spec["providers"]:
         key = os.environ.get(_PROVIDER_ENV[name])
         if key:
-            chain.append((_build_provider(name, key), name))
+            chain.append((_build_provider(name, key), name, _provider_model_id(spec, name, model)))
     return chain

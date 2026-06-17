@@ -118,7 +118,7 @@ export class VoiceController {
     if (!blob) { console.debug('[voice] no speech after wake — cost gate, no ASR call'); return '' }
     this.state = 'transcribing'
     const m = model ?? this.deps.model
-    console.debug('[voice] transcribing via model:', m)
+    console.debug('[voice] transcribing (deps.transcribe closure carries the ASR model)…')
     const text = await this.deps.transcribe(blob, m)
     console.debug('[voice] transcript:', JSON.stringify(text))
     return text
