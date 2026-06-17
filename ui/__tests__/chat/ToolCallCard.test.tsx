@@ -27,9 +27,10 @@ test('denied state shows denied label', () => {
   expect(screen.getByText(/denied/i)).toBeInTheDocument()
 })
 
-test('success card is expandable (Collapsible)', async () => {
+test('success card is expandable', async () => {
   render(<ToolCallCard toolName="read_file" status="success" args={{ path: '/tmp/x' }} output="content" durationMs={10} />)
-  const trigger = screen.getByRole('button')
-  fireEvent.click(trigger)
+  // Header now has a label toggle and a chevron toggle; either expands it.
+  const expand = screen.getByRole('button', { name: /expand/i })
+  fireEvent.click(expand)
   expect(screen.getByText('content')).toBeInTheDocument()
 })

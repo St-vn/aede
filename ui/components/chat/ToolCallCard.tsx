@@ -1,7 +1,7 @@
 'use client'
 import React from 'react'
-import { Loader2, CheckCircle2, XCircle, Ban, ChevronRight } from 'lucide-react'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Loader2, CheckCircle2, XCircle, Ban } from 'lucide-react'
+import { CollapsibleBlock } from './CollapsibleBlock'
 
 type Status = 'running' | 'success' | 'error' | 'denied'
 interface Props {
@@ -112,52 +112,60 @@ export function ToolCallCard({ toolName, status, args, output, durationMs, strea
     && typeof args.new_string === 'string'
   const startLine = typeof args._start_line === 'number' ? args._start_line : undefined
 
+  // Running / denied: nothing to expand yet — show a flat row, but keep the
+  // same bordered container so it lines up with the other blocks.
   if (!canExpand) {
     return (
-      <div className={`flex items-center gap-2 py-0.5 text-sm ${cfg.color}`}>
-        <ChevronRight className="w-3 h-3 shrink-0" />
-        <span className="font-mono">{toolName}</span>
-        {cfg.icon}
-        {cfg.label && <span>{cfg.label}</span>}
-        {status === 'running' && streamingOutput && (
-          <span className="text-xs text-muted-foreground/60 truncate max-w-[200px] ml-2">
-            {streamingOutput.split('\n').pop()}
+      <CollapsibleBlock
+        label={<span className="font-mono">{toolName}</span>}
+        disabled
+        right={
+          <span className="flex items-center gap-1.5">
+            {cfg.icon}
+            {cfg.label && <span className={cfg.color}>{cfg.label}</span>}
+            {status === 'running' && streamingOutput && (
+              <span className="text-[10px] text-muted-foreground/60 truncate max-w-[200px]">
+                {streamingOutput.split('\n').pop()}
+              </span>
+            )}
           </span>
-        )}
-      </div>
+        }
+      >
+        {null}
+      </CollapsibleBlock>
     )
   }
 
   return (
-    <Collapsible>
-      <CollapsibleTrigger className={`flex items-center gap-2 py-0.5 text-sm w-full text-left
-                                      hover:text-foreground transition-colors ${cfg.color}`}>
-        <ChevronRight className="w-3 h-3 shrink-0 transition-transform [&[data-panel-open]]:rotate-90" />
-        <span className="font-mono">{toolName}</span>
-        {cfg.icon}
-        {cfg.label && <span className={cfg.color}>{cfg.label}</span>}
-        {durationMs !== undefined && durationMs > 0 && <span>({durationMs}ms)</span>}
-      </CollapsibleTrigger>
-      <CollapsibleContent className="ml-5 mt-1 space-y-1">
-        {isEdit ? (
-          <DiffView
-            filePath={String(args.file_path ?? args.path ?? '')}
-            oldStr={args.old_string as string}
-            newStr={args.new_string as string}
-            startLine={startLine}
-          />
-        ) : (
-          <pre className="text-xs bg-muted rounded p-2 overflow-x-auto font-mono">
-            {JSON.stringify(args, null, 2)}
-          </pre>
-        )}
-        {streamingOutput && (
-          <pre className="text-xs bg-muted/50 rounded p-2 overflow-x-auto font-mono text-muted-foreground">
-            {streamingOutput}
-          </pre>
-        )}
-        {output && !isEdit && <pre className="text-xs bg-muted rounded p-2 overflow-x-auto font-mono">{output}</pre>}
-      </CollapsibleContent>
-    </Collapsible>
+    <CollapsibleBlock
+      label={<span className="font-mono">{toolName}</span>}
+      meta={durationMs !== undefined && durationMs > 0 ? `${durationMs}ms` : undefined}
+      right={
+        <span className="flex items-center gap-1.5">
+          {cfg.icon}
+          {cfg.label && <span className={cfg.color}>{cfg.label}</span>}
+        </span>
+      }
+      bodyClassName="px-3 pb-2 space-y-1"
+    >
+      {isEdit ? (
+        <DiffView
+          filePath={String(args.file_path ?? args.path ?? '')}
+          oldStr={args.old_string as string}
+          newStr={args.new_string as string}
+          startLine={startLine}
+        />
+      ) : (
+        <pre className="text-xs bg-muted rounded p-2 overflow-x-auto font-mono">
+          {JSON.stringify(args, null, 2)}
+        </pre>
+      )}
+      {streamingOutput && (
+        <pre className="text-xs bg-muted/50 rounded p-2 overflow-x-auto font-mono text-muted-foreground">
+          {streamingOutput}
+        </pre>
+      )}
+      {output && !isEdit && <pre className="text-xs bg-muted rounded p-2 overflow-x-auto font-mono">{output}</pre>}
+    </CollapsibleBlock>
   )
 }

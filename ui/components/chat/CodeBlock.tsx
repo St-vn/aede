@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CollapsibleBlock } from './CollapsibleBlock'
 
 interface Props { language?: string; code: string }
 
@@ -35,20 +36,25 @@ export function CodeBlock({ language, code }: Props) {
   }
 
   return (
-    <div className="relative rounded-lg overflow-hidden my-2 bg-card border border-border font-mono text-sm">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-        <span className="text-xs text-muted-foreground">{language || 'text'}</span>
+    <CollapsibleBlock
+      label={language || 'text'}
+      defaultOpen
+      right={
         <Button variant="ghost" size="icon" className="h-6 w-6"
-          aria-label="Copy code" onClick={handleCopy}>
+          aria-label="Copy code"
+          // Don't toggle the block when copying.
+          onClick={(e) => { e.stopPropagation(); handleCopy() }}>
           {copied ? <Check className="w-3 h-3 text-[--color-success]" /> : <Copy className="w-3 h-3" />}
         </Button>
-      </div>
+      }
+      bodyClassName="font-mono text-sm"
+    >
       {/* Fixed-height container prevents layout shift when Shiki swaps in */}
       {highlighted
         ? <div className="p-4 overflow-x-auto [&_pre]:m-0 [&_pre]:bg-transparent"
                dangerouslySetInnerHTML={{ __html: highlighted }} />
         : <pre className="p-4 overflow-x-auto whitespace-pre-wrap text-foreground">{code}</pre>
       }
-    </div>
+    </CollapsibleBlock>
   )
 }
