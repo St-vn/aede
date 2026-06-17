@@ -15,9 +15,10 @@ import { SlashCommandPicker } from './SlashCommandPicker'
 import { ImagePreviewBar, type ImageAttachment } from './ImagePreviewBar'
 import { FileChipBar } from './FileChipBar'
 import { VoiceButton } from './voice/VoiceButton'
-import { WakeWordListener } from './voice/WakeWordListener'
+import { VoiceController } from './voice/VoiceController'
 import { PermissionGate } from './voice/PermissionGate'
 import { useSoulFetch } from './voice/useSoulFetch'
+import { transcribe } from './voice/AsrClient'
 
 interface Props {
   onSend: (content: string, model?: string) => void
@@ -58,6 +59,18 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
   const urlInputRef = useRef<HTMLInputElement>(null)
   const [permDenied, setPermDenied] = useState(false)
   const { soul } = useSoulFetch()
+
+  // VoiceController for push-to-talk
+  const voiceControllerRef = useRef<VoiceController | null>(null)
+  useEffect(() => {
+    voiceControllerRef.current = new VoiceController({
+      getStream: () => navigator.mediaDevices.getUserMedia({ audio: true }),
+      transcribe: (blob, mdl?: string) => transcribe(blob, mdl ?? model),
+    })
+    return () => {
+      voiceControllerRef.current?.stop()
+    }
+  }, [model])
 
   // Auto-resize
   useEffect(() => {
@@ -338,14 +351,6 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
 
   return (
     <div className="px-4 py-3 relative">
-      <WakeWordListener
-        enabled={true}
-        soul={soul}
-        sessionId={sessionId ?? null}
-        textareaRef={ref}
-        setText={setText}
-        submit={submit}
-      />
       <WorkspaceMentionPicker
         open={mentionOpen}
         onOpenChange={setMentionOpen}
@@ -431,6 +436,7 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
             <AcpConnectChip model={model} />
             <VoiceButton
               enabled={true}
+              captureOnce={() => voiceControllerRef.current?.captureOnce(model) ?? Promise.resolve('')}
               textareaRef={ref}
               setText={setText}
               onPermissionDenied={() => setPermDenied(true)}

@@ -1,32 +1,22 @@
 'use client'
-import React, { useRef, useCallback, useEffect, useState } from 'react'
-import { Mic, MicOff } from 'lucide-react'
+import React, { useCallback, useState } from 'react'
+import { Mic } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const SR = typeof window !== 'undefined'
-  ? (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
-  : undefined
 
-type RecognitionState = 'idle' | 'requesting-permission' | 'listening' | 'permission-denied' | 'error'
+type RecognitionState = 'idle' | 'capturing' | 'permission-denied' | 'error'
 
 interface Props {
   enabled: boolean
+  captureOnce: () => Promise<string>
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   setText: (fn: (prev: string) => string) => void
   onPermissionDenied: () => void
   onError: (code: string) => void
 }
 
-export function VoiceButton({ enabled, textareaRef, setText, onPermissionDenied, onError }: Props) {
+export function VoiceButton({ enabled, captureOnce, textareaRef, setText, onPermissionDenied, onError }: Props) {
   const [state, setState] = useState<RecognitionState>('idle')
-  const recognitionRef = useRef<InstanceType<typeof SR> | null>(null)
-
-  useEffect(() => {
-    return () => {
-      recognitionRef.current?.abort()
-    }
-  }, [])
 
   const insertAtCursor = useCallback((transcript: string) => {
     setText(prev => {
@@ -38,50 +28,26 @@ export function VoiceButton({ enabled, textareaRef, setText, onPermissionDenied,
     })
   }, [textareaRef, setText])
 
-  const toggle = useCallback(() => {
-    if (state === 'listening') {
-      recognitionRef.current?.stop()
-      setState('idle')
-      return
-    }
-    if (!SR) return
-    setState('requesting-permission')
-    const recognition = new SR()
-    recognition.continuous = false
-    recognition.interimResults = false
-    recognition.lang = navigator.language
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript
+  const handleCapture = useCallback(async () => {
+    try {
+      setState('capturing')
+      const transcript = await captureOnce()
       insertAtCursor(transcript)
       setState('idle')
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onerror = (event: any) => {
-      const code: string = event.error
-      if (code === 'not-allowed' || code === 'service-not-allowed') {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (errMsg.includes('permission') || errMsg.includes('not-allowed')) {
         setState('permission-denied')
         onPermissionDenied()
-      } else if (code === 'no-speech' || code === 'aborted') {
-        setState('idle')
       } else {
         setState('error')
-        onError(code)
+        onError(errMsg)
       }
+      setState('idle')
     }
+  }, [captureOnce, insertAtCursor, onPermissionDenied, onError])
 
-    recognition.onend = () => {
-      setState(s => s === 'listening' ? 'idle' : s)
-    }
-
-    recognition.start()
-    recognitionRef.current = recognition
-    setState('listening')
-  }, [state, insertAtCursor, onPermissionDenied, onError])
-
-  if (!SR || !enabled) return null
+  if (!enabled) return null
 
   const isDisabled = state === 'permission-denied'
 
@@ -92,16 +58,16 @@ export function VoiceButton({ enabled, textareaRef, setText, onPermissionDenied,
           size="icon"
           className="w-7 h-7"
           aria-label="Voice input"
-          disabled={isDisabled}
-          onClick={toggle}
-          variant={state === 'listening' ? 'default' : 'ghost'}
+          disabled={isDisabled || state === 'capturing'}
+          onClick={handleCapture}
+          variant={state === 'capturing' ? 'default' : 'ghost'}
           data-mic-state={state}
         >
-          {state === 'listening' ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+          {state === 'capturing' ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
         </Button>
       } />
       <TooltipContent>
-        {state === 'listening' ? 'Listening\u2026' : isDisabled ? 'Microphone access blocked' : 'Press to talk'}
+        {state === 'capturing' ? 'Listening\u2026' : isDisabled ? 'Microphone access blocked' : 'Press to talk'}
       </TooltipContent>
     </Tooltip>
   )
