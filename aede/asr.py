@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import os
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -119,3 +120,69 @@ class GoogleAsrProvider:
             if alts:
                 text += alts[0].get("transcript", "")
         return Transcript(text=text, model=model, provider="google")
+
+
+ASR_MODELS: dict[str, dict[str, Any]] = {
+    "whisper-large-v3-turbo": {
+        "default_provider": "groq",
+        "providers": ["groq", "openai", "openrouter"],
+    },
+    "whisper-large-v3": {
+        "default_provider": "groq",
+        "providers": ["groq", "openai", "openrouter"],
+    },
+    "chirp-3": {"default_provider": "google", "providers": ["google", "openrouter"]},
+    "parakeet-tdt-0.6b-v3": {
+        "default_provider": "openrouter",
+        "providers": ["openrouter"],
+    },
+    "qwen3-asr-flash": {"default_provider": "openrouter", "providers": ["openrouter"]},
+    "voxtral-mini-transcribe": {
+        "default_provider": "openrouter",
+        "providers": ["openrouter"],
+    },
+}
+
+_PROVIDER_ENV = {
+    "groq": "GROQ_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+}
+
+
+def _build_provider(name: str, api_key: str) -> Any:
+    if name == "groq":
+        return OpenAiCompatibleAsrProvider(
+            api_key, "https://api.groq.com/openai/v1", "groq"
+        )
+    if name == "openai":
+        return OpenAiCompatibleAsrProvider(
+            api_key, "https://api.openai.com/v1", "openai"
+        )
+    if name == "google":
+        return GoogleAsrProvider(api_key)
+    if name == "openrouter":
+        return OpenRouterAsrProvider(api_key)
+    raise ValueError(f"unknown ASR provider {name}")
+
+
+def get_asr_provider(model: str, provider: str | None = None) -> tuple[Any, str]:
+    spec = ASR_MODELS.get(model)
+    if spec is None:
+        raise ValueError(f"unknown ASR model {model}")
+    name = provider or spec["default_provider"]
+    key = os.environ.get(_PROVIDER_ENV[name])
+    if not key:
+        raise RuntimeError(f"{_PROVIDER_ENV[name]} not set for provider {name}")
+    return _build_provider(name, key), model
+
+
+def build_fallback_chain(model: str) -> list[tuple[Any, str]]:
+    spec = ASR_MODELS.get(model, {"providers": []})
+    chain: list[tuple[Any, str]] = []
+    for name in spec["providers"]:
+        key = os.environ.get(_PROVIDER_ENV[name])
+        if key:
+            chain.append((_build_provider(name, key), name))
+    return chain
