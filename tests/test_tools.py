@@ -33,7 +33,12 @@ def test_router_question_tool_schema():
     assert "question" in schemas
     schema = schemas["question"]["input_schema"]
     assert "questions" in schema["required"]
-    assert "allow_custom_answer" in schema["properties"]
+    items = schema["properties"]["questions"]["items"]
+    item_props = items["properties"]
+    assert "allow_custom" in item_props
+    assert "allow_notes" in item_props
+    assert "header" in items["required"]
+    assert "question" in items["required"]
 
 
 def test_router_web_search_always_available():

@@ -108,28 +108,31 @@ test('turn_done clears streamingBlocks', () => {
   expect(screen.queryByText(/thought/)).not.toBeInTheDocument()
 })
 
-test('ask_user_request renders AskUserCard with question', () => {
+test('ask_user_request renders QuestionCard with question', () => {
   renderWithClient(<ChatView sessionId="s1" messages={[]} />)
   act(() => wsEventHandler?.({
-    type: 'ask_user_request', question_id: 'q1', question: 'What framework?',
+    type: 'ask_user_request', question_id: 'q1',
+    questions: [{ header: 'Format', question: 'What framework?', type: 'text', required: true }],
   }))
   expect(screen.getByText('What framework?')).toBeInTheDocument()
   expect(screen.getByText(/agent asks/i)).toBeInTheDocument()
 })
 
-test('ask_user_request with choices renders choice buttons', () => {
+test('ask_user_request with choices renders radio buttons', () => {
   renderWithClient(<ChatView sessionId="s1" messages={[]} />)
   act(() => wsEventHandler?.({
-    type: 'ask_user_request', question_id: 'q2', question: 'Pick:', choices: ['React', 'Vue'],
+    type: 'ask_user_request', question_id: 'q2',
+    questions: [{ header: 'Pick', question: 'Pick:', type: 'single', options: ['React', 'Vue'], required: true }],
   }))
-  expect(screen.getByRole('button', { name: 'React' })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Vue' })).toBeInTheDocument()
+  expect(screen.getByRole('radio', { name: 'React' })).toBeInTheDocument()
+  expect(screen.getByRole('radio', { name: 'Vue' })).toBeInTheDocument()
 })
 
 test('input bar disabled while ask_user prompt is active', () => {
   renderWithClient(<ChatView sessionId="s1" messages={[]} />)
   act(() => wsEventHandler?.({
-    type: 'ask_user_request', question_id: 'q3', question: 'Ready?',
+    type: 'ask_user_request', question_id: 'q3',
+    questions: [{ header: 'Question', question: 'Ready?', type: 'text', required: true }],
   }))
   expect(screen.getByRole('textbox', { name: /message/i })).toBeDisabled()
 })
@@ -137,11 +140,12 @@ test('input bar disabled while ask_user prompt is active', () => {
 test('ask_user_response clears prompt and re-enables input', () => {
   renderWithClient(<ChatView sessionId="s1" messages={[]} />)
   act(() => wsEventHandler?.({
-    type: 'ask_user_request', question_id: 'q4', question: 'Go?',
+    type: 'ask_user_request', question_id: 'q4',
+    questions: [{ header: 'Go', question: 'Go?', type: 'text', required: true }],
   }))
   expect(screen.getByText('Go?')).toBeInTheDocument()
   act(() => wsEventHandler?.({
-    type: 'ask_user_response', question_id: 'q4', answer: 'yes',
+    type: 'ask_user_response', question_id: 'q4',
   }))
   expect(screen.queryByText('Go?')).not.toBeInTheDocument()
 })

@@ -613,27 +613,23 @@ _TOOL_SCHEMAS: dict[str, dict] = {
     "question": {
         "name": "question",
         "description": (
-            "Ask the user one or more questions during execution. Supports free-form text, "
-            "single-choice, multi-select, and yes/no confirm questions. Use when you need "
-            "input, clarification, or a decision to continue. This tool does NOT require "
-            "gate approval — it is part of the conversation flow."
+            "Ask the user one or more questions during execution. Supports single-choice, "
+            "multi-select, and free-form text questions with optional custom answers and notes. "
+            "Use when you need input, clarification, or a decision to continue. This tool does "
+            "NOT require gate approval — it is part of the conversation flow."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "questions": {
                     "type": "array",
-                    "description": "One or more questions to present to the user.",
+                    "description": "One or more questions to present to the user (max 8).",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "id": {
-                                "type": "string",
-                                "description": "Stable identifier for this question, used when returning answers.",
-                            },
                             "header": {
                                 "type": "string",
-                                "description": "Short label or category shown above the question.",
+                                "description": "Short label or category shown above the question (max 40 chars).",
                             },
                             "question": {
                                 "type": "string",
@@ -641,22 +637,33 @@ _TOOL_SCHEMAS: dict[str, dict] = {
                             },
                             "type": {
                                 "type": "string",
-                                "enum": ["text", "single_choice", "multi_select", "confirm"],
-                                "description": "Question type.",
+                                "enum": ["single", "multi", "text"],
+                                "description": "Question type: single-choice, multi-select, or free-form text.",
+                                "default": "single",
                             },
                             "options": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Options for single_choice or multi_select questions.",
+                                "description": "Answer choices for single or multi questions.",
+                            },
+                            "allow_custom": {
+                                "type": "boolean",
+                                "description": "If true, user can type a custom answer instead of selecting.",
+                                "default": False,
+                            },
+                            "allow_notes": {
+                                "type": "boolean",
+                                "description": "If true, user can add free-form notes to the answer.",
+                                "default": False,
+                            },
+                            "required": {
+                                "type": "boolean",
+                                "description": "If false, question can be left unanswered.",
+                                "default": True,
                             },
                         },
-                        "required": ["id", "question", "type"],
+                        "required": ["header", "question"],
                     },
-                },
-                "allow_custom_answer": {
-                    "type": "boolean",
-                    "description": "When true, the user may type a custom answer instead of picking from options.",
-                    "default": True,
                 },
             },
             "required": ["questions"],

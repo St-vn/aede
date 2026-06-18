@@ -7,7 +7,7 @@ import { ToolCallCard } from './ToolCallCard'
 import { ThinkingBlock } from './ThinkingBlock'
 import { GateCard } from './GateCard'
 import { GateBatchCard } from './GateBatchCard'
-import { AskUserCard } from './AskUserCard'
+import { QuestionCard } from './QuestionCard'
 import { InputBar } from '@/components/input/InputBar'
 import { useWebSocket, type WSEvent } from '@/hooks/useWebSocket'
 import { ContextBar } from './ContextBar'
@@ -39,7 +39,16 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   // streamingBlocks holds interleaved thinking+tool blocks in seq order during streaming.
   const [streamingBlocks, setStreamingBlocks] = useState<StreamingBlock[]>([])
   const [gates, setGates] = useState<GateRequest[]>([])
-  const [askUserRequests, setAskUserRequests] = useState<{ questionId: string; question: string; type?: string; choices?: string[] }[]>([])
+  interface AskUserQuestion {
+    header: string
+    question: string
+    type: 'single' | 'multi' | 'text'
+    options?: string[]
+    allow_custom?: boolean
+    allow_notes?: boolean
+    required?: boolean
+  }
+  const [askUserRequests, setAskUserRequests] = useState<{ questionId: string; questions: AskUserQuestion[] }[]>([])
   const [pendingMessages, setPendingMessages] = useState<{ content: string; id: string }[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -145,9 +154,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     } else if (ev.type === 'ask_user_request') {
       setAskUserRequests(reqs => [...reqs, {
         questionId: ev.question_id as string,
-        question: ev.question as string,
-        type: ev.question_type as string | undefined,
-        choices: ev.choices as string[] | undefined,
+        questions: (ev.questions as AskUserQuestion[]) || [],
       }])
     } else if (ev.type === 'ask_user_response') {
       setAskUserRequests(reqs => reqs.filter(r => r.questionId !== ev.question_id))
@@ -218,8 +225,8 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     setGates(gs => gs.filter(g => g.gateId !== gateId))
   }
 
-  const handleAskUserAnswer = (questionId: string, answer: string) => {
-    send({ type: 'ask_user_response', question_id: questionId, answer })
+  const handleAskUserAnswer = (questionId: string, answers: Record<string, string | string[] | { value: string | string[]; notes: string }>) => {
+    send({ type: 'ask_user_response', question_id: questionId, answers })
     setAskUserRequests(reqs => reqs.filter(r => r.questionId !== questionId))
   }
 
@@ -315,7 +322,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
               options={gates[0].options} onDecision={handleGateDecision} />
           )}
           {askUserRequests.map(req => (
-            <AskUserCard key={req.questionId} request={req} onAnswer={handleAskUserAnswer} />
+            <QuestionCard key={req.questionId} request={req} onAnswer={handleAskUserAnswer} />
           ))}
         </div>
       </ScrollArea>

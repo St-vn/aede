@@ -207,6 +207,69 @@ def _is_html_body(text: str) -> bool:
     )
 
 
+def _normalize_question_payload(tool_name: str, tool_input: dict) -> list[dict]:
+    """Normalize legacy ask-user tool inputs into the unified questions format.
+
+    For the ``question`` tool, the input is already in the unified format —
+    pass through the ``questions`` array.
+
+    For legacy aliases, construct a single-element question list:
+      - ``ask_user`` → type=text
+      - ``ask_user_choices`` → type=single with options
+      - ``ask_user_confirm`` → type=single with yes/no options
+
+    Returns:
+        List of unified question dicts matching the ``question`` tool schema.
+    """
+    if tool_name == "question":
+        return tool_input.get("questions", [])
+    if tool_name == "ask_user_choices":
+        return [{
+            "header": "Question",
+            "question": tool_input.get("question", ""),
+            "type": "single",
+            "options": tool_input.get("choices", []),
+            "required": True,
+        }]
+    if tool_name == "ask_user_confirm":
+        return [{
+            "header": "Confirm",
+            "question": tool_input.get("question", ""),
+            "type": "single",
+            "options": ["yes", "no"],
+            "required": True,
+        }]
+    # ask_user (default)
+    return [{
+        "header": "Question",
+        "question": tool_input.get("question", ""),
+        "type": "text",
+        "required": True,
+    }]
+
+
+def _build_auto_answers(questions: list[dict]) -> dict:
+    """Build safe-default answers for AUTO permission mode.
+
+    Returns a dict mapping each question's text to its default answer:
+      - ``single`` → first option, or ``"[auto mode: skipped]"``
+      - ``multi`` → ``[first option]`` or ``[]``
+      - ``text`` → ``"[auto mode: skipped]"``
+    """
+    answers = {}
+    for q in questions:
+        qtext = q.get("question", "")
+        qtype = q.get("type", "single")
+        options = q.get("options") or []
+        if qtype == "multi":
+            answers[qtext] = [options[0]] if options else []
+        elif qtype == "single":
+            answers[qtext] = options[0] if options else "[auto mode: skipped]"
+        else:
+            answers[qtext] = "[auto mode: skipped]"
+    return answers
+
+
 class AgentLoop:
     """Stateful multi-turn agent that coordinates provider, tools, gate, and DB.
 
@@ -586,51 +649,28 @@ class AgentLoop:
                     import uuid
                     from aede.gate import PermissionMode
 
-                    # Normalize legacy tools and the unified question tool into a single
-                    # question payload.  Multi-question support can be added by extending
-                    # AskUserBackend in a future iteration.
-                    if tool_name == "question":
-                        questions = tool_input.get("questions", [])
-                        first = questions[0] if isinstance(questions, list) and questions else {}
-                        if not isinstance(first, dict):
-                            first = {}
-                        question_text = first.get("question", "")
-                        qtype = first.get("type", "text")
-                        choices = first.get("options") if qtype in ("single_choice", "multi_select") else None
-                        is_confirm = qtype == "confirm"
-                    else:
-                        question_text = tool_input.get("question", "")
-                        choices = tool_input.get("choices") if tool_name == "ask_user_choices" else None
-                        is_confirm = tool_name == "ask_user_confirm"
-
                     qid = uuid.uuid4().hex[:8]
                     self._persist_tool_call(tool_use_id, tool_name, tool_input)
 
-                    qtype_str = "confirm" if is_confirm else ("single_choice" if choices else "text")
+                    questions = _normalize_question_payload(tool_name, tool_input)
 
                     if self._mode is PermissionMode.AUTO:
-                        # Hands-free mode: skip user questions and return safe defaults.
-                        if choices:
-                            answer = choices[0]
-                        elif is_confirm:
-                            answer = "yes"
-                        else:
-                            answer = "[auto mode: question skipped]"
+                        answers = _build_auto_answers(questions)
                     else:
                         try:
-                            answer = await self._ask_user_backend.ask(
+                            answers = await self._ask_user_backend.ask(
                                 question_id=qid,
-                                question=question_text,
-                                choices=choices,
-                                question_type=qtype_str,
+                                questions=questions,
                             )
                         except Exception as exc:
-                            answer = f"[error: {exc}]"
-                    self._emit_tool_result(tool_use_id, "success", answer, 0)
+                            answers = {"error": str(exc)}
+
+                    result_json = json.dumps({"answers": answers})
+                    self._emit_tool_result(tool_use_id, "success", result_json, 0)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tool_use_id,
-                        "content": answer,
+                        "content": result_json,
                         "is_error": False,
                     })
                     continue

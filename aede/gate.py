@@ -431,10 +431,18 @@ class AskUserBackend(Protocol):
     async def ask(
         self,
         question_id: str,
-        question: str,
-        choices: list[str] | None = None,
-    ) -> str:
-        """Ask the user a question. Returns the user's response text."""
+        questions: list[dict],
+    ) -> dict:
+        """Ask the user one or more questions. Returns an answers dict.
+        
+        Args:
+            question_id: Unique identifier for this question set.
+            questions: List of unified question dicts with keys: header,
+                question, type, options, allow_custom, allow_notes, required.
+        
+        Returns:
+            A dict with ``{"answers": {question_text: answer_value, ...}}``.
+        """
         ...
 
 
@@ -489,18 +497,17 @@ class TerminalAskUserBackend:
     async def ask(
         self,
         question_id: str,
-        question: str,
-        choices: list[str] | None = None,
-    ) -> str:
+        questions: list[dict],
+    ) -> dict:
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: _prompt_ask_user(
-                question=question,
-                choices=choices,
-                console=self._console,
-            ),
-        )
+        answers = {}
+        for q in questions:
+            answer = await loop.run_in_executor(
+                None,
+                lambda q=q: _prompt_question_item(q, console=self._console),
+            )
+            answers[q["question"]] = answer
+        return {"answers": answers}
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +548,121 @@ def _prompt_ask_user(
     if console:
         return Prompt.ask("Your response") or ""
     return input("Your response: ") or ""
+
+
+def _prompt_question_item(q: dict, console: Any = None):
+    """Prompt the user for a single unified-format question and return the answer.
+    
+    Handles single-choice, multi-select, text, custom answers, and optional notes.
+    """
+    from rich.prompt import Prompt
+
+    question = q.get("question", "")
+    qtype = q.get("type", "single")
+    options = q.get("options") or []
+    allow_custom = q.get("allow_custom", False)
+    allow_notes = q.get("allow_notes", False)
+    required = q.get("required", True)
+
+    if console:
+        header = q.get("header", "")
+        header_text = f"[{header}] " if header else ""
+        console.print(f"\n[bold cyan]❓ {header_text}{question}[/bold cyan]")
+    else:
+        print(f"\n? {q.get('header', '')} {question}")
+
+    if qtype == "text":
+        if console:
+            raw = Prompt.ask("Your response") or ""
+        else:
+            raw = input("Your response: ") or ""
+        answer = raw
+    elif qtype == "multi":
+        if options:
+            for i, c in enumerate(options, 1):
+                if console:
+                    console.print(f"  [{i}] {c}")
+                else:
+                    print(f"  [{i}] {c}")
+            if allow_custom:
+                if console:
+                    console.print(f"  [{len(options)+1}] Other…")
+                else:
+                    print(f"  [{len(options)+1}] Other…")
+        if console:
+            raw = Prompt.ask("Your choices (comma-separated)") or ""
+        else:
+            raw = input("Your choices (comma-separated): ") or ""
+        if not raw and not required:
+            answer = []
+        else:
+            parts = [p.strip() for p in raw.split(",") if p.strip()]
+            selected = []
+            for p in parts:
+                try:
+                    idx = int(p) - 1
+                    if 0 <= idx < len(options):
+                        selected.append(options[idx])
+                    elif allow_custom and idx == len(options):
+                        pass  # custom will be captured below
+                    else:
+                        selected.append(p)
+                except ValueError:
+                    selected.append(p)
+            if allow_custom:
+                custom_idx = str(len(options) + 1)
+                if custom_idx in parts or not selected:
+                    if console:
+                        custom = Prompt.ask("Custom answer") or ""
+                    else:
+                        custom = input("Custom answer: ") or ""
+                    if custom:
+                        selected.append(custom)
+            answer = selected
+    else:
+        # single choice
+        if options:
+            for i, c in enumerate(options, 1):
+                if console:
+                    console.print(f"  [{i}] {c}")
+                else:
+                    print(f"  [{i}] {c}")
+            if allow_custom:
+                extra_idx = len(options) + 1
+                if console:
+                    console.print(f"  [{extra_idx}] Other…")
+                else:
+                    print(f"  [{extra_idx}] Other…")
+        if console:
+            raw = Prompt.ask("Your choice") or ""
+        else:
+            raw = input("Your choice: ") or ""
+        if not raw and not required:
+            answer = ""
+        else:
+            try:
+                idx = int(raw) - 1
+                if 0 <= idx < len(options):
+                    answer = options[idx]
+                elif allow_custom and idx == len(options):
+                    if console:
+                        answer = Prompt.ask("Custom answer") or ""
+                    else:
+                        answer = input("Custom answer: ") or ""
+                else:
+                    answer = raw
+            except ValueError:
+                answer = raw
+
+    if allow_notes and answer:
+        if console:
+            notes = Prompt.ask("Notes (optional)") or ""
+        else:
+            notes = input("Notes (optional): ") or ""
+        if notes:
+            return {"value": answer, "notes": notes}
+
+    return answer
 
 
 # ---------------------------------------------------------------------------

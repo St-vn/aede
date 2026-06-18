@@ -158,27 +158,22 @@ class WebSocketAskUserBackend:
     async def ask(
         self,
         question_id: str,
-        question: str,
-        choices: list[str] | None = None,
-        question_type: str = "text",
-    ) -> str:
+        questions: list[dict],
+    ) -> dict:
         fut = asyncio.get_running_loop().create_future()
         key = f"ask:{question_id}"
         self._gate.futures[key] = fut
         payload: dict[str, Any] = {
             "type": "ask_user_request",
             "question_id": question_id,
-            "question": question,
-            "question_type": question_type,
+            "questions": questions,
         }
-        if choices:
-            payload["choices"] = choices
         self._gate.pending_requests[key] = payload
         try:
             if self._gate.websocket is not None:
                 await self._gate.websocket.send_json(payload)
-            answer, _ = await fut
-            return str(answer)
+            answers, _ = await fut
+            return answers
         finally:
             self._gate.futures.pop(key, None)
             self._gate.pending_requests.pop(key, None)
@@ -622,11 +617,11 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
             elif msg_type == "ask_user_response":
                 question_id = data.get("question_id")
-                answer = data.get("answer", "")
+                answers = data.get("answers", {})
                 key = f"ask:{question_id}"
                 fut = gate.futures.get(key)
                 if fut is not None and not fut.done():
-                    fut.set_result((answer, ""))
+                    fut.set_result((answers, ""))
                 else:
                     await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
 
