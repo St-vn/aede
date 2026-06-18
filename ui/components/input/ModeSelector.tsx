@@ -1,10 +1,11 @@
 'use client'
 import React from 'react'
-import { Check, Shield } from 'lucide-react'
+import { Check, ClipboardList, Hand, FileCode, Rocket, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -12,11 +13,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 const MODES = [
-  { value: 'plan', label: 'Plan', description: 'Read-only. Writes and shell denied.' },
-  { value: 'normal', label: 'Normal', description: 'Read auto, writes/shell gated.' },
-  { value: 'allow_write_read', label: 'Write+Read', description: 'Read + file writes auto, shell gated.' },
-  { value: 'execution', label: 'Execution', description: 'Auto-approve with safety classifier.' },
-  { value: 'auto', label: 'Auto', description: 'Hands-free. All tools run.' },
+  { value: 'plan', label: 'Plan mode', description: 'Read-only. Writes and shell denied.', icon: ClipboardList },
+  { value: 'normal', label: 'Ask before edits', description: 'Read auto, writes/shell gated.', icon: Hand },
+  { value: 'allow_write_read', label: 'Edit automatically', description: 'Read + file writes auto, shell gated.', icon: FileCode },
+  { value: 'execution', label: 'Execution', description: 'Auto-approve with safety classifier.', icon: Rocket },
+  { value: 'auto', label: 'Auto mode', description: 'Hands-free. All tools run.', icon: Zap },
 ]
 
 interface Props {
@@ -26,30 +27,40 @@ interface Props {
 
 export function ModeSelector({ currentMode, onModeChange }: Props) {
   const current = MODES.find(m => m.value === currentMode) ?? MODES[1]
+  const CurrentIcon = current.icon
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={
         <Button variant="ghost" size="sm" aria-label="Select permission mode"
-          className="text-xs text-muted-foreground gap-1 max-w-[100px] truncate">
-          <Shield className="w-3 h-3 shrink-0" />
+          className="text-xs text-muted-foreground gap-1 max-w-[120px] truncate">
+          <CurrentIcon className="w-3 h-3 shrink-0" />
           {current.label}
         </Button>
       } />
-      <DropdownMenuContent align="end" className="min-w-[200px]">
-        <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Permission Mode
-        </DropdownMenuLabel>
+      <DropdownMenuContent align="end" className="min-w-[220px]">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Permission Mode
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        {MODES.map(m => (
-          <DropdownMenuItem key={m.value} onClick={() => onModeChange(m.value)} className="text-xs flex flex-col items-start gap-0.5 py-1.5">
-            <span className="flex items-center gap-2 w-full">
-              {m.value === currentMode && <Check className="w-3 h-3 shrink-0" />}
-              <span className={m.value !== currentMode ? 'ml-5' : ''}>{m.label}</span>
-            </span>
-            <span className="text-[10px] text-muted-foreground ml-5 leading-tight">{m.description}</span>
-          </DropdownMenuItem>
-        ))}
+        {MODES.map(m => {
+          const Icon = m.icon
+          return (
+            <DropdownMenuItem key={m.value} onClick={() => onModeChange(m.value)}
+              className="text-xs flex items-start gap-2 py-2">
+              <Icon className="w-4 h-4 mt-0.5 shrink-0 text-muted-foreground" />
+              <span className="flex flex-col gap-0.5 flex-1 min-w-0">
+                <span className="flex items-center gap-2">
+                  {m.label}
+                  {m.value === currentMode && <Check className="w-3 h-3 shrink-0 text-primary" />}
+                </span>
+                <span className="text-[10px] text-muted-foreground leading-tight">{m.description}</span>
+              </span>
+            </DropdownMenuItem>
+          )
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   )
