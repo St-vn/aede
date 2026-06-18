@@ -93,19 +93,19 @@ function DaemonTab() {
   }
 
   const handleStart = async () => {
-    await apiFetch('/daemon/start', { method: 'POST' })
+    await apiFetch('/api/daemon/start', { method: 'POST' })
     await refreshStatus()
   }
 
   const handleStop = async () => {
-    await apiFetch('/daemon/stop', { method: 'POST' })
+    await apiFetch('/api/daemon/stop', { method: 'POST' })
     await refreshStatus()
   }
 
   const handleAddTimer = async () => {
     const delay = parseInt(timerDelay, 10)
     if (isNaN(delay) || delay <= 0) return
-    await apiFetch('/daemon/timers', {
+    await apiFetch('/api/daemon/timers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ delay_s: delay, action: timerAction, label: timerLabel }),
@@ -118,7 +118,7 @@ function DaemonTab() {
   }
 
   const handleDeleteTimer = async (id: string) => {
-    await apiFetch(`/daemon/timers/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/daemon/timers/${id}`, { method: 'DELETE' })
     await refreshTimers()
   }
 
@@ -128,7 +128,7 @@ function DaemonTab() {
       return
     }
     setCronError(null)
-    await apiFetch('/daemon/cron', {
+    await apiFetch('/api/daemon/cron', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ schedule: cronSchedule, action: cronAction, label: cronLabel }),
@@ -141,7 +141,7 @@ function DaemonTab() {
   }
 
   const handleDeleteCron = async (id: string) => {
-    await apiFetch(`/daemon/cron/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/daemon/cron/${id}`, { method: 'DELETE' })
     await refreshCron()
   }
 

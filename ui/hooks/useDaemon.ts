@@ -8,7 +8,7 @@ export interface DaemonStatus {
 }
 
 export function useDaemonStatus() {
-  return useSWR<DaemonStatus>('/daemon/status', () =>
-    apiFetch<DaemonStatus>('/daemon/status'),
+  return useSWR<DaemonStatus>('/api/daemon/status', () =>
+    apiFetch<DaemonStatus>('/api/daemon/status'),
   )
 }
