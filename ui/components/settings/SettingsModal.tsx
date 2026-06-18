@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  Cog, Key, Plug, BarChart3, BrainCircuit, Bot, Sparkles, Keyboard, FolderOpen, Download, User, ScrollText,
+  Cog, Key, Plug, BarChart3, BrainCircuit, Bot, Sparkles, Keyboard, FolderOpen, Download, User, ScrollText, Server,
 } from 'lucide-react'
 import { ConfigTab } from './tabs/ConfigTab'
 import { ModelsTab } from './tabs/ModelsTab'
@@ -19,6 +19,7 @@ import { ImportTab } from './tabs/ImportTab'
 import { SoulTab } from './tabs/SoulTab'
 import { InstructionsTab } from './tabs/InstructionsTab'
 import { SandboxTab } from './tabs/SandboxTab'
+import DaemonTab from './tabs/DaemonTab'
 const TABS = [
   { id: 'config', label: 'Config', icon: Cog },
   { id: 'models', label: 'Models', icon: Key },
@@ -32,6 +33,7 @@ const TABS = [
   { id: 'projects', label: 'Projects', icon: FolderOpen },
   { id: 'import', label: 'Import', icon: Download },
   { id: 'soul', label: 'Soul', icon: User },
+  { id: 'daemon', label: 'Daemon', icon: Server },
   { id: 'instructions', label: 'Instructions', icon: ScrollText },
 ] as const
 
@@ -118,6 +120,9 @@ export function SettingsModal({ open, onOpenChange, initialTab, sessionId, proje
                 </TabsContent>
                 <TabsContent value="soul" className="mt-0">
                   <SoulTab projectDir={projectDir} />
+                </TabsContent>
+                <TabsContent value="daemon" className="mt-0">
+                  <DaemonTab />
                 </TabsContent>
                 <TabsContent value="instructions" className="mt-0">
                   <InstructionsTab projectDir={projectDir} />

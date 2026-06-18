@@ -1,4 +1,4 @@
-"""
+﻿"""
 FastAPI backend server for aede.
 
 Provides REST and WebSocket endpoints for the browser-based UI, including
@@ -16,7 +16,7 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
 if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File, Form
+from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -174,6 +174,116 @@ class WebSocketConsole:
 
     def error(self, message: str):
         self._send({"type": "error", "message": message})
+
+
+# ── Daemon status endpoint ────────────────────────────────────
+
+
+daemon_router = APIRouter(prefix="/api/daemon")
+
+_daemon_instance: "Daemon | None" = None
+
+
+def _get_daemon():
+    from aede.config import load_config
+    from aede.daemon import Daemon
+    global _daemon_instance
+    if _daemon_instance is None:
+        cfg = load_config()
+        _daemon_instance = Daemon(data_dir=cfg.data_dir)
+    return _daemon_instance
+
+
+@daemon_router.get("/status")
+async def daemon_status():
+    d = _get_daemon()
+    running = d.is_running()
+    pid = None
+    port = None
+    if running and d.pid_path.exists():
+        pid = int(d.pid_path.read_text().strip())
+    if d.port_path.exists():
+        port = int(d.port_path.read_text().strip())
+    return {"running": running, "pid": pid, "port": port}
+
+
+@daemon_router.post("/start")
+async def daemon_start() -> dict:
+    d = _get_daemon()
+    if d.is_running():
+        return {"status": "ok", "message": "already running"}
+    await d.start()
+    return {"status": "ok", "pid": d._pid}
+
+
+@daemon_router.post("/stop")
+async def daemon_stop() -> dict:
+    d = _get_daemon()
+    if not d.is_running():
+        return {"status": "ok", "message": "not running"}
+    await d.stop()
+    return {"status": "ok"}
+
+
+@daemon_router.get("/timers")
+async def list_timers() -> dict:
+    d = _get_daemon()
+    if not d.is_running():
+        return {"timers": []}
+    from aede.daemon import send_command
+    resp = await send_command({"cmd": "timer_list"}, data_dir=d.data_dir)
+    return {"timers": resp.get("timers", [])}
+
+
+@daemon_router.post("/timers")
+async def add_timer(body: dict) -> dict:
+    d = _get_daemon()
+    if not d.is_running():
+        raise HTTPException(status_code=503, detail="daemon is not running")
+    cmd = {"cmd": "timer_add", "delay_s": body["delay_s"], "action": body["action"], "label": body.get("label", "")}
+    from aede.daemon import send_command
+    resp = await send_command(cmd, data_dir=d.data_dir)
+    return resp
+
+
+@daemon_router.delete("/timers/{timer_id}")
+async def delete_timer(timer_id: str) -> dict:
+    d = _get_daemon()
+    from aede.daemon import send_command
+    resp = await send_command({"cmd": "timer_delete", "id": timer_id}, data_dir=d.data_dir)
+    return resp
+
+
+@daemon_router.get("/cron")
+async def list_cron() -> dict:
+    d = _get_daemon()
+    if not d.is_running():
+        return {"jobs": []}
+    from aede.daemon import send_command
+    resp = await send_command({"cmd": "cron_list"}, data_dir=d.data_dir)
+    return {"jobs": resp.get("jobs", [])}
+
+
+@daemon_router.post("/cron")
+async def add_cron(body: dict) -> dict:
+    d = _get_daemon()
+    if not d.is_running():
+        raise HTTPException(status_code=503, detail="daemon is not running")
+    cmd = {"cmd": "cron_add", "schedule": body["schedule"], "action": body["action"], "label": body.get("label", "")}
+    from aede.daemon import send_command
+    resp = await send_command(cmd, data_dir=d.data_dir)
+    return resp
+
+
+@daemon_router.delete("/cron/{job_id}")
+async def delete_cron(job_id: str) -> dict:
+    d = _get_daemon()
+    from aede.daemon import send_command
+    resp = await send_command({"cmd": "cron_delete", "id": job_id}, data_dir=d.data_dir)
+    return resp
+
+
+app.include_router(daemon_router)
 
 
 @app.get("/health")
@@ -505,8 +615,59 @@ async def create_session(request: Request, payload: dict):
 
 @app.get("/api/sessions")
 async def list_sessions(request: Request):
+    """List sessions structured by project vs global.
+
+    Returns ALL sessions grouped by project_dir (unlimited per project) plus
+    paginated global (no-project_dir) sessions.  This ensures project sessions
+    never disappear or compete for slots with global sessions.
+
+    Query parameters:
+        global_limit  (int, default 50)  - page size for global sessions
+        global_offset (int, default 0)   - page offset for global sessions
+
+    Response:
+    ```json
+    {
+      "projects": { "<project_dir>": [Session, ...], ... },
+      "global": {
+        "sessions": [Session, ...],
+        "total": int,
+        "limit": int,
+        "offset": int,
+        "has_more": bool
+      }
+    }
+    ```
+    """
+    from collections import defaultdict
     db = request.app.state.db
-    return db.list_sessions()
+
+    global_limit = int(request.query_params.get("global_limit", 50))
+    global_offset = int(request.query_params.get("global_offset", 0))
+
+    # All project sessions (unlimited), grouped by project_dir
+    project_rows = db.con.execute(
+        "SELECT * FROM sessions WHERE project_dir IS NOT NULL ORDER BY updated_at DESC"
+    ).fetchall()
+    projects: dict[str, list] = defaultdict(list)
+    for row in project_rows:
+        projects[row["project_dir"]].append(row)
+
+    # Global sessions (paginated)
+    global_sessions, global_total = db.list_global_sessions(
+        limit=global_limit, offset=global_offset
+    )
+
+    return {
+        "projects": dict(projects),
+        "global": {
+            "sessions": global_sessions,
+            "total": global_total,
+            "limit": global_limit,
+            "offset": global_offset,
+            "has_more": (global_offset + global_limit) < global_total,
+        },
+    }
 
 
 # ── Project endpoints ──────────────────────────────────────────────
