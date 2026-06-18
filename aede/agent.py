@@ -368,22 +368,6 @@ class AgentLoop:
             import asyncio as _asyncio
             _asyncio.ensure_future(cb(call_id, name, args))
 
-    def _persist_tool_call(self, call_id: str, name: str, args: dict) -> None:
-        """Persist a tool-call to DB without emitting a UI event.
-
-        Used for ask_user tools where the UI is driven by ``ask_user_request``
-        WS events instead of ``tool_call`` events.
-        """
-        if self._current_assist_id:
-            import json as _json
-            self._db.upsert_tool_call(
-                id=call_id,
-                message_id=self._current_assist_id,
-                tool_name=name,
-                args=_json.dumps(args),
-                status="running",
-            )
-
     def _emit_tool_result(self, call_id: str, status: str, output: str, duration_ms: int) -> None:
         """Forward a tool result to the UI stream, if a callback is wired."""
         # Persist to DB
@@ -604,7 +588,7 @@ class AgentLoop:
                         is_confirm = tool_name == "ask_user_confirm"
 
                     qid = uuid.uuid4().hex[:8]
-                    self._persist_tool_call(tool_use_id, tool_name, tool_input)
+                    self._emit_tool_call(tool_use_id, tool_name, tool_input)
 
                     if self._mode is PermissionMode.AUTO:
                         # Hands-free mode: skip user questions and return safe defaults.
