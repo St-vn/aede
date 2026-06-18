@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 interface AskUserRequest {
   questionId: string
   question: string
+  type?: string
   choices?: string[]
 }
 
@@ -16,7 +17,7 @@ interface Props {
 }
 
 export function AskUserCard({ request, onAnswer }: Props) {
-  const { questionId, question, choices } = request
+  const { questionId, question, type, choices } = request
   const [text, setText] = useState('')
 
   const handleSubmit = () => {
@@ -29,6 +30,9 @@ export function AskUserCard({ request, onAnswer }: Props) {
     onAnswer(questionId, choice)
   }
 
+  const isConfirm = type === 'confirm'
+  const hasChoices = choices && choices.length > 0
+
   return (
     <div role="status"
       className="border border-border border-l-2 border-l-[--color-info] rounded-lg p-4 my-2 bg-card">
@@ -37,9 +41,14 @@ export function AskUserCard({ request, onAnswer }: Props) {
         <span className="font-mono text-sm text-foreground">Agent asks</span>
       </div>
       <p className="text-sm text-foreground mb-3">{question}</p>
-      {choices && choices.length > 0 ? (
+      {isConfirm ? (
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => handleChoice('yes')}>Yes</Button>
+          <Button size="sm" variant="outline" onClick={() => handleChoice('no')}>No</Button>
+        </div>
+      ) : hasChoices ? (
         <div className="flex flex-wrap gap-2">
-          {choices.map(choice => (
+          {choices!.map(choice => (
             <Button key={choice} size="sm" variant="outline"
               onClick={() => handleChoice(choice)}>
               {choice}

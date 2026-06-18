@@ -39,7 +39,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   // streamingBlocks holds interleaved thinking+tool blocks in seq order during streaming.
   const [streamingBlocks, setStreamingBlocks] = useState<StreamingBlock[]>([])
   const [gates, setGates] = useState<GateRequest[]>([])
-  const [askUserRequests, setAskUserRequests] = useState<{ questionId: string; question: string; choices?: string[] }[]>([])
+  const [askUserRequests, setAskUserRequests] = useState<{ questionId: string; question: string; type?: string; choices?: string[] }[]>([])
   const [pendingMessages, setPendingMessages] = useState<{ content: string; id: string }[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -146,6 +146,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       setAskUserRequests(reqs => [...reqs, {
         questionId: ev.question_id as string,
         question: ev.question as string,
+        type: ev.question_type as string | undefined,
         choices: ev.choices as string[] | undefined,
       }])
     } else if (ev.type === 'ask_user_response') {

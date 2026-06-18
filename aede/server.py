@@ -160,6 +160,7 @@ class WebSocketAskUserBackend:
         question_id: str,
         question: str,
         choices: list[str] | None = None,
+        question_type: str = "text",
     ) -> str:
         fut = asyncio.get_running_loop().create_future()
         key = f"ask:{question_id}"
@@ -168,6 +169,7 @@ class WebSocketAskUserBackend:
             "type": "ask_user_request",
             "question_id": question_id,
             "question": question,
+            "question_type": question_type,
         }
         if choices:
             payload["choices"] = choices

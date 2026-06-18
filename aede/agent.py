@@ -606,6 +606,8 @@ class AgentLoop:
                     qid = uuid.uuid4().hex[:8]
                     self._persist_tool_call(tool_use_id, tool_name, tool_input)
 
+                    qtype_str = "confirm" if is_confirm else ("single_choice" if choices else "text")
+
                     if self._mode is PermissionMode.AUTO:
                         # Hands-free mode: skip user questions and return safe defaults.
                         if choices:
@@ -620,6 +622,7 @@ class AgentLoop:
                                 question_id=qid,
                                 question=question_text,
                                 choices=choices,
+                                question_type=qtype_str,
                             )
                         except Exception as exc:
                             answer = f"[error: {exc}]"

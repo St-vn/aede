@@ -3,11 +3,12 @@ import { vi, test, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { AskUserCard } from '../../components/chat/AskUserCard'
 
-function makeProps(overrides?: { questionId?: string; question?: string; choices?: string[] }) {
+function makeProps(overrides?: { questionId?: string; question?: string; type?: string; choices?: string[] }) {
   return {
     request: {
       questionId: overrides?.questionId ?? 'q1',
       question: overrides?.question ?? 'What is your name?',
+      type: overrides?.type,
       choices: overrides?.choices,
     },
     onAnswer: vi.fn(),
@@ -68,6 +69,33 @@ test('clicking choice calls onAnswer', () => {
 
 test('no text input when choices provided', () => {
   const props = makeProps({ choices: ['X'] })
+  render(<AskUserCard {...props} />)
+  expect(screen.queryByRole('textbox', { name: /your answer/i })).not.toBeInTheDocument()
+})
+
+test('confirm type renders Yes and No buttons', () => {
+  const props = makeProps({ type: 'confirm', question: 'Is this correct?' })
+  render(<AskUserCard {...props} />)
+  expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'No' })).toBeInTheDocument()
+})
+
+test('confirm Yes button calls onAnswer with yes', () => {
+  const props = makeProps({ type: 'confirm' })
+  render(<AskUserCard {...props} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Yes' }))
+  expect(props.onAnswer).toHaveBeenCalledWith('q1', 'yes')
+})
+
+test('confirm No button calls onAnswer with no', () => {
+  const props = makeProps({ type: 'confirm' })
+  render(<AskUserCard {...props} />)
+  fireEvent.click(screen.getByRole('button', { name: 'No' }))
+  expect(props.onAnswer).toHaveBeenCalledWith('q1', 'no')
+})
+
+test('confirm type shows no text input', () => {
+  const props = makeProps({ type: 'confirm' })
   render(<AskUserCard {...props} />)
   expect(screen.queryByRole('textbox', { name: /your answer/i })).not.toBeInTheDocument()
 })
