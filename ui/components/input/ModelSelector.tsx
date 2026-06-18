@@ -159,27 +159,27 @@ export function ModelSelector({ currentModel, onModelChange, onOpenSettings }: P
         </Button>
       } />
       <DropdownMenuContent align="end" className="min-w-[200px]">
-          <div className="max-h-[250px] overflow-y-auto scroll-thin">
-            {providers.map(provider => (
-              <DropdownMenuGroup key={provider}>
-                <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {PROVIDER_LABELS[provider] || provider}
-                </DropdownMenuLabel>
-                {groupedModels[provider].map(m => (
-                  <DropdownMenuItem key={m.id} onClick={() => handleSelect(m.id)} className="text-xs">
-                    {m.id === currentModel && <Check className="w-3 h-3 mr-2 shrink-0" />}
-                    <span className={m.id !== currentModel ? 'ml-5' : ''}>{m.label}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            ))}
-          </div>
+        <div className="max-h-[250px] overflow-y-auto scroll-thin">
+          {providers.map(provider => (
+            <DropdownMenuGroup key={provider}>
+              <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {PROVIDER_LABELS[provider] || provider}
+              </DropdownMenuLabel>
+              {groupedModels[provider].map(m => (
+                <DropdownMenuItem key={m.id} onClick={() => handleSelect(m.id)} className="text-xs">
+                  {m.id === currentModel && <Check className="w-3 h-3 mr-2 shrink-0" />}
+                  <span className={m.id !== currentModel ? 'ml-5' : ''}>{m.label}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          ))}
+        </div>
         {effortOptions.length > 0 && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="text-xs gap-2">
-                <span>Reasoning</span>
+                <span>Effort</span>
                 <span className="text-muted-foreground ml-auto">{effortLabel}</span>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="min-w-[100px]">
@@ -197,7 +197,7 @@ export function ModelSelector({ currentModel, onModelChange, onOpenSettings }: P
         <DropdownMenuSeparator />
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="text-xs gap-2">
-            <Brain className="w-3 h-3" />
+            {/* <Brain className="w-3 h-3" /> */}
             <span>Thinking</span>
             <span className="text-muted-foreground ml-auto">{localThinking ? 'On (4k)' : 'Off'}</span>
           </DropdownMenuSubTrigger>

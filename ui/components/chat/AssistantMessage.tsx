@@ -14,7 +14,7 @@ const STREAMING_VERBS = [
   'Thinking...', 'Reasoning...', 'Processing...', 'Analysing...',
   'Stir frying...', 'Drafting...', 'Cooking...', 'Deep frying...',
   'Ideating...', 'Building...', 'Architecting...', 'Designing...',
-  'Orchestrating...', 'Assembling...', 'Welding...', 'Creating...',
+  'Orchestrating...', 'Assembling...', 'Mending...', 'Creating...',
 ]
 
 /** Format a duration in milliseconds to a human-readable string.

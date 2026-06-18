@@ -130,6 +130,7 @@
 
 .scroll-thin::-webkit-scrollbar {
   width: 10px;
+  height: 10px;
 }
 .scroll-thin::-webkit-scrollbar-track {
   background: transparent;

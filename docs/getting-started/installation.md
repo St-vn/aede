@@ -59,5 +59,7 @@ On first launch, aede creates its home directory at `~/.aede/` with this structu
 | `OPENROUTER_API_KEY` | OpenRouter | OpenRouter API key |
 | `OPENAI_API_KEY` | OpenAI | OpenAI API key |
 | `DEEPSEEK_API_KEY` | DeepSeek | DeepSeek API key |
+| `GROQ_API_KEY` | No | Groq API key for Whisper ASR (free tier available) |
+| `GOOGLE_API_KEY` | No | Google API key for Chirp 3 ASR |
 | `AEDE_HOME` | No | Override home directory (default: `~/.aede`) |
 | `EDITOR` | No | Text editor for config editing (default: `notepad.exe` on Windows, `vi` on POSIX) |

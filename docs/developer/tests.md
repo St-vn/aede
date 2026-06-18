@@ -46,6 +46,7 @@ The test suite covers:
 | MCP | Bridge, router, config |
 | ACP | Async message-pump, streaming, cancel, manager, session, registry, auth |
 | Server | FastAPI endpoints, soul API, project instructions API, gate cancel, gate reconnect |
+| Voice / ASR | ASR providers, model registry, fallback chain, transcribe endpoint, trigger endpoint, ClipRecorder, WebSpeechProvider, VoiceButton |
 | Import | Claude Code, OpenCode, skills, MCP |
 | Project model | CRUD |
 | ACP | Async message-pump, streaming, cancel, manager, session, registry, auth, thinking sequencing, tool call persistence |

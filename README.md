@@ -14,6 +14,7 @@ A personal CLI agent harness wrapping Claude (pronounced "aid").
 - **Configuration** system (global `~/.aede/config.yml`, project `./aede.yml`, session-level)
 - **Slash commands**: `/help`, `/keybinds`, `/resume`, `/sessions`, `/tools`, `/config`, `/compact`, `/tokens`, `/setkey`, `/clear`, `/exit`
 - **Token tracking** with KV-cache hit rate and estimated cost
+- **Voice input** — push-to-talk and wake word detection with multi-provider ASR (Groq, OpenAI, OpenRouter, Google) and browser-native fallback
 - **Pydantic validation** with retry-once on parameter errors
 - **API resilience**: exponential backoff on 429/500 errors
 

@@ -1,8 +1,8 @@
 # aede — Source of Truth
 
 **Version:** 0.1.0  
-**Last updated:** 2026-06-10  
-**Status:** Phase 1 complete · Phase 2 partial (memory, MCP, ACP + chat routing, critic, web server, import)
+**Last updated:** 2026-06-17  
+**Status:** Phase 1 complete · Phase 2 partial (memory, MCP, ACP + chat routing, critic, web server, voice, import)
 
 ---
 
@@ -37,6 +37,7 @@ aede/                    # Main Python package
 ├── credentials.py       # JSON credentials vault
 ├── project.py           # Project model (persistent directories)
 ├── server.py            # FastAPI backend server
+├── asr.py               # ASR model registry + providers (Groq, OpenAI, OpenRouter, Google)
 ├── tools/               # Tool implementations
 │   ├── router.py        # Tool registry + dispatcher
 │   ├── files.py         # read_file, write_file, create_file, list_dir
@@ -183,8 +184,10 @@ Key attributes:
 | `ollama_base_url` | `http://localhost:11434` | Ollama endpoint |
 | `ollama_embed_model` | `nomic-embed-text` | Embedding model |
 | `ollama_timeout_s` | 5 | Ollama request timeout |
-| `learnings_top_k` | 5 | Top-k learnings to retrieve |
-| `learnings_max_tokens` | 2000 | Max tokens for learnings suffix |
+| `voice_input_enabled` | `False` | Enable push-to-talk mic button |
+| `voice_wake_word_enabled` | `False` | Enable continuous wake word listening |
+| `voice_asr_model` | `whisper-large-v3-turbo` | ASR model for transcription |
+| `voice_wake_model` | `hey_jarvis` | Wake word model to detect |
 | `mcp_servers` | `{}` | MCP server configs |
 
 ### Bootstrap (`aede/config.py:bootstrap()` line 86)
@@ -206,6 +209,8 @@ Creates `~/.aede/` tree with `data/`, `data/sessions/`, `skills/`, `agents/` and
 | `OPENROUTER_API_KEY` | Yes (OpenRouter) | OpenRouter API key |
 | `OPENAI_API_KEY` | Yes (OpenAI) | OpenAI API key |
 | `DEEPSEEK_API_KEY` | Yes (DeepSeek) | DeepSeek API key |
+| `GROQ_API_KEY` | No | Groq API key for Whisper ASR (free tier available) |
+| `GOOGLE_API_KEY` | No | Google API key for Chirp 3 ASR |
 | `EDITOR` | No | Text editor (default: notepad.exe/vi) |
 
 ---
@@ -1101,6 +1106,8 @@ For unsupported sources, create a new agent/skill manually using the existing fo
 | `/api/mcp/servers/{name}` | PUT | Update MCP server (enable/disable) |
 | `/api/mcp/servers/{name}` | DELETE | Remove MCP server |
 | `/api/mcp/restart` | POST | Restart MCP bridge |
+| `/api/voice/transcribe` | POST | Transcribe audio via ASR fallback chain (or signal WebSpeech fallback) |
+| `/api/voice/trigger` | POST | Log a wake-word trigger event to session trace |
 
 ### WebSocket Gate Backend (`aede/server.py:26-55`)
 
@@ -1122,7 +1129,7 @@ Data fetched via `useSkills()`, `useAgents()`, `useMcpServers()` hooks from `/ap
 
 ### Settings Modal (`ui/components/settings/SettingsModal.tsx`)
 
-Vertical tab layout with 10 tabs:
+Vertical tab layout with 11 tabs:
 
 | Tab | Component | Description |
 |-----|-----------|-------------|
@@ -1133,6 +1140,7 @@ Vertical tab layout with 10 tabs:
 | Memory | `MemoryTab` | Learnings management |
 | Agents | `AgentsTab` | Scope selector (global/project), CRUD, upload, edit file |
 | Skills | `SkillsTab` | Scope selector (global/project), CRUD, upload, edit file |
+| Soul | `SoulTab` | Agent identity, persona, voice settings (ASR model, wake word, API keys), scope selector |
 | Import | `ImportTab` | Import instructions, supported sources table, CLI/REPL commands |
 | Keybinds | `KeybindsTab` | Keyboard shortcut reference |
 | Projects | `ProjectsTab` | Project management |
@@ -1141,7 +1149,66 @@ All forms use `FormModal` (portaled to `document.body` to escape parent transfor
 
 ---
 
-## 23. Model Presets
+## 23. Voice Input
+
+**Files:** `aede/asr.py` (ASR backend), `ui/components/input/voice/` (frontend pipeline)
+
+### ASR Backend (`aede/asr.py`)
+
+**Protocol:** `AsrProvider` — runtime-checkable protocol with `async transcribe(audio, mime, model, language?) -> Transcript`
+
+**`Transcript` dataclass:** `text: str`, `model: str`, `provider: str`
+
+**Provider implementations:**
+
+| Provider | Auth Env Var | Endpoint |
+|----------|-------------|----------|
+| `OpenAiCompatibleAsrProvider` (Groq, OpenAI) | `GROQ_API_KEY`, `OPENAI_API_KEY` | Respective OpenAI-compatible APIs |
+| `OpenRouterAsrProvider` | `OPENROUTER_API_KEY` | `openrouter.ai/api/v1/audio/transcriptions` |
+| `GoogleAsrProvider` | `GOOGLE_API_KEY` | `speech.googleapis.com/v2/speech:recognize` |
+
+**Model registry:** `ASR_MODELS` dict maps model names to provider chains with provider-specific model IDs. OpenRouter IDs are namespaced (e.g., `openai/whisper-large-v3-turbo`).
+
+**Fallback chain:** `build_fallback_chain(model)` returns ordered `(provider, name, model_id)` tuples for providers with API keys. Empty chain signals WebSpeech fallback to the frontend.
+
+### Server Endpoints
+
+- **`POST /api/voice/transcribe`** — Accepts `audio` (UploadFile), `model`, `language`. Iterates fallback chain, returns first success. Empty chain → `{"fallback": "webspeech"}`.
+- **`POST /api/voice/trigger`** — Logs wake-word trigger to session trace. Fail-soft.
+
+### Frontend Pipeline
+
+- **`VoiceController`** — Central state machine (`idle → listening → captured → transcribing → done`). Single mic owner — wake engine and clip recorder never run concurrently.
+- **`ClipRecorder`** — `MediaRecorder` + `AnalyserNode` for energy-based silence detection. 15s hard cap, 4s grace window, 90-frame silence threshold.
+- **`AsrClient`** — HTTP client for `/api/voice/transcribe`, falls back to WebSpeech on failure.
+- **`WebSpeechProvider`** — Browser-native `SpeechRecognition` fallback. No API key needed.
+- **`wakeWorklet`** — Wraps `openwakeword-wasm-browser` for on-device wake word detection via ONNX/WASM.
+- **`VoiceButton`** — Push-to-talk mic icon in the input bar.
+
+### Config Keys
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `voice_input_enabled` | `False` | Enable push-to-talk mic button |
+| `voice_wake_word_enabled` | `False` | Enable continuous wake word listening |
+| `voice_asr_model` | `whisper-large-v3-turbo` | ASR model for transcription |
+| `voice_wake_model` | `hey_jarvis` | Wake word model to detect |
+
+### Tests
+
+| File | Coverage |
+|------|----------|
+| `tests/test_asr.py` | ASR providers, model registry, fallback chain |
+| `tests/test_voice_transcribe.py` | POST /api/voice/transcribe endpoint |
+| `tests/test_voice_trigger.py` | POST /api/voice/trigger endpoint |
+| `ui/__tests__/input/AsrClient.test.ts` | AsrClient HTTP + fallback |
+| `ui/__tests__/input/ClipRecorder.test.ts` | ClipRecorder silence detection |
+| `ui/__tests__/input/VoiceButton.test.tsx` | VoiceButton state rendering |
+| `ui/__tests__/input/WebSpeechProvider.test.ts` | WebSpeechProvider transcription |
+
+---
+
+## 24. Model Presets
 
 **File:** `aede/models.py` (62 lines)
 
@@ -1161,7 +1228,7 @@ Reads from `~/.aede/models.json` (user-customizable). Falls back to `default_mod
 
 ---
 
-## 24. Project Model
+## 25. Project Model
 
 **File:** `aede/project.py` (56 lines)
 
@@ -1178,7 +1245,7 @@ Persistent workspace directories with independent lifecycle (survives session de
 
 ---
 
-## 25. Tests
+## 26. Tests
 
 **Directory:** `tests/` (70 files)  
 **Runner:** `uv run pytest` (or `uv run pytest -xvs` for verbose)  
@@ -1231,6 +1298,9 @@ Persistent workspace directories with independent lifecycle (survives session de
 | `test_acp_*.py` | ACP async message-pump (demux, streaming, reentrant handlers, cancel, large-line/64KB regression), manager, session, registry, seeding, sub-model, credentials, routing |
 | `test_acp_auth.py` | ACP client-driven auth engine (`drive_auth` async generator, AuthStep events) |
 | `test_mcp_*.py` (3) | MCP bridge, router, config |
+| `test_asr.py` | ASR providers (Groq, OpenAI, OpenRouter, Google), model registry, fallback chain |
+| `test_voice_transcribe.py` | POST /api/voice/transcribe endpoint |
+| `test_voice_trigger.py` | POST /api/voice/trigger endpoint |
 | `test_server_*.py` (5) | FastAPI server |
 | `test_import_claude_code.py` | Claude Code agent import |
 | `test_opencode.py` | OpenCode agent import |
@@ -1244,7 +1314,7 @@ Persistent workspace directories with independent lifecycle (survives session de
 
 ---
 
-## 26. Key Architecture Decisions (Locked)
+## 27. Key Architecture Decisions (Locked)
 
 | Decision | Rationale |
 |----------|-----------|
@@ -1264,7 +1334,7 @@ Persistent workspace directories with independent lifecycle (survives session de
 
 ---
 
-## 27. Quick Reference
+## 28. Quick Reference
 
 ### Common commands
 

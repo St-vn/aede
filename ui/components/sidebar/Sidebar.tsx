@@ -1,6 +1,6 @@
 'use client'
-import React, { useState, useMemo } from 'react'
-import { Menu, Plus, User, Settings, FolderOpen, MessageCircle, MoreHorizontal, Trash2 } from 'lucide-react'
+import React, { useState, useMemo, useCallback } from 'react'
+import { Menu, Plus, User, Settings, FolderOpen, MessageCircle, MoreHorizontal, Trash2, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -15,13 +15,11 @@ import { SessionSearch } from './SessionSearch'
 import { FolderPicker } from '@/components/workspace/FolderPicker'
 import { RemoveProjectDialog } from '@/components/workspace/RemoveProjectDialog'
 import { useProjects, useAddProject, useRemoveProject, useDeleteProjectFolder, useRemoveProjectRepo } from '@/hooks/useProjects'
+import { useSessions } from '@/hooks/useSession'
 import type { Project } from '@/hooks/useProjects'
+import type { Session } from '@/hooks/useSession'
 
-interface Session {
-  id: string; title: string; model: string; parent_id: string | null; created_at: string; project_dir?: string | null
-}
 interface SidebarProps {
-  sessions: Session[]
   activeSessionId: string | null
   activeProjectDir?: string | null
   onSelectSession: (id: string) => void
@@ -32,31 +30,42 @@ interface SidebarProps {
   onOpenSettings?: () => void
 }
 
-export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectSession, onNewSession, onDeleteSession, onResumeBranch, onOpenProject, onOpenSettings }: SidebarProps) {
+export function Sidebar({ activeSessionId, activeProjectDir, onSelectSession, onNewSession, onDeleteSession, onResumeBranch, onOpenProject, onOpenSettings }: SidebarProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [folderPickerOpen, setFolderPickerOpen] = useState(false)
   const [removingProject, setRemovingProject] = useState<Project | null>(null)
+  const [globalOffset, setGlobalOffset] = useState(0)
+  const GLOBAL_PAGE_SIZE = 50
 
   const { data: projects = [] } = useProjects()
+  const { data: sessionsData } = useSessions({ globalLimit: GLOBAL_PAGE_SIZE, globalOffset })
   const addProject = useAddProject()
   const removeProject = useRemoveProject()
   const deleteFolder = useDeleteProjectFolder()
   const removeGit = useRemoveProjectRepo()
 
-  const groupedByProject = useMemo(() => {
-    const map = new Map<string, Session[]>()
-    const noProject: Session[] = []
-    for (const s of sessions) {
-      const key = s.project_dir || ''
-      if (key) {
-        if (!map.has(key)) map.set(key, [])
-        map.get(key)!.push(s)
-      } else {
-        noProject.push(s)
-      }
-    }
-    return { grouped: map, noProject }
-  }, [sessions])
+  const projectsMap = useMemo(() => {
+    const m = new Map<string, Project>()
+    for (const p of projects) m.set(p.project_dir, p)
+    return m
+  }, [projects])
+
+  const registeredProjectDirs = useMemo(
+    () => new Set(projects.map(p => p.project_dir)),
+    [projects]
+  )
+
+  // All project dirs from the sessions data (registered + orphan)
+  const allProjectDirs = useMemo(
+    () => sessionsData ? Object.keys(sessionsData.projects) : [],
+    [sessionsData]
+  )
+
+  // Orphan dirs: have sessions but aren't registered
+  const orphanDirs = useMemo(
+    () => allProjectDirs.filter(d => !registeredProjectDirs.has(d)),
+    [allProjectDirs, registeredProjectDirs]
+  )
 
   const handleAddProject = async () => {
     setFolderPickerOpen(true)
@@ -69,6 +78,18 @@ export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectS
 
   const handleDelete = async (id: string) => {
     onDeleteSession?.(id)
+  }
+
+  const handleLoadMoreGlobal = useCallback(() => {
+    setGlobalOffset(prev => prev + GLOBAL_PAGE_SIZE)
+  }, [])
+
+  // Derive display name for a project dir
+  const displayName = (dir: string): string => {
+    const registered = projectsMap.get(dir)
+    if (registered) return registered.display_name
+    // Use directory basename for orphan projects
+    return dir.split(/[\\/]/).filter(Boolean).pop() || dir
   }
 
   return (
@@ -108,8 +129,9 @@ export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectS
         {/* Project accordions */}
         {sidebarOpen && (
           <ScrollArea className="flex-1 min-h-0 px-2">
+            {/* Registered projects */}
             {projects.map(project => {
-              const projectSessions = groupedByProject.grouped.get(project.project_dir) || []
+              const projectSessions = sessionsData?.projects[project.project_dir] || []
               const isActive = project.project_dir === activeProjectDir
               return (
                 <Collapsible key={project.id} defaultOpen className="mb-1 group/project">
@@ -154,6 +176,37 @@ export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectS
               )
             })}
 
+            {/* Orphan project dirs (not registered but have sessions) */}
+            {orphanDirs.map(dir => {
+              const projectSessions = sessionsData?.projects[dir] || []
+              const isActive = dir === activeProjectDir
+              return (
+                <Collapsible key={dir} defaultOpen className="mb-1 group/project">
+                  <div className={`flex items-center gap-1 rounded-md ${isActive ? 'bg-muted' : ''}`}>
+                    <CollapsibleTrigger className={`flex items-center gap-2 flex-1 min-w-0 px-1 py-1.5 text-xs font-medium transition-colors rounded-md ${isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}>
+                      <FolderOpen className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{displayName(dir)}</span>
+                      <span className="ml-auto text-[10px] text-muted-foreground/60">{projectSessions.length}</span>
+                    </CollapsibleTrigger>
+                    <button
+                      onClick={() => onOpenProject?.(dir)}
+                      className="opacity-0 group-hover/project:opacity-100 transition-opacity p-1 hover:bg-muted rounded shrink-0"
+                      aria-label="New session in project"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </div>
+                  <CollapsibleContent>
+                    {projectSessions.length > 0 ? (
+                      <SessionSearch sessions={projectSessions} activeId={activeSessionId} onSelect={onSelectSession} onDelete={handleDelete} onResumeBranch={onResumeBranch} />
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground/50 px-3 py-1.5 italic">No sessions yet</p>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              )
+            })}
+
             {/* Add project button */}
             <button
               onClick={handleAddProject}
@@ -163,16 +216,25 @@ export function Sidebar({ sessions, activeSessionId, activeProjectDir, onSelectS
               Add project
             </button>
 
-            {/* No-project sessions */}
-            {groupedByProject.noProject.length > 0 && (
+            {/* No-project (global) sessions */}
+            {sessionsData && sessionsData.global.sessions.length > 0 && (
               <Collapsible defaultOpen className="mb-1 mt-2">
                 <CollapsibleTrigger className="flex items-center gap-2 w-full px-1 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
                   <MessageCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>Chats</span>
-                  <span className="ml-auto text-[10px] text-muted-foreground/60">{groupedByProject.noProject.length}</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground/60">{sessionsData.global.total}</span>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  <SessionSearch sessions={groupedByProject.noProject} activeId={activeSessionId} onSelect={onSelectSession} onDelete={handleDelete} onResumeBranch={onResumeBranch} />
+                  <SessionSearch sessions={sessionsData.global.sessions} activeId={activeSessionId} onSelect={onSelectSession} onDelete={handleDelete} onResumeBranch={onResumeBranch} />
+                  {sessionsData.global.has_more && (
+                    <button
+                      onClick={handleLoadMoreGlobal}
+                      className="flex items-center justify-center gap-1 w-full px-2 py-1.5 mt-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
+                    >
+                      <ChevronDown className="w-3 h-3" />
+                      Load more ({sessionsData.global.total - sessionsData.global.sessions.length} remaining)
+                    </button>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
             )}

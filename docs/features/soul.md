@@ -57,6 +57,13 @@ persona, all typed fields default to `None`.
 Allowed keys: `name`, `phonetic`, `wake_word`, `wake_word_phonetic`,
 `voice.engine`, `voice.voice_id`, `voice.rate`, `voice.pitch`, `aliases`.
 
+Additionally, these voice config keys are set via the Soul tab in the settings UI (stored in `aede.yml`, not SOUL.md frontmatter):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `voice_asr_model` | `whisper-large-v3-turbo` | ASR model for transcription |
+| `voice_wake_model` | `hey_jarvis` | Wake word model to detect |
+
 ## Web UI
 
 The settings modal **Soul** tab has a scope selector to switch between **Global** (`~/.aede/SOUL.md`) and **Project** (`./SOUL.md`) files. Each frontmatter field is a labeled input; the persona body is an editable textarea. The Save button writes to the selected scope and refreshes `cfg.soul` so the next CLI `/soul` reflects the change without restart. An "Edit file" button opens the file in your OS default editor.

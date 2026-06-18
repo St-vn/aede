@@ -12,21 +12,26 @@ aede is organized as a layered system. From the outside in:
 
 ```
 User ──► CLI / WebSocket ──► AgentLoop ──► Provider ──► LLM API
-                                │
-                          ┌─────┴──────┐
-                          │    Tools    │
-                          │ ┌────────┐ │
-                          │ │ Router │ │
-                          │ └───┬────┘ │
-                          │  ┌──┴───┐  │
-                          │  │ MCP  │  │
-                          │  └──────┘  │
-                          └─────┬──────┘
-                                │
-                     ┌──────────┴──────────┐
-                     │    Gate + Hooks     │
-                     │  (approval + deny)  │
-                     └─────────────────────┘
+              │                    │
+              │              ┌─────┴──────┐
+              │              │    Tools    │
+              │              │ ┌────────┐ │
+              │              │ │ Router │ │
+              │              │ └───┬────┘ │
+              │              │  ┌──┴───┐  │
+              │              │  │ MCP  │  │
+              │              │  └──────┘  │
+              │              └─────┬──────┘
+              │                    │
+   ┌──────────┴─────┐    ┌───────┴──────────┐
+   │   Voice Input  │    │   Gate + Hooks   │
+   │ ┌────────────┐ │    │  (approval + deny)│
+   │ │ Controller │ │    └──────────────────┘
+   │ │ ClipRec    │ │
+   │ │ ASR Chain  │ │
+   │ │ Wake Word  │ │
+   │ └────────────┘ │
+   └────────────────┘
 ```
 
 ## Component Relationships
@@ -43,6 +48,7 @@ User ──► CLI / WebSocket ──► AgentLoop ──► Provider ──► 
 | `db.py` | Persistence | SQLite with WAL + FTS5 |
 | `session.py` | State | Session lifecycle (ULID, branching) |
 | `server.py` | HTTP | FastAPI + WebSocket backend |
+| `asr.py` | Voice | ASR model registry, provider implementations, fallback chain |
 | `tokens.py` | Tracking | Per-turn token accounting + cost |
 
 ## Package Structure
@@ -62,6 +68,7 @@ aede/
 ├── critic.py           # Code reviewer
 ├── credentials.py      # Credential vault
 ├── server.py           # FastAPI server
+├── asr.py              # ASR model registry + providers (Groq, OpenAI, OpenRouter, Google)
 ├── rollout.py          # JSONL audit trail
 ├── compaction.py       # Context compaction
 ├── models.py           # Model presets
@@ -84,4 +91,5 @@ aede/
 4. If the LLM requests a tool, **AgentLoop** validates the name, runs safety hooks, gates approval, validates parameters, and executes
 5. Tool results are appended to the conversation and sent back to the LLM
 6. The loop repeats until the LLM produces a final text response
-7. Turn data is persisted to SQLite, JSONL rollout, and GEPA trace
+7. **Voice input** arrives via `POST /api/voice/transcribe` — audio is transcribed through an ASR fallback chain (Groq → OpenAI → OpenRouter → Google), falling back to browser-native Web Speech if no API keys are configured
+8. Turn data is persisted to SQLite, JSONL rollout, and GEPA trace

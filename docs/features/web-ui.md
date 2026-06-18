@@ -22,7 +22,7 @@ The main view is a chat panel where you type messages and see the agent's stream
 
 ## Settings Modal
 
-A settings panel with 11 tabs accessed from the chat interface:
+A settings panel with 12 tabs accessed from the chat interface:
 
 | Tab | Description |
 |-----|-------------|
@@ -35,6 +35,7 @@ A settings panel with 11 tabs accessed from the chat interface:
 | **Skills** | Create, edit, delete, and upload skill definitions (global or project scope) |
 | **Instructions** | Edit project instructions (AGENTS.md / CLAUDE.md) with global/project scope |
 | **Import** | Instructions for importing from other harnesses |
+| **Soul** | Agent identity, persona, voice settings (ASR model, wake word, API keys) |
 | **Keybinds** | Keyboard shortcut reference |
 | **Projects** | Project management |
 
@@ -48,6 +49,7 @@ Through the Web UI you can manage ACP agents — register, connect, and switch b
 - Incremental streaming token rendering in chat
 - Settings editing through forms rather than YAML
 - Slash commands available with autocomplete suggestions
+- Voice input (push-to-talk and wake word) available in Web UI only
 - Some advanced CLI commands (e.g., `/extract`) are not available in the Web UI
 
 ## Collapsible Blocks

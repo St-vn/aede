@@ -63,8 +63,10 @@ date_updated: 2026-06-16
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `voice_input_enabled` | boolean | `false` | Enable voice input in the web UI |
-| `voice_wake_word_enabled` | boolean | `false` | Enable wake word detection |
+| `voice_input_enabled` | boolean | `false` | Enable push-to-talk mic button in the web UI |
+| `voice_wake_word_enabled` | boolean | `false` | Enable continuous wake word listening |
+| `voice_asr_model` | string | `whisper-large-v3-turbo` | ASR model for transcription (see [Voice](features/voice.md) for options) |
+| `voice_wake_model` | string | `hey_jarvis` | Wake word model to detect (`hey_jarvis`, `alexa`, `hey_mycroft`, `hey_rhasspy`) |
 
 ## Sandbox
 

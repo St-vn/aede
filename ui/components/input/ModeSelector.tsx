@@ -1,6 +1,6 @@
 'use client'
 import React from 'react'
-import { Check, ClipboardList, Hand, FileCode, Rocket, Zap } from 'lucide-react'
+import { Check, Scroll, Pause, FileCode, Rocket, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -13,11 +13,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 const MODES = [
-  { value: 'plan', label: 'Plan mode', description: 'Read-only. Writes and shell denied.', icon: ClipboardList },
-  { value: 'normal', label: 'Ask before edits', description: 'Read auto, writes/shell gated.', icon: Hand },
-  { value: 'allow_write_read', label: 'Edit automatically', description: 'Read + file writes auto, shell gated.', icon: FileCode },
-  { value: 'execution', label: 'Execution', description: 'Auto-approve with safety classifier.', icon: Rocket },
-  { value: 'auto', label: 'Auto mode', description: 'Hands-free. All tools run.', icon: Zap },
+  { value: 'plan', label: 'Plan mode', description: 'Read-only. Writes and shell denied.', icon: Scroll },
+  { value: 'normal', label: 'Ask before edits', description: 'Read auto, writes/shell gated.', icon: Pause },
+  { value: 'allow_write_read', label: 'Edit automatically', description: 'Read + Write files auto, shell gated.', icon: FileCode },
+  { value: 'execution', label: 'Execute', description: 'Auto-approve with safety-net.', icon: Rocket },
+  { value: 'auto', label: 'Danger Zone', description: 'No filter. No questions. Hands-free.', icon: TriangleAlert },
 ]
 
 interface Props {

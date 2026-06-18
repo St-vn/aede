@@ -20,6 +20,8 @@
 - [critic](features/critic.md)
 - [web-ui](features/web-ui.md)
 - [server](features/server.md)
+- [voice](features/voice.md)
+- [soul](features/soul.md)
 - [architecture-overview](architecture/overview.md)
 - [architecture-agent-loop](architecture/agent-loop.md)
 - [architecture-providers](architecture/providers.md)

@@ -25,7 +25,7 @@ Set `ANTHROPIC_API_KEY` in your environment first. See [Installation](getting-st
 - **Memory** — learnings persist across sessions, retrieved via hybrid vector + FTS search
 - **Sandbox** — Docker-based sandboxed execution with FileSet path allowlisting and prompt injection filtering
 - **Daemon** — background runtime with cron jobs, file watch events, and one-shot timers
-- **Voice** — press-to-talk and wake word input in the web UI
+- **Voice** — push-to-talk and wake word input with multi-provider ASR backend (Groq, OpenAI, OpenRouter, Google) and browser-native fallback
 - **SOUL.md** — identity, persona, and voice configuration via YAML frontmatter
 - **Observability** — OpenTelemetry tracing (OTLP gRPC) and FDE fair-data-ethics capture with PII redaction
 - **MCP servers** — integrate any Model Context Protocol server for extended tool capabilities

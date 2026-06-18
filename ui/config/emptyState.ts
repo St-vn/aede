@@ -23,6 +23,7 @@ export const EMPTY_STATE: EmptyStateConfig = {
     "Start orchestrating.",
     "What do you want to brainstorm?",
     "From an idea to a product.",
+    "Made for masterminds.",
   ],
   headlineIntervalMs: 3500,
   subtitle: "aede, your building room",

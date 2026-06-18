@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card'
 import { useDaemonStatus } from '@/hooks/useDaemon'
 import { apiFetch } from '@/lib/api'
 import useSWR from 'swr'
-import { Play, Square, Plus, Trash2, Clock, CalendarClock, RefreshCw, Loader2 } from 'lucide-react'
+import { Play, Square, Plus, Trash2, Clock, CalendarClock, RefreshCw, Loader2, AlertCircle } from 'lucide-react'
 
 interface Timer {
   id: string
@@ -27,13 +27,13 @@ function DaemonTab() {
   const { data: status, error: statusError, isLoading: statusLoading, mutate: refreshStatus } = useDaemonStatus()
 
   const { data: timersData, mutate: refreshTimers } = useSWR<{ timers: Timer[] }>(
-    () => (status?.running ? '/daemon/timers' : null),
-    () => apiFetch<{ timers: Timer[] }>('/daemon/timers'),
+    () => (status?.running ? '/api/daemon/timers' : null),
+    () => apiFetch<{ timers: Timer[] }>('/api/daemon/timers'),
   )
 
   const { data: cronData, mutate: refreshCron } = useSWR<{ jobs: CronJob[] }>(
-    () => (status?.running ? '/daemon/cron' : null),
-    () => apiFetch<{ jobs: CronJob[] }>('/daemon/cron'),
+    () => (status?.running ? '/api/daemon/cron' : null),
+    () => apiFetch<{ jobs: CronJob[] }>('/api/daemon/cron'),
   )
 
   const [timerDelay, setTimerDelay] = useState('')
@@ -46,6 +46,7 @@ function DaemonTab() {
   const [cronLabel, setCronLabel] = useState('')
   const [addingCron, setAddingCron] = useState(false)
   const [cronError, setCronError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const isRunning = status?.running ?? false
 
@@ -93,56 +94,86 @@ function DaemonTab() {
   }
 
   const handleStart = async () => {
-    await apiFetch('/api/daemon/start', { method: 'POST' })
-    await refreshStatus()
+    try {
+      setActionError(null)
+      await apiFetch('/api/daemon/start', { method: 'POST' })
+      await refreshStatus()
+    } catch (e) {
+      setActionError('Failed to start daemon')
+    }
   }
 
   const handleStop = async () => {
-    await apiFetch('/api/daemon/stop', { method: 'POST' })
-    await refreshStatus()
+    try {
+      setActionError(null)
+      await apiFetch('/api/daemon/stop', { method: 'POST' })
+      await refreshStatus()
+    } catch (e) {
+      setActionError('Failed to stop daemon')
+    }
   }
 
   const handleAddTimer = async () => {
-    const delay = parseInt(timerDelay, 10)
-    if (isNaN(delay) || delay <= 0) return
-    await apiFetch('/api/daemon/timers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ delay_s: delay, action: timerAction, label: timerLabel }),
-    })
-    setTimerDelay('')
-    setTimerAction('')
-    setTimerLabel('')
-    setAddingTimer(false)
-    await refreshTimers()
+    try {
+      setActionError(null)
+      const delay = parseInt(timerDelay, 10)
+      if (isNaN(delay) || delay <= 0) return
+      await apiFetch('/api/daemon/timers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delay_s: delay, action: timerAction, label: timerLabel }),
+      })
+      setTimerDelay('')
+      setTimerAction('')
+      setTimerLabel('')
+      setAddingTimer(false)
+      await refreshTimers()
+    } catch (e) {
+      setActionError('Failed to add timer')
+    }
   }
 
   const handleDeleteTimer = async (id: string) => {
-    await apiFetch(`/api/daemon/timers/${id}`, { method: 'DELETE' })
-    await refreshTimers()
+    try {
+      setActionError(null)
+      await apiFetch(`/api/daemon/timers/${id}`, { method: 'DELETE' })
+      await refreshTimers()
+    } catch (e) {
+      setActionError('Failed to delete timer')
+    }
   }
 
   const handleAddCron = async () => {
-    if (!isValidCronExpression(cronSchedule)) {
-      setCronError('Invalid cron expression. Use 5-field format (minute hour dom month dow) or @-shorthand.')
-      return
+    try {
+      setActionError(null)
+      if (!isValidCronExpression(cronSchedule)) {
+        setCronError('Invalid cron expression. Use 5-field format (minute hour dom month dow) or @-shorthand.')
+        return
+      }
+      setCronError(null)
+      await apiFetch('/api/daemon/cron', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedule: cronSchedule, action: cronAction, label: cronLabel }),
+      })
+      setCronSchedule('')
+      setCronAction('')
+      setCronLabel('')
+      setAddingCron(false)
+      await refreshCron()
+    } catch (e) {
+      setActionError('Failed to add cron job')
     }
-    setCronError(null)
-    await apiFetch('/api/daemon/cron', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ schedule: cronSchedule, action: cronAction, label: cronLabel }),
-    })
-    setCronSchedule('')
-    setCronAction('')
-    setCronLabel('')
-    setAddingCron(false)
-    await refreshCron()
   }
 
   const handleDeleteCron = async (id: string) => {
-    await apiFetch(`/api/daemon/cron/${id}`, { method: 'DELETE' })
-    await refreshCron()
+    try {
+      setActionError(null)
+      await apiFetch(`/api/daemon/cron/${id}`, { method: 'DELETE' })
+      await refreshCron()
+    } catch (e) {
+      setActionError('Failed to delete cron job')
+    }
   }
 
   return (
@@ -197,8 +228,15 @@ function DaemonTab() {
           </div>
         )}
         {statusError && (
-          <p className="mt-2 text-[10px] text-destructive bg-destructive/10 px-2 py-1 rounded">
+          <p className="mt-2 text-[10px] text-destructive bg-destructive/10 px-2 py-1 rounded flex items-center gap-1">
+            <AlertCircle className="w-3 h-3 shrink-0" />
             {statusError.message}
+          </p>
+        )}
+        {actionError && (
+          <p className="mt-2 text-[10px] text-destructive bg-destructive/10 px-2 py-1 rounded flex items-center gap-1">
+            <AlertCircle className="w-3 h-3 shrink-0" />
+            {actionError}
           </p>
         )}
       </Card>

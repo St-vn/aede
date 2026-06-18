@@ -34,6 +34,8 @@ aede --serve --host 127.0.0.1 --port 8000
 | `/api/soul/open` | POST | Open SOUL.md in OS default editor |
 | `/api/project-instructions` | GET/PUT | Read or write AGENTS.md / CLAUDE.md at requested scope |
 | `/api/project-instructions/open` | POST | Open instructions file in OS editor |
+| `/api/voice/transcribe` | POST | Transcribe audio via ASR fallback chain (or signal WebSpeech fallback) |
+| `/api/voice/trigger` | POST | Log a wake-word trigger event to session trace |
 
 ## WebSocket
 

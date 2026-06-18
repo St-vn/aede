@@ -69,7 +69,7 @@ function DiffView({ filePath, oldStr, newStr, startLine }: { filePath: string; o
           </span>
         </div>
       )}
-      <div className="overflow-x-auto bg-background/40 py-1">
+      <div className="overflow-x-auto scroll-thin bg-background/40 py-1">
         <div className="min-w-full w-max">
         {lines.map((dl, idx) => {
           const isAdd = dl.type === 'add', isRem = dl.type === 'remove'
@@ -141,6 +141,7 @@ export function ToolCallCard({ toolName, status, args, output, durationMs, strea
   const isEdit = typeof args.old_string === 'string'
     && typeof args.new_string === 'string'
   const startLine = typeof args._start_line === 'number' ? args._start_line : undefined
+  const fileContent = !isEdit && typeof args.content === 'string' && args.content.includes('\n') ? args.content : null
 
   // Primary value for the header (file path, command, query, etc.)
   const primaryValue = !isEdit ? getPrimaryValue(args) : undefined
@@ -189,6 +190,34 @@ export function ToolCallCard({ toolName, status, args, output, durationMs, strea
           newStr={args.new_string as string}
           startLine={startLine}
         />
+      ) : fileContent ? (
+        <div className="text-xs rounded-md overflow-hidden font-mono border border-border">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/60 border-b border-border">
+            <span className="truncate text-foreground/80" title={primaryValue}>{primaryName}</span>
+            {primaryValue && primaryName !== primaryValue && (
+              <span className="truncate text-muted-foreground/50 text-[10px]" title={primaryValue}>{primaryValue}</span>
+            )}
+          </div>
+          <div className="overflow-x-auto scroll-thin bg-background/40 py-1">
+            <div className="min-w-full w-max">
+              {fileContent.split('\n').map((line, i) => {
+                const lineNo = (startLine ?? 1) + i
+                return (
+                  <div key={i} className="flex">
+                    <span
+                      className="select-none shrink-0 text-right px-2 text-muted-foreground/40 tabular-nums"
+                      style={{ minWidth: `${String((startLine ?? 1) + fileContent.split('\n').length).length + 1}ch` }}
+                    >
+                      {lineNo}
+                    </span>
+                    <span className="whitespace-pre text-foreground/80">{line}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <ArgsView args={args} exclude="content" />
+        </div>
       ) : (
         <div className="text-xs rounded-md overflow-hidden font-mono border border-border">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/60 border-b border-border">
@@ -207,7 +236,27 @@ export function ToolCallCard({ toolName, status, args, output, durationMs, strea
           {streamingOutput}
         </pre>
       )}
-      {output && !isEdit && <pre className="text-xs rounded mx-2 mb-2 p-2 overflow-y-auto overflow-x-hidden max-h-[300px] scroll-thin whitespace-pre-wrap break-words font-mono">{output}</pre>}
+      {output && !isEdit && (
+        output.includes('\n') ? (
+          <div className="text-xs overflow-x-auto scroll-thin bg-background/40 mx-2 mb-2 rounded py-1 font-mono">
+            <div className="min-w-full w-max">
+              {output.split('\n').map((line, i) => (
+                <div key={i} className="flex">
+                  <span
+                    className="select-none shrink-0 text-right px-2 text-muted-foreground/40 tabular-nums"
+                    style={{ minWidth: `${String(output.split('\n').length).length + 1}ch` }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="whitespace-pre text-foreground/80">{line}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <pre className="text-xs rounded mx-2 mb-2 p-2 overflow-y-auto overflow-x-hidden max-h-[300px] scroll-thin whitespace-pre-wrap break-words font-mono">{output}</pre>
+        )
+      )}
     </CollapsibleBlock>
   )
 }
