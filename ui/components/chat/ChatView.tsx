@@ -28,12 +28,12 @@ type StreamingBlock =
   | { kind: 'thinking'; seq: number; text: string }
   | { kind: 'tool'; seq: number; id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number; streamingOutput?: string }
 
-interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void; onOpenSettings?: (tab?: string) => void; onOpenHelp?: () => void; defaultModel?: string; onModelChange?: (model: string) => void }
+interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void; onOpenSettings?: (tab?: string) => void; onOpenHelp?: () => void; defaultModel?: string; onModelChange?: (model: string) => void; mode?: string; onModeChange?: (mode: string) => void }
 
 const _stripRich = (text: string): string =>
   text.replace(/\[\/?\w+(?:[ \t]\w+)*\]/g, '').replace(/\r/g, '')
 
-export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp, defaultModel, onModelChange }: Props) {
+export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp, defaultModel, onModelChange, mode, onModeChange }: Props) {
   const [streamingText, setStreamingText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   // streamingBlocks holds interleaved thinking+tool blocks in seq order during streaming.
@@ -324,7 +324,8 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       </div>
       <div className="max-w-[760px] mx-auto w-full">
         <InputBar onSend={handleSend} disabled={inputDisabled} sessionId={sessionId}
-          defaultModel={defaultModel} onModelChange={handleModelChange} />
+          defaultModel={defaultModel} onModelChange={handleModelChange}
+          mode={mode} onModeChange={onModeChange} />
       </div>
     </div>
   )

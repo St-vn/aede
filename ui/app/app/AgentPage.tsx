@@ -130,6 +130,7 @@ export function AgentPage() {
               onClearInitialMessage={() => setInitialMessage('')}
               onOpenSettings={(tab) => { setSettingsTab(tab as SettingsTabId); setSettingsOpen(true) }}
               defaultModel={currentModel} onModelChange={setCurrentModel}
+              mode={currentMode} onModeChange={handleModeChange}
             />
         ) : (
           <div className="flex-1 flex flex-col min-h-0 justify-between">
