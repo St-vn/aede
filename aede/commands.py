@@ -20,7 +20,7 @@ COMMANDS = {
     "help", "keybinds", "resume", "sessions", "tools", "config",
     "compact", "tokens", "clear", "exit", "setkey",
     "skills", "agents", "mcp", "delete-session", "rm", "acp", "import",
-    "extract", "soul", "rename", "approve",
+    "extract", "soul", "rename", "approve", "mode",
 }
 
 
@@ -61,6 +61,7 @@ def handle_help(console: Any) -> None:
             "  /sessions                     — list recent sessions",
             "  /delete-session [id]          — delete a session (alias: /rm)",
             "  /tools                        — list tools and approval status",
+            "  /mode [plan|normal|allow_write_read|execution|auto] — view or change permission mode",
             "  /skills                       — list loaded skills",
             "  /agents                       — list loaded agents",
             "  /mcp                          — list MCP servers and tools",
@@ -127,6 +128,29 @@ def handle_rename(args: list[str], session: Any, db: Any, console: Any) -> None:
     title = " ".join(args)
     session.set_title(db, title)
     console.print(f"[green]✓[/green] Session renamed to \"{title}\"")
+
+
+def handle_mode(args: list[str], gate_store: Any, console: Any, cfg: Any = None) -> None:
+    """View or change the permission mode.
+
+    Usage:
+      /mode                    — show current mode
+      /mode <name>             — switch to mode (plan, normal, allow_write_read, execution, auto)
+    """
+    from aede.gate import PermissionMode
+    if not args:
+        console.print(f"Current mode: [bold]{gate_store.mode.value}[/bold]")
+        return
+    name = args[0].lower().replace("-", "_")
+    try:
+        new_mode = PermissionMode.from_str(name)
+    except ValueError:
+        console.print(f"[red]Unknown mode: {name!r}. Valid: {', '.join(m.value for m in PermissionMode)}[/red]")
+        return
+    gate_store.mode = new_mode
+    console.print(f"[green]✓[/green] Switched to [bold]{new_mode.value}[/bold] mode")
+    if cfg and hasattr(cfg, "gate_mode"):
+        cfg.gate_mode = new_mode.value
 
 
 def handle_approve(args: list[str], router: Any, gate_store: Any, console: Any) -> None:
@@ -330,6 +354,7 @@ def handle_config_show(cfg: Any, console: Any) -> None:
         ("tool_output_max_tokens", cfg.tool_output_max_tokens),
         ("shell", cfg.shell),
         ("batch_approval_max", cfg.batch_approval_max),
+        ("gate_mode", cfg.gate_mode),
         ("auto_approve", ", ".join(cfg.auto_approve) if cfg.auto_approve else "(none)"),
     ]
     mcp_servers = getattr(cfg, "mcp_servers", {})

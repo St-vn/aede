@@ -392,10 +392,10 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     from aede.rollout import Rollout
     from aede.session import Session
     from aede.tools.router import ToolRouter
-    from aede.gate import PermissionStore, TerminalGateBackend
+    from aede.gate import PermissionStore, TerminalGateBackend, PermissionMode
     from aede.tokens import TokenTracker, PriceCache
     from aede.agent import AgentLoop
-    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_rename, handle_tools, handle_approve, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_soul, handle_agents, handle_mcp, handle_acp, _load_session_notes, handle_delete_session, handle_import, handle_extract
+    from aede.commands import parse_command, handle_help, handle_keybinds, handle_sessions, handle_rename, handle_tools, handle_approve, handle_tokens, handle_config_show, handle_config_edit, handle_setkey, handle_resume, handle_skills, handle_soul, handle_agents, handle_mcp, handle_acp, _load_session_notes, handle_delete_session, handle_import, handle_extract, handle_mode
 
     console = Console()
 
@@ -496,6 +496,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
 
     gate_store = PermissionStore()
     gate_store.load_from_config(cfg.auto_approve)
+    gate_store.mode = PermissionMode.from_str(cfg.gate_mode)
 
     from aede.instructions import build_instructions_suffix as _build_inst
     instructions_suffix = _build_inst(home=home, project_dir=Path.cwd())
@@ -533,6 +534,16 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         credential_provider=acp_credential_provider,
     )
 
+    sandbox = None
+    fileset = None
+    sandbox_filter = False
+    if cfg.sandbox_enabled:
+        from aede.sandboxing.docker import DockerSandbox
+        from aede.sandboxing.fileset import infer_fileset
+        sandbox = DockerSandbox(cfg, Path.cwd(), cfg.data_dir, session.id)
+        fileset = infer_fileset(Path.cwd(), session.id)
+        sandbox_filter = True
+
     router = ToolRouter(
         shell=cfg.shell,
         wsl_distro=cfg.wsl_distro,
@@ -543,6 +554,9 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         _agent_registry=agent_registry,
         _session_id=session.id,
         data_dir=cfg.data_dir,
+        sandbox=sandbox,
+        fileset=fileset,
+        sandbox_filter=sandbox_filter,
     )
     router.set_auto_approved(cfg.auto_approve)
 
@@ -669,6 +683,8 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
                 handle_rename(cmd.args, session, db, console)
             elif cmd.name == "approve":
                 handle_approve(cmd.args, router, gate_store, console)
+            elif cmd.name == "mode":
+                handle_mode(cmd.args, gate_store, console, cfg)
             elif cmd.name == "mcp":
                 handle_mcp(mcp_servers, console)
             elif cmd.name == "acp":
@@ -703,7 +719,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         except Exception:
             pass
 
-    _shutdown(session, db, rollout, stop_reason, data_dir=cfg.data_dir)
+    _shutdown(session, db, rollout, stop_reason, data_dir=cfg.data_dir, sandbox=sandbox)
 
     if resume_target is not None:
         return await _run(resume_session_id=resume_target)
@@ -717,7 +733,7 @@ async def _run_turn_safe(agent: Any, user_input: str, console: Any) -> None:
         console.print(f"[red]Error: {e}[/red]")
 
 
-def _shutdown(session: Any, db: Any, rollout: Any, reason: str, data_dir: Path | None = None) -> None:
+def _shutdown(session: Any, db: Any, rollout: Any, reason: str, data_dir: Path | None = None, sandbox: Any = None) -> None:
     """Persist session status, write the session-end rollout record, and close the DB.
 
     Sessions that exit via /exit or EOF are archived; Ctrl-C leaves them active
@@ -760,6 +776,8 @@ def _shutdown(session: Any, db: Any, rollout: Any, reason: str, data_dir: Path |
             except Exception:
                 pass  # Non-blocking — shutdown must not fail on extraction enqueue
 
+        if sandbox is not None:
+            sandbox.stop()
         db.close()
     except Exception:
         pass

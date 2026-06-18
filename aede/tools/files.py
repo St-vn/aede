@@ -7,43 +7,80 @@ exceptions so the router can catch them and return them to the model.
 """
 from __future__ import annotations
 from pathlib import Path
+from typing import Any
 import datetime
 
 
-def read_file(args: dict) -> str:
+def read_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
     """Return the UTF-8 contents of the file at ``args["path"]``.
+
+    Args:
+        sandbox: Optional ``DockerSandbox`` instance.  When set, the path is
+            translated to its container equivalent.
+        fileset: Optional ``FileSet`` instance.  When set, write paths are
+            checked against the declared set.
 
     Raises:
         FileNotFoundError: if the path does not exist.
     """
     path = Path(args["path"])
+    if sandbox is not None:
+        container_path = sandbox.translate_path(path)
+    else:
+        container_path = path
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def write_file(args: dict) -> str:
+def write_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
     """Overwrite an existing file with ``args["content"]``.
+
+    Args:
+        sandbox: Optional ``DockerSandbox`` instance.  When set, the path is
+            translated to its container equivalent.
+        fileset: Optional ``FileSet`` instance.  When set, write paths are
+            checked against the declared set.
 
     Raises:
         FileNotFoundError: if the file does not exist (use ``create_file`` instead).
     """
     path = Path(args["path"])
+    if sandbox is not None:
+        container_path = sandbox.translate_path(path)
+    else:
+        container_path = path
+    if fileset is not None:
+        if not fileset.is_writable(str(path)):
+            return f"Write to {path} is outside declared fileset. Use declare_fileset to widen."
     if not path.exists():
         raise FileNotFoundError(f"File does not exist: {path}. Use create_file to create new files.")
     path.write_text(args["content"], encoding="utf-8")
     return f"Written: {path}"
 
 
-def create_file(args: dict) -> str:
+def create_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
     """Create a new file at ``args["path"]`` with ``args["content"]``.
 
     Parent directories are created automatically.
+
+    Args:
+        sandbox: Optional ``DockerSandbox`` instance.  When set, the path is
+            translated to its container equivalent.
+        fileset: Optional ``FileSet`` instance.  When set, write paths are
+            checked against the declared set.
 
     Raises:
         FileExistsError: if the file already exists (use ``write_file`` instead).
     """
     path = Path(args["path"])
+    if sandbox is not None:
+        container_path = sandbox.translate_path(path)
+    else:
+        container_path = path
+    if fileset is not None:
+        if not fileset.is_writable(str(path)):
+            return f"Write to {path} is outside declared fileset. Use declare_fileset to widen."
     if path.exists():
         raise FileExistsError(f"File already exists: {path}. Use write_file to overwrite.")
     path.parent.mkdir(parents=True, exist_ok=True)

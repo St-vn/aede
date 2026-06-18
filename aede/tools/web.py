@@ -9,8 +9,10 @@ returned to the model rather than silently suppressed.
 """
 from __future__ import annotations
 
+from aede.sandboxing.prompt_filter import filter_tool_output
 
-def fetch_url(args: dict) -> str:
+
+def fetch_url(args: dict, sandbox_filter: bool = False) -> str:
     """HTTP GET a URL and return its body as plain text.
 
     Explicitly raises for HTML pages and Next.js RSC payloads so the model
@@ -39,6 +41,9 @@ def fetch_url(args: dict) -> str:
         is_rsc = stripped_start.startswith("0:") or 'self.__next_f' in text[:500]
         if is_html or is_rsc:
             raise RuntimeError(f"URL returned a rendered page (HTML/SPA), not raw data. Use web_search to find a better URL: {url}")
+        if sandbox_filter:
+            filtered, _matches = filter_tool_output(text, source="fetch_url")
+            return filtered
         return text
     except httpx.HTTPStatusError as e:
         raise RuntimeError(f"HTTP {e.response.status_code}: {url}")
@@ -46,7 +51,7 @@ def fetch_url(args: dict) -> str:
         raise RuntimeError(f"Request failed: {e}")
 
 
-def web_search(args: dict) -> str:
+def web_search(args: dict, sandbox_filter: bool = False) -> str:
     """Search the web via DuckDuckGo and return titled results with snippets.
 
     Args:
@@ -78,4 +83,8 @@ def web_search(args: dict) -> str:
         if r.get("body"):
             lines.append(r["body"])
         lines.append("")
-    return "\n".join(lines).strip()
+    result = "\n".join(lines).strip()
+    if sandbox_filter:
+        filtered, _matches = filter_tool_output(result, source="web_search")
+        return filtered
+    return result

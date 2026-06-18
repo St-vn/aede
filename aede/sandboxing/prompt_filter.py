@@ -24,12 +24,14 @@ _COMPILED: list[tuple[str, re.Pattern, str]] = [
 ]
 
 
-def filter_tool_output(text: str, source: str) -> tuple[str, list[str]]:
+def filter_tool_output(text: str, source: str, min_severity: str = "flag") -> tuple[str, list[str]]:
     if not text:
         return text, []
     matches: list[str] = []
     block_hit = False
     for name, pattern, severity in _COMPILED:
+        if severity == "flag" and min_severity == "block":
+            continue
         if pattern.search(text):
             tag = f"{name}[{severity}]"
             matches.append(tag)

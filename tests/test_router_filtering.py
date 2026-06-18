@@ -58,7 +58,7 @@ def test_toolrouter_disallowed_empty():
         tool_output_max_tokens=8000,
     )
 
-    assert len(router.tool_names()) == 12  # all default tools + spawn_subagent + session_search + write_learning + select_context
+    assert len(router.tool_names()) == 17  # all default tools + ask_user* + spawn_subagent + session_search + write_learning + select_context + declare_fileset + infer_fileset
 
 
 def test_toolrouter_disallowed_all_removed():
@@ -70,7 +70,8 @@ def test_toolrouter_disallowed_all_removed():
         disallowed_tools=["powershell", "read_file", "write_file", "create_file",
                           "list_dir", "search_files", "fetch_url", "web_search",
                           "spawn_subagent", "write_learning", "session_search",
-                          "select_context"],
+                          "select_context", "ask_user", "ask_user_choices",
+                          "ask_user_confirm", "declare_fileset", "infer_fileset"],
         shell="powershell",
         wsl_distro="",
         tool_output_max_tokens=8000,

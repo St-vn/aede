@@ -149,6 +149,25 @@ class DockerSandbox:
 
         return exit_code, full_output
 
+    def exec_cmd_sync(
+        self, cmd: list[str], stream_callback: Callable[[str], None] | None = None
+    ) -> tuple[int, str]:
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is not None:
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                return new_loop.run_until_complete(
+                    self.exec_cmd(cmd, stream_callback=stream_callback)
+                )
+            finally:
+                new_loop.close()
+        return asyncio.run(self.exec_cmd(cmd, stream_callback=stream_callback))
+
     def translate_path(self, host_path: Path) -> str:
         from aede.sandboxing.mounts import _host_to_container_path
 

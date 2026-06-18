@@ -264,6 +264,7 @@ def test_handle_config_show_output():
     cfg.tool_output_max_tokens = 500
     cfg.shell = "bash"
     cfg.batch_approval_max = 5
+    cfg.gate_mode = "normal"
     cfg.auto_approve = ["read_file"]
     cfg.sources = {
         "model": "global",

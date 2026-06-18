@@ -8,6 +8,7 @@ exposes Anthropic-format JSON schemas for each registered tool.
 """
 from __future__ import annotations
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
@@ -56,6 +57,9 @@ class ToolRouter:
         data_dir: "Path | None" = None,
         project_dir: "Path | None" = None,
         _get_bridge: "Callable[[], Any] | None" = None,
+        sandbox: Any = None,
+        fileset: Any = None,
+        sandbox_filter: bool = False,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
@@ -68,6 +72,9 @@ class ToolRouter:
         self._gate_store = _gate_store
         self._agent_registry = _agent_registry or {}
         self._session_id = _session_id
+        self._sandbox = sandbox
+        self._fileset = fileset
+        self._sandbox_filter = sandbox_filter
         self._registry = self._build_registry()
         self._mcp_bridge: Any = None
         self._trusted_servers: dict[str, bool] = {}
@@ -89,24 +96,35 @@ class ToolRouter:
         from aede.tools.search import search_files
         from aede.tools.web import fetch_url
 
+        _sandbox_filter = self._sandbox_filter
+
         reg: dict[str, Callable] = {
             "read_file": read_file,
             "write_file": write_file,
             "create_file": create_file,
             "list_dir": list_dir,
             "search_files": search_files,
-            "fetch_url": fetch_url,
+            "fetch_url": partial(fetch_url, sandbox_filter=_sandbox_filter),
         }
 
         from aede.tools.powershell import run_powershell
-        reg["powershell"] = run_powershell
+        reg["powershell"] = partial(run_powershell, sandbox=self._sandbox)
 
         from aede.tools.web import web_search
-        reg["web_search"] = web_search
+        reg["web_search"] = partial(web_search, sandbox_filter=_sandbox_filter)
+
+        from aede.tools.ask import ask_user, ask_user_choices, ask_user_confirm
+        reg["ask_user"] = ask_user
+        reg["ask_user_choices"] = ask_user_choices
+        reg["ask_user_confirm"] = ask_user_confirm
 
         from aede.tools.search import session_search
         _db = self._db
-        reg["session_search"] = lambda args: session_search(args, db=_db)
+        _cfg = self._cfg
+        _sandbox_filter_session = False
+        if _cfg is not None:
+            _sandbox_filter_session = getattr(_cfg, 'sandbox_filter_session_search', False)
+        reg["session_search"] = lambda args: session_search(args, db=_db, sandbox_filter_session=_sandbox_filter_session)
 
         from aede.tools.context import select_context
         _db, _data_dir, _project_dir = self._db, self._data_dir, self._project_dir
@@ -154,6 +172,22 @@ class ToolRouter:
             reg["spawn_subagent"] = _spawn
         else:
             reg["spawn_subagent"] = lambda args: "[spawn_subagent: not configured]"
+
+        _fileset = self._fileset
+        _project_dir = self._project_dir
+        _session_id = self._session_id
+        def _declare_fileset_fn(args: dict) -> str:
+            from aede.sandboxing.fileset import declare_fileset as _df
+            new_fs = _df(args["paths"], args["reason"], _fileset)
+            decl = ", ".join(sorted(new_fs.declared))
+            return f"Fileset declared: {len(new_fs.declared)} path(s) — {decl}"
+        reg["declare_fileset"] = _declare_fileset_fn
+
+        def _infer_fileset_fn(args: dict) -> str:
+            from aede.sandboxing.fileset import infer_fileset as _if
+            fs = _if(_project_dir, _session_id)
+            return f"Current fileset (inferred from project root): {', '.join(sorted(fs.declared))}"
+        reg["infer_fileset"] = _infer_fileset_fn
 
         return reg
 
@@ -528,6 +562,53 @@ _TOOL_SCHEMAS: dict[str, dict] = {
             "required": ["type", "content", "source"],
         },
     },
+    "ask_user": {
+        "name": "ask_user",
+        "description": "Ask the user a free-form question and get a text response. Use when you need input, clarification, or information the user has that isn't in the context.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question to ask the user.",
+                },
+            },
+            "required": ["question"],
+        },
+    },
+    "ask_user_choices": {
+        "name": "ask_user_choices",
+        "description": "Present a list of options for the user to choose from. Use when the user needs to make a selection from predefined options.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question or prompt for the user.",
+                },
+                "choices": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of options the user can choose from.",
+                },
+            },
+            "required": ["question", "choices"],
+        },
+    },
+    "ask_user_confirm": {
+        "name": "ask_user_confirm",
+        "description": "Ask the user a yes/no confirmation question. Use when you need a binary decision before proceeding.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The yes/no question to ask the user.",
+                },
+            },
+            "required": ["question"],
+        },
+    },
     "select_context": {
         "name": "select_context",
         "description": ("Pull relevant context from past learnings, sessions, project docs, "
@@ -545,5 +626,22 @@ _TOOL_SCHEMAS: dict[str, dict] = {
             },
             "required": ["query"],
         },
+    },
+    "declare_fileset": {
+        "name": "declare_fileset",
+        "description": "Declare which files the agent will write. Writes outside this set require approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "paths": {"type": "array", "items": {"type": "string"}, "description": "Paths the agent commits to write to"},
+                "reason": {"type": "string", "description": "Why this fileset is necessary"},
+            },
+            "required": ["paths", "reason"],
+        },
+    },
+    "infer_fileset": {
+        "name": "infer_fileset",
+        "description": "Show the current fileset (inferred from project root).",
+        "input_schema": {"type": "object", "properties": {}},
     },
 }

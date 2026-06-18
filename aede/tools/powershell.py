@@ -11,7 +11,7 @@ import subprocess
 from typing import Any
 
 
-def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "", stream_callback: Any = None) -> str:
+def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "", stream_callback: Any = None, sandbox: Any = None) -> str:
     """Execute a shell command and return its combined stdout+stderr output.
 
     Args:
@@ -20,6 +20,8 @@ def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "", 
             ``"wsl"``.
         wsl_distro: WSL distribution name; only used when ``shell="wsl"``.
             Passes ``-d <wsl_distro>`` to ``wsl.exe`` when set.
+        sandbox: Optional ``DockerSandbox`` instance.  When set, the command
+            runs inside the sandbox container instead of via ``subprocess.Popen``.
 
     Returns:
         Combined stdout and stderr as a single string.
@@ -40,6 +42,12 @@ def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "", 
         command = ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd]
 
     try:
+        if sandbox is not None:
+            exit_code, output = sandbox.exec_cmd_sync(command, stream_callback=stream_callback)
+            if exit_code != 0:
+                raise RuntimeError(f"Exit code {exit_code}:\n{output}")
+            return output
+
         proc = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
