@@ -8,6 +8,7 @@ import {
   PopoverContent,
 } from '@/components/ui/popover'
 import { ModelSelector } from './ModelSelector'
+import { ModeSelector } from './ModeSelector'
 import { AcpConnectChip } from './AcpConnectChip'
 import { WorkspaceMentionPicker } from './WorkspaceMentionPicker'
 import { ContextButton, type FileAttachment } from './ContextButton'
@@ -31,6 +32,8 @@ interface Props {
   onOpenHelp?: () => void
   model?: string
   onModelChange?: (model: string) => void
+  mode?: string
+  onModeChange?: (mode: string) => void
 }
 
 let imageIdCounter = 0
@@ -42,7 +45,7 @@ function buildMessageText(text: string, images: ImageAttachment[]): string {
   return text + imageMarkdown
 }
 
-export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', sessionId, projectDir, onOpenSettings, onOpenHelp, model: modelProp, onModelChange: onModelChangeProp }: Props) {
+export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', sessionId, projectDir, onOpenSettings, onOpenHelp, model: modelProp, onModelChange: onModelChangeProp, mode: modeProp, onModeChange }: Props) {
   const [text, setText] = useState('')
   const [modelState, setModelState] = useState(defaultModel)
   const model = modelProp ?? modelState
@@ -478,6 +481,9 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
             onAddUrl={handleAddUrl}
           />
           <div className="flex items-center gap-2">
+            {onModeChange && (
+              <ModeSelector currentMode={modeProp ?? 'normal'} onModeChange={onModeChange} />
+            )}
             <ModelSelector currentModel={model} onModelChange={setModel}
               onOpenSettings={onOpenSettings ? () => onOpenSettings('models') : undefined} />
             <AcpConnectChip model={model} />

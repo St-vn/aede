@@ -4,7 +4,7 @@ import { Layout } from '@/components/Layout'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { EmptyState } from '@/components/empty/EmptyState'
 import { ChatView } from '@/components/chat/ChatView'
-import { useSessions, useSessionMessages, useCreateSession, useDeleteSession } from '@/hooks/useSession'
+import { useSessionMessages, useCreateSession, useDeleteSession, useUpdateSessionMode } from '@/hooks/useSession'
 import { InputBar } from '@/components/input/InputBar'
 import { useQueryClient } from '@tanstack/react-query'
 import { useConfig } from '@/hooks/useConfig'
@@ -15,16 +15,17 @@ export function AgentPage() {
   const [initialMessage, setInitialMessage] = useState<string>('')
   const [activeProjectDir, setActiveProjectDir] = useState<string | null>(null)
   const [currentModel, setCurrentModel] = useState('claude-sonnet-4')
+  const [currentMode, setCurrentMode] = useState('normal')
   const [mounted, setMounted] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTabId | undefined>(undefined)
   const qc = useQueryClient()
 
-  const { data: sessions = [] } = useSessions()
   const { data: messages = [] } = useSessionMessages(activeId)
   const { data: config } = useConfig()
   const createSession = useCreateSession()
   const deleteSession = useDeleteSession()
+  const updateSessionMode = useUpdateSessionMode()
 
   // Sync model from persisted config on load
   React.useEffect(() => {
@@ -32,6 +33,20 @@ export function AgentPage() {
       setCurrentModel(config.model)
     }
   }, [config?.model])
+
+  // Sync mode from persisted config on load
+  React.useEffect(() => {
+    if (config?.gate_mode && config.gate_mode !== currentMode) {
+      setCurrentMode(config.gate_mode)
+    }
+  }, [config?.gate_mode])
+
+  const handleModeChange = useCallback((mode: string) => {
+    setCurrentMode(mode)
+    if (activeId) {
+      updateSessionMode.mutate({ sessionId: activeId, gateMode: mode })
+    }
+  }, [activeId, updateSessionMode])
 
   React.useEffect(() => {
     setMounted(true)
@@ -102,7 +117,7 @@ export function AgentPage() {
     <>
       <Layout
         sidebar={
-          <Sidebar sessions={sessions} activeSessionId={activeId} activeProjectDir={activeProjectDir}
+          <Sidebar activeSessionId={activeId} activeProjectDir={activeProjectDir}
             onSelectSession={handleSelectSession} onNewSession={handleNewSession}
             onDeleteSession={handleDeleteSession} onResumeBranch={handleResumeBranch}
             onOpenProject={handleOpenProject} onOpenSettings={() => setSettingsOpen(true)} />
@@ -124,7 +139,8 @@ export function AgentPage() {
             <div className="max-w-[760px] mx-auto w-full">
               <InputBar onSend={handleSendNewSession} disabled={createSession.isPending} sessionId={activeId} projectDir={activeProjectDir}
                 onOpenSettings={(tab) => { setSettingsTab(tab as SettingsTabId); setSettingsOpen(true) }}
-                model={currentModel} onModelChange={setCurrentModel} />
+                model={currentModel} onModelChange={setCurrentModel}
+                mode={currentMode} onModeChange={handleModeChange} />
             </div>
           </div>
         )}

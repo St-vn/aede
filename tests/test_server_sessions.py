@@ -62,3 +62,12 @@ def test_patch_session_title(client, db):
     loaded = Session.load(db, s1.id)
     assert loaded.title == "New Title"
 
+def test_patch_session_gate_mode(client, db):
+    s1 = Session.create(db, "model1", parent_id=None)
+    response = client.patch(f"/api/sessions/{s1.id}", json={"gate_mode": "execution"})
+    assert response.status_code == 200
+    assert response.json()["gate_mode"] == "execution"
+
+    loaded = Session.load(db, s1.id)
+    assert loaded.gate_mode == "execution"
+

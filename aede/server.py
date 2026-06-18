@@ -815,6 +815,7 @@ async def get_session(request: Request, session_id: str):
 @app.patch("/api/sessions/{session_id}")
 async def update_session(request: Request, session_id: str, payload: dict):
     db = request.app.state.db
+    cfg = request.app.state.cfg
     from aede.session import Session
     try:
         session = Session.load(db, session_id)
@@ -822,6 +823,9 @@ async def update_session(request: Request, session_id: str, payload: dict):
             session.set_title(db, payload["title"])
         if "project_dir" in payload:
             session.set_project_dir(db, payload["project_dir"])
+        if "gate_mode" in payload:
+            session.set_gate_mode(db, payload["gate_mode"])
+            cfg.gate_mode = payload["gate_mode"]
         return Session.load(db, session_id).to_dict()
     except KeyError:
         raise HTTPException(status_code=404, detail="Session not found")

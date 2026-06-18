@@ -58,6 +58,7 @@ class Session:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "project_dir": self.project_dir,
+            "gate_mode": self.gate_mode,
         }
 
     @classmethod
