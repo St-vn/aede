@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, features]
-date_updated: 2026-06-10
+date_updated: 2026-06-18
 ---
 
 # Tools
@@ -29,6 +29,19 @@ aede provides a set of built-in tools that the agent can invoke during a convers
 | `session_search` | No | FTS5 search over past session messages |
 | `select_context` | No | Pull relevant context from up to 4 sources (learnings, sessions, docs, files) in one call. See [context-selection](context-selection.md). |
 | `write_learning` | Yes | Persist a learning to the memory store |
+
+## User Interaction Tools
+
+These tools do not require gate approval — they are part of the conversation flow:
+
+| Tool | Description |
+|------|-------------|
+| `ask_user` | Ask a free-form question. |
+| `ask_user_choices` | Present a list of options and return the selected one. |
+| `ask_user_confirm` | Ask a yes/no question. |
+| `question` | Unified question tool supporting `text`, `single_choice`, `multi_select`, and `confirm` question types, plus multiple questions in one call. |
+
+In `auto` mode, these questions are answered automatically with safe defaults so the agent can keep running hands-free.
 
 ## Tool Approval
 

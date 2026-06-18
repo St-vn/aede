@@ -38,6 +38,16 @@ You have the following tools available:
 
 When a tool requires approval, a gate will be shown to the user before execution. Do not assume approval — wait for the result before continuing.
 
+You have several tools for asking the user for input mid-task:
+- ask_user: Ask a free-form question. The user provides a text response.
+- ask_user_choices: Present a list of options for the user to choose from. Pass choices as a list of strings.
+- ask_user_confirm: Ask a yes/no question. The user responds with yes or no.
+- question: Unified question tool supporting text, single_choice, multi_select, and confirm question types, plus multiple questions in one call.
+
+Use these tools when you need the user's input, preference, or decision to continue. They do NOT require gate approval — they are part of the conversation flow.
+
+In "auto" permission mode, these questions are answered automatically with safe defaults (first option for choices, "yes" for confirms, and a skip message for text), so avoid relying on user answers in that mode.
+
 ## Research rule
 
 For any research task — finding current documentation, investigating a tool, library, API, framework, or any fact about the state of the world — use web_search first, then fetch_url on specific result URLs. Do NOT use fetch_url as a substitute for web_search by guessing URLs.
@@ -219,6 +229,7 @@ class AgentLoop:
         console: Any,
         project_dir: Any,
         gate_backend: Any = None,
+        ask_user_backend: Any = None,
         acp_manager: Any = None,
         stream_text: Any = None,
         stream_thinking: Any = None,
@@ -242,13 +253,18 @@ class AgentLoop:
         self._accumulated_thinking = ""
         self._current_assist_id: str | None = None
 
-        from aede.gate import TerminalGateBackend
+        from aede.gate import TerminalGateBackend, TerminalAskUserBackend, PermissionMode
         self._gate_backend = gate_backend or TerminalGateBackend(
             store=self._gate_store,
             project_dir=self._project_dir,
             global_config_path=self._cfg.home / "config.yml",
             console=self._console,
         )
+        self._ask_user_backend = ask_user_backend or TerminalAskUserBackend(
+            console=self._console,
+        )
+        session_mode = getattr(session, "gate_mode", None)
+        self._mode = PermissionMode.from_str(session_mode or getattr(cfg, "gate_mode", "normal"))
 
         self._messages: list[dict] = []
         self._turn = 0
@@ -534,6 +550,72 @@ class AgentLoop:
                     })
                     continue
 
+                # Permission mode pre-check: allow or deny before gate
+                tool_action = self._gate_store.tool_action(tool_name, tool_input)
+                if tool_action == "deny":
+                    self._console.print(f"[red]⛔ Denied by permission mode ({self._mode.value}): {tool_name}[/red]")
+                    self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "mode_denied"})
+                    self._emit_tool_call(tool_use_id, tool_name, tool_input)
+                    self._emit_tool_result(tool_use_id, "denied", f"Denied by permission mode ({self._mode.value})", 0)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": f"Denied by permission mode ({self._mode.value})",
+                        "is_error": True,
+                    })
+                    continue
+
+                # Ask-user tools: route to ask_user_backend instead of gate
+                if tool_name in {"ask_user", "ask_user_choices", "ask_user_confirm", "question"}:
+                    import uuid
+                    from aede.gate import PermissionMode
+
+                    # Normalize legacy tools and the unified question tool into a single
+                    # question payload.  Multi-question support can be added by extending
+                    # AskUserBackend in a future iteration.
+                    if tool_name == "question":
+                        questions = tool_input.get("questions", [])
+                        first = questions[0] if isinstance(questions, list) and questions else {}
+                        if not isinstance(first, dict):
+                            first = {}
+                        question_text = first.get("question", "")
+                        qtype = first.get("type", "text")
+                        choices = first.get("options") if qtype in ("single_choice", "multi_select") else None
+                        is_confirm = qtype == "confirm"
+                    else:
+                        question_text = tool_input.get("question", "")
+                        choices = tool_input.get("choices") if tool_name == "ask_user_choices" else None
+                        is_confirm = tool_name == "ask_user_confirm"
+
+                    qid = uuid.uuid4().hex[:8]
+                    self._emit_tool_call(tool_use_id, tool_name, tool_input)
+
+                    if self._mode is PermissionMode.AUTO:
+                        # Hands-free mode: skip user questions and return safe defaults.
+                        if choices:
+                            answer = choices[0]
+                        elif is_confirm:
+                            answer = "yes"
+                        else:
+                            answer = "[auto mode: question skipped]"
+                    else:
+                        try:
+                            answer = await self._ask_user_backend.ask(
+                                question_id=qid,
+                                question=question_text,
+                                choices=choices,
+                            )
+                        except Exception as exc:
+                            answer = f"[error: {exc}]"
+                    self._emit_tool_result(tool_use_id, "success", answer, 0)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": answer,
+                        "is_error": False,
+                    })
+                    continue
+
                 # BC-04/05: Run critic before the gate for write_file / create_file
                 # with code-like content, when critic is enabled.
                 if (
@@ -543,7 +625,7 @@ class AgentLoop:
                 ):
                     await self._run_critic_panel(tool_input)
 
-                needs_approval = self._router.requires_approval(tool_name)
+                needs_approval = tool_action != "allow" and self._router.requires_approval(tool_name)
                 if not self._gate_store.is_allowed(tool_name) and needs_approval and not batch_approved:
                     import uuid
                     from aede.gate import GateDecision
@@ -553,6 +635,7 @@ class AgentLoop:
                         tool_name=tool_name,
                         args=tool_input,
                         batch_count=len(tool_calls),
+                        mode=self._mode,
                     )
                     if decision == GateDecision.DENY:
                         self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "denied"})
@@ -602,7 +685,7 @@ class AgentLoop:
                     })
                     continue
 
-                self._console.print(f"⚡ {tool_name} · running...")
+                # self._console.print(f"⚡ {tool_name} · running...")
                 self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id})
                 # Enrich write/create with an old/new pair so the UI shows an
                 # inline diff (same shape as ACP edits).  Read happens before

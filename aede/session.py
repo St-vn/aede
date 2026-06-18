@@ -46,6 +46,7 @@ class Session:
         self.created_at: int = data["created_at"]
         self.updated_at: int = data["updated_at"]
         self.project_dir: str | None = data.get("project_dir")
+        self.gate_mode: str | None = data.get("gate_mode")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -67,10 +68,18 @@ class Session:
         parent_id: str | None,
         title: str | None = None,
         project_dir: str | None = None,
+        gate_mode: str | None = None,
     ) -> "Session":
         """Insert a new session row and return the loaded ``Session`` object."""
         sid = generate_session_id()
-        db.insert_session(id=sid, parent_id=parent_id, title=title or "", model=model, project_dir=project_dir)
+        db.insert_session(
+            id=sid,
+            parent_id=parent_id,
+            title=title or "",
+            model=model,
+            project_dir=project_dir,
+            gate_mode=gate_mode,
+        )
         return cls.load(db=db, session_id=sid)
 
     def set_project_dir(self, db: Any, project_dir: str) -> None:
@@ -118,3 +127,8 @@ class Session:
         """Mark the session as active in the DB and update local state."""
         db.update_session_status(self.id, "active")
         self.status = "active"
+
+    def set_gate_mode(self, db: Any, gate_mode: str | None) -> None:
+        """Update the session's permission mode and refresh local state."""
+        db.update_session_gate_mode(self.id, gate_mode)
+        self.gate_mode = gate_mode

@@ -24,6 +24,7 @@ const STATIC_COMMANDS: SlashCommand[] = [
   { trigger: '/tokens', description: 'View token budget and usage', category: 'discovery' },
   { trigger: '/mcp', description: 'List MCP servers and tools', category: 'discovery' },
   { trigger: '/help', description: 'Show help and all available commands', category: 'discovery' },
+  { trigger: '/mode', description: 'Switch permission mode (plan/normal/execution/auto)', category: 'config' },
   { trigger: '/config', description: 'View and edit configuration', category: 'config' },
   { trigger: '/settings', description: 'Open settings modal', category: 'config' },
   { trigger: '/settings:config', description: 'Open settings → Config tab', category: 'config' },

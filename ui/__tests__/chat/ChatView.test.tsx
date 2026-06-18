@@ -57,15 +57,21 @@ test('turn_done removes streaming cursor', () => {
 test('gate_request renders GateCard', () => {
   renderWithClient(<ChatView sessionId="s1" messages={[]} />)
   act(() => wsEventHandler?.({
-    type: 'gate_request', gate_id: 'g1', tool_name: 'powershell', args: { command: 'echo hi' }, batch_count: 1
+    type: 'gate_request', gate_id: 'g1', tool_name: 'powershell', args: { command: 'echo hi' },
+    batch_count: 1, mode: 'normal', reason: null,
+    options: [{ id: 'allow_once', label: 'Allow once', key: 'a' }, { id: 'deny', label: 'Deny', key: 'd' }],
   }))
   expect(screen.getByRole('alert')).toBeInTheDocument()
+  expect(screen.getByText('powershell')).toBeInTheDocument()
+  expect(screen.getByText('normal')).toBeInTheDocument()
 })
 
 test('input bar disabled while gate is open', () => {
   renderWithClient(<ChatView sessionId="s1" messages={[]} />)
   act(() => wsEventHandler?.({
-    type: 'gate_request', gate_id: 'g1', tool_name: 'rm', args: {}, batch_count: 1
+    type: 'gate_request', gate_id: 'g1', tool_name: 'rm', args: {},
+    batch_count: 1, mode: 'normal', reason: null,
+    options: [{ id: 'allow_once', label: 'Allow once', key: 'a' }, { id: 'deny', label: 'Deny', key: 'd' }],
   }))
   expect(screen.getByRole('textbox')).toBeDisabled()
 })

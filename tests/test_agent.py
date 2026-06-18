@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from aede.agent import build_system_prompt, count_context_tokens
+from aede.gate import PermissionMode
 
 
 def test_build_system_prompt_stable_prefix():
@@ -243,6 +244,9 @@ def _make_agent_loop_for_gate_test(batch_approval_max: int) -> "AgentLoop":
     loop._stream_text = None
     loop._stream_thinking = None
     loop._accumulated_thinking = ""
+    loop._mode = PermissionMode.NORMAL
+    from aede.gate import PermissionStore, TerminalGateBackend
+    loop._gate_store = PermissionStore(project_dir=loop._project_dir)
     loop._tracker = MagicMock()
     loop._tracker.record = MagicMock()
 
@@ -388,6 +392,52 @@ async def test_batch_approve_within_cap_skips_remaining():
     assert len(gate_calls) == 1, (
         f"Expected gate called once (batch approved remaining), got {len(gate_calls)}: {gate_calls}"
     )
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_skips_ask_user():
+    """In AUTO mode, ask_user tools return defaults without prompting."""
+    from aede.gate import PermissionMode
+
+    loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
+    loop._mode = PermissionMode.AUTO
+
+    tool_calls = [
+        {"id": "q1", "name": "ask_user_choices", "input": {"question": "Pick", "choices": ["a", "b"]}},
+        {"id": "q2", "name": "ask_user_confirm", "input": {"question": "Sure?"}},
+        {"id": "q3", "name": "ask_user", "input": {"question": "What?"}},
+    ]
+    resp_tools = _make_response(tool_calls)
+    resp_done = _make_response([])
+    resp_done.text = "done"
+    call_count = {"n": 0}
+
+    async def fake_stream(*a, **kw):
+        call_count["n"] += 1
+        return resp_tools if call_count["n"] == 1 else resp_done
+
+    loop._stream_response = fake_stream
+    loop._ask_user_backend = MagicMock()
+
+    router = MagicMock()
+    router.validate_name = MagicMock()
+    router.requires_approval = MagicMock(return_value=False)
+    router.execute_sync = MagicMock(return_value=_make_tool_result())
+    loop._router = router
+
+    async def no_compact():
+        pass
+    loop._maybe_compact = no_compact
+
+    await loop.run_turn("do it")
+
+    loop._ask_user_backend.ask.assert_not_called()
+    # Results should have been collected and sent as tool_results.
+    user_msgs = [m for m in loop._messages if m["role"] == "user"]
+    assert len(user_msgs) == 2  # original prompt + tool_results
+    tool_results_msg = user_msgs[-1]
+    assert isinstance(tool_results_msg["content"], list)
+    assert len(tool_results_msg["content"]) == 3
 
 
 # ---------------------------------------------------------------------------

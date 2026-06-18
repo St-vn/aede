@@ -447,6 +447,8 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
 
     db = DB(cfg.data_dir / "aede.db")
 
+    initial_mode = PermissionMode.from_str(cfg.gate_mode)
+
     if resume_session_id is not None:
         # --- Resume path: create a branch session from the parent ---
         try:
@@ -455,7 +457,13 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
             console.print(f"[red]Session not found: {resume_session_id}[/red]")
             return
 
-        session = Session.create(db=db, model=cfg.model, parent_id=parent.id)
+        # Inherit parent's permission mode on resume.
+        if parent.gate_mode:
+            initial_mode = PermissionMode.from_str(parent.gate_mode)
+
+        session = Session.create(
+            db=db, model=cfg.model, parent_id=parent.id, gate_mode=initial_mode.value
+        )
 
         # Reconstruct prior message history from the parent session.
         # Phase-1 limitation: only user/assistant TEXT messages are replayed.
@@ -485,7 +493,9 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         rollout_parent_id = parent.id
     else:
         # --- Normal (fresh) path ---
-        session = Session.create(db=db, model=cfg.model, parent_id=None)
+        session = Session.create(
+            db=db, model=cfg.model, parent_id=None, gate_mode=initial_mode.value
+        )
         prior_messages = None
         is_resume = False
         session_notes = None
@@ -494,9 +504,9 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
     rollout = Rollout(cfg.data_dir / "sessions", session.id)
     rollout.write({"type": "session_start", "session_id": session.id, "parent_id": rollout_parent_id, "model": cfg.model})
 
-    gate_store = PermissionStore()
+    gate_store = PermissionStore(project_dir=Path.cwd())
     gate_store.load_from_config(cfg.auto_approve)
-    gate_store.mode = PermissionMode.from_str(cfg.gate_mode)
+    gate_store.mode = initial_mode
 
     from aede.instructions import build_instructions_suffix as _build_inst
     instructions_suffix = _build_inst(home=home, project_dir=Path.cwd())
@@ -627,8 +637,10 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         await _run_turn_safe(agent, initial_task, console)
 
     while not stop_requested:
+        mode_label = gate_store.mode.value
+        prompt = f"[{mode_label}] > "
         try:
-            user_input = console.input("> ")
+            user_input = console.input(prompt)
         except EOFError:
             stop_reason = "eof"
             break
@@ -684,7 +696,7 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
             elif cmd.name == "approve":
                 handle_approve(cmd.args, router, gate_store, console)
             elif cmd.name == "mode":
-                handle_mode(cmd.args, gate_store, console, cfg)
+                handle_mode(cmd.args, gate_store, console, cfg, session, db)
             elif cmd.name == "mcp":
                 handle_mcp(mcp_servers, console)
             elif cmd.name == "acp":

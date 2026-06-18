@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, user-guide]
-date_updated: 2026-06-10
+date_updated: 2026-06-18
 ---
 
 # Security
@@ -52,3 +52,21 @@ Permissions are scoped at three levels:
 3. **Global** — persisted to `~/.aede/config.yml`
 
 Session overrides project, which overrides global. The `auto_approve` config key lists pre-approved tool names.
+
+## Permission Modes
+
+Use `/mode` to switch between permission modes. The mode is persisted per session and restored when you `/resume`.
+
+| Mode | Behavior |
+|------|----------|
+| `plan` | Read-only. Write and shell tools are denied without prompting. |
+| `normal` | Read tools run automatically; write/shell/tools prompt for approval. |
+| `allow_write_read` | Read and file writes run automatically; shell still prompts. |
+| `execution` | Auto-approves gated tools, but risky actions (dangerous shell patterns, writes to protected paths, writes outside the project) are still escalated to the gate. Equivalent to Claude Code's auto mode with a local rule-based classifier. |
+| `auto` | Hands-free mode. All gated tools run and agent questions are answered with safe defaults. Use with caution. |
+
+Protected paths (`.git`, `.claude`, `.aede`, shell configs, IDE/tool configs, etc.) always require explicit approval for writes in `execution` mode and are allowed only in `auto` mode.
+
+## Voice & Privacy
+
+When voice input is enabled, audio recordings are sent to external ASR providers (Groq, OpenAI, OpenRouter, or Google) for transcription. If no API keys are configured, transcription falls back to the browser's built-in Speech Recognition API (data stays local to the browser). Audio is not stored — only the transcription text is passed to the agent.

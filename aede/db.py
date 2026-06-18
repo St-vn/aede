@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_at  INTEGER NOT NULL,
     model       TEXT NOT NULL,
     status      TEXT NOT NULL DEFAULT 'active',
-    project_dir TEXT
+    project_dir TEXT,
+    gate_mode   TEXT
 );
 CREATE TABLE IF NOT EXISTS messages (
     id           TEXT PRIMARY KEY,
@@ -196,6 +197,12 @@ class DB:
             self.con.commit()
         except Exception:
             pass
+        # PM-01 migration: add gate_mode column to sessions if missing.
+        try:
+            self.con.execute("ALTER TABLE sessions ADD COLUMN gate_mode TEXT")
+            self.con.commit()
+        except Exception:
+            pass
         # PJ-01 migration: create projects table if missing (DB created before DDL had it).
         try:
             self.con.execute("""
@@ -232,12 +239,13 @@ class DB:
         title: str,
         model: str,
         project_dir: str | None = None,
+        gate_mode: str | None = None,
     ) -> None:
         """Insert a new session row with ``status='active'`` and timestamps set to now."""
         now = _now_ms()
         self.con.execute(
-            "INSERT INTO sessions (id, parent_id, title, created_at, updated_at, model, project_dir) VALUES (?,?,?,?,?,?,?)",
-            (id, parent_id, title, now, now, model, _normalize_path(project_dir)),
+            "INSERT INTO sessions (id, parent_id, title, created_at, updated_at, model, project_dir, gate_mode) VALUES (?,?,?,?,?,?,?,?)",
+            (id, parent_id, title, now, now, model, _normalize_path(project_dir), gate_mode),
         )
         self.con.commit()
 
@@ -252,6 +260,14 @@ class DB:
         self.con.execute(
             "UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?",
             (status, _now_ms(), id),
+        )
+        self.con.commit()
+
+    def update_session_gate_mode(self, id: str, gate_mode: str | None) -> None:
+        """Update the ``gate_mode`` field and refresh ``updated_at`` for the session."""
+        self.con.execute(
+            "UPDATE sessions SET gate_mode = ?, updated_at = ? WHERE id = ?",
+            (gate_mode, _now_ms(), id),
         )
         self.con.commit()
 

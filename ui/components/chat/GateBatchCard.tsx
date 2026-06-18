@@ -1,14 +1,18 @@
 'use client'
 import React, { useState } from 'react'
-import { TriangleAlert, Check, X } from 'lucide-react'
+import { TriangleAlert, Check, X, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 interface GateItem {
   gateId: string
   toolName: string
   args: Record<string, unknown>
+  mode?: string
+  reason?: string
+  options?: { id: string; label: string; key: string }[]
   decision?: 'allow_once' | 'allow_session' | 'deny'
 }
 
@@ -47,6 +51,11 @@ export function GateBatchCard({ gates, onDecision }: Props) {
       className="border border-border border-l-2 border-l-[--color-warning] rounded-lg p-4 my-2 bg-card">
       <div className="flex items-center gap-2 mb-3">
         <TriangleAlert className="w-4 h-4 text-[--color-warning] shrink-0" />
+        {gates[0]?.mode && (
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted">
+            {gates[0].mode}
+          </span>
+        )}
         <span className="text-sm font-medium text-foreground">
           {pendingCount} tool{pendingCount !== 1 ? 's' : ''} need{pendingCount === 1 ? 's' : ''} approval
         </span>

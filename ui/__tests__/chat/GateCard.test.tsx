@@ -3,10 +3,20 @@ import { vi, test, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { GateCard } from '../../components/chat/GateCard'
 
+const defaultOptions = [
+  { id: 'allow_once', label: 'Allow once', key: 'a' },
+  { id: 'allow_session', label: 'Allow for session', key: 's' },
+  { id: 'allow_project', label: 'Allow for project', key: 'p' },
+  { id: 'allow_global', label: 'Always allow', key: 'g' },
+  { id: 'deny', label: 'Deny', key: 'd' },
+  { id: 'redirect', label: 'Redirect', key: 'r' },
+]
+
 const props = {
   gateId: 'g_01',
   toolName: 'powershell',
   args: { command: 'rm -rf ./dist' },
+  options: defaultOptions,
   onDecision: vi.fn(),
 }
 

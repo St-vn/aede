@@ -18,7 +18,8 @@ import { apiFetch } from '@/lib/api'
 interface ThinkingSegment { text: string; seq: number }
 interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean; thinking?: string; thinking_segments?: ThinkingSegment[]; turn_duration_ms?: number | null; tool_calls?: ToolCall[] }
 interface ToolCall { id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number; streamingOutput?: string }
-interface GateRequest { gateId: string; toolName: string; args: Record<string, unknown> }
+interface GateRequestOption { id: string; label: string; key: string }
+interface GateRequest { gateId: string; toolName: string; args: Record<string, unknown>; mode?: string; reason?: string; options?: GateRequestOption[] }
 
 // A streaming block is either an in-progress thinking segment or a tool call,
 // ordered by seq so they render in true execution order.
@@ -130,7 +131,14 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
           : b
       ))
     } else if (ev.type === 'gate_request') {
-      setGates(gs => [...gs, { gateId: ev.gate_id as string, toolName: ev.tool_name as string, args: ev.args as Record<string, unknown> }])
+      setGates(gs => [...gs, {
+        gateId: ev.gate_id as string,
+        toolName: ev.tool_name as string,
+        args: ev.args as Record<string, unknown>,
+        mode: ev.mode as string | undefined,
+        reason: ev.reason as string | undefined,
+        options: ev.options as GateRequestOption[] | undefined,
+      }])
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
       // Use server-provided turn_duration_ms if available, fall back to client-side timing
       if (typeof ev.turn_duration_ms === 'number') {
@@ -285,7 +293,8 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
           )}
           {gates.length === 1 && (
             <GateCard gateId={gates[0].gateId} toolName={gates[0].toolName}
-              args={gates[0].args} onDecision={handleGateDecision} />
+              args={gates[0].args} mode={gates[0].mode} reason={gates[0].reason}
+              options={gates[0].options} onDecision={handleGateDecision} />
           )}
         </div>
       </ScrollArea>

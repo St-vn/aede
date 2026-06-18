@@ -21,6 +21,19 @@ def test_router_known_tools(tmp_path):
     assert "search_files" in r.tool_names()
     assert "fetch_url" in r.tool_names()
     assert "web_search" in r.tool_names()
+    assert "ask_user" in r.tool_names()
+    assert "ask_user_choices" in r.tool_names()
+    assert "ask_user_confirm" in r.tool_names()
+    assert "question" in r.tool_names()
+
+
+def test_router_question_tool_schema():
+    r = make_router()
+    schemas = {s["name"]: s for s in r.anthropic_tool_schemas()}
+    assert "question" in schemas
+    schema = schemas["question"]["input_schema"]
+    assert "questions" in schema["required"]
+    assert "allow_custom_answer" in schema["properties"]
 
 
 def test_router_web_search_always_available():

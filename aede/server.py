@@ -117,16 +117,22 @@ class WebSocketGateBackend:
         tool_name: str,
         args: dict[str, Any],
         batch_count: int,
+        mode: Any = None,
+        reason: str | None = None,
     ) -> tuple[Any, str]:
-        from aede.gate import GateDecision
+        from aede.gate import GateDecision, gate_options_payload
         fut = asyncio.get_running_loop().create_future()
         self._gate.futures[gate_id] = fut
         payload = {
             "type": "gate_request",
             "gate_id": gate_id,
-            "tool_name": tool_name,
-            "args": args,
-            "batch_count": batch_count,
+            **gate_options_payload(
+                tool_name=tool_name,
+                args=args,
+                mode=mode,
+                reason=reason,
+                batch_count=batch_count,
+            ),
         }
         self._gate.pending_requests[gate_id] = payload
         try:
@@ -137,6 +143,43 @@ class WebSocketGateBackend:
         finally:
             self._gate.futures.pop(gate_id, None)
             self._gate.pending_requests.pop(gate_id, None)
+
+
+class WebSocketAskUserBackend:
+    """Backend for agent-initiated questions via WebSocket.
+
+    Sends ``ask_user_request`` events over the session's WebSocket and waits
+    for the user's answer via ``ask_user_response`` messages.
+    """
+
+    def __init__(self, gate: "SessionGate"):
+        self._gate = gate
+
+    async def ask(
+        self,
+        question_id: str,
+        question: str,
+        choices: list[str] | None = None,
+    ) -> str:
+        fut = asyncio.get_running_loop().create_future()
+        key = f"ask:{question_id}"
+        self._gate.futures[key] = fut
+        payload: dict[str, Any] = {
+            "type": "ask_user_request",
+            "question_id": question_id,
+            "question": question,
+        }
+        if choices:
+            payload["choices"] = choices
+        self._gate.pending_requests[key] = payload
+        try:
+            if self._gate.websocket is not None:
+                await self._gate.websocket.send_json(payload)
+            answer, _ = await fut
+            return str(answer)
+        finally:
+            self._gate.futures.pop(key, None)
+            self._gate.pending_requests.pop(key, None)
 
 
 class WebSocketConsole:
@@ -355,7 +398,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 from aede.session import Session
                 from aede.agent import AgentLoop
                 from aede.tools.router import ToolRouter
-                from aede.gate import PermissionStore
+                from aede.gate import PermissionStore, PermissionMode
                 from aede.tokens import TokenTracker
                 from aede.rollout import Rollout
 
@@ -388,6 +431,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
                 gate_store = PermissionStore()
                 gate_store.load_from_config(cfg.auto_approve)
+                gate_store.mode = PermissionMode.from_str(cfg.gate_mode)
 
                 router = ToolRouter(
                     shell=cfg.shell,
@@ -437,6 +481,8 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     except Exception:
                         pass
 
+                ask_user_backend = WebSocketAskUserBackend(gate)
+
                 agent = AgentLoop(
                     cfg=cfg,
                     session=session,
@@ -448,6 +494,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     console=ws_console,
                     project_dir=Path.cwd(),
                     gate_backend=gate_backend,
+                    ask_user_backend=ask_user_backend,
                     acp_manager=getattr(app.state, "acp_manager", None),
                     stream_text=_stream_text,
                     stream_thinking=_stream_thinking,
@@ -570,6 +617,16 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     fut.set_result((decision, redirect_msg))
                 else:
                     await websocket.send_json({"type": "error", "message": f"Unknown gate_id: {gate_id}"})
+
+            elif msg_type == "ask_user_response":
+                question_id = data.get("question_id")
+                answer = data.get("answer", "")
+                key = f"ask:{question_id}"
+                fut = gate.futures.get(key)
+                if fut is not None and not fut.done():
+                    fut.set_result((answer, ""))
+                else:
+                    await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
 
     except WebSocketDisconnect:
         print(f"[WS#{hid}] WebSocket disconnected", flush=True)

@@ -61,7 +61,7 @@ def handle_help(console: Any) -> None:
             "  /sessions                     — list recent sessions",
             "  /delete-session [id]          — delete a session (alias: /rm)",
             "  /tools                        — list tools and approval status",
-            "  /mode [plan|normal|allow_write_read|execution|auto] — view or change permission mode",
+            "  /mode [plan|normal|allow_write_read|execution|auto] — view or change permission mode (persisted per session)",
             "  /skills                       — list loaded skills",
             "  /agents                       — list loaded agents",
             "  /mcp                          — list MCP servers and tools",
@@ -130,7 +130,14 @@ def handle_rename(args: list[str], session: Any, db: Any, console: Any) -> None:
     console.print(f"[green]✓[/green] Session renamed to \"{title}\"")
 
 
-def handle_mode(args: list[str], gate_store: Any, console: Any, cfg: Any = None) -> None:
+def handle_mode(
+    args: list[str],
+    gate_store: Any,
+    console: Any,
+    cfg: Any = None,
+    session: Any = None,
+    db: Any = None,
+) -> None:
     """View or change the permission mode.
 
     Usage:
@@ -151,6 +158,9 @@ def handle_mode(args: list[str], gate_store: Any, console: Any, cfg: Any = None)
     console.print(f"[green]✓[/green] Switched to [bold]{new_mode.value}[/bold] mode")
     if cfg and hasattr(cfg, "gate_mode"):
         cfg.gate_mode = new_mode.value
+    # Persist mode to the session so /resume restores it.
+    if session is not None and db is not None and hasattr(session, "set_gate_mode"):
+        session.set_gate_mode(db, new_mode.value)
 
 
 def handle_approve(args: list[str], router: Any, gate_store: Any, console: Any) -> None:

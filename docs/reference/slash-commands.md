@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, reference]
-date_updated: 2026-06-14
+date_updated: 2026-06-18
 ---
 
 # Slash Commands
@@ -64,6 +64,8 @@ date_updated: 2026-06-14
 |---------|-------------|--------|
 | `/approve` | List pending gated tools | `/approve` |
 | `/approve <tool...>` | Batch-approve gated tools | `/approve powershell write_file` |
+| `/mode` | Show current permission mode | `/mode` |
+| `/mode <mode>` | Switch permission mode (`plan`, `normal`, `allow_write_read`, `execution`, `auto`) | `/mode execution` |
 
 ## ACP
 

@@ -113,10 +113,11 @@ class ToolRouter:
         from aede.tools.web import web_search
         reg["web_search"] = partial(web_search, sandbox_filter=_sandbox_filter)
 
-        from aede.tools.ask import ask_user, ask_user_choices, ask_user_confirm
+        from aede.tools.ask import ask_user, ask_user_choices, ask_user_confirm, question
         reg["ask_user"] = ask_user
         reg["ask_user_choices"] = ask_user_choices
         reg["ask_user_confirm"] = ask_user_confirm
+        reg["question"] = question
 
         from aede.tools.search import session_search
         _db = self._db
@@ -607,6 +608,58 @@ _TOOL_SCHEMAS: dict[str, dict] = {
                 },
             },
             "required": ["question"],
+        },
+    },
+    "question": {
+        "name": "question",
+        "description": (
+            "Ask the user one or more questions during execution. Supports free-form text, "
+            "single-choice, multi-select, and yes/no confirm questions. Use when you need "
+            "input, clarification, or a decision to continue. This tool does NOT require "
+            "gate approval — it is part of the conversation flow."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "questions": {
+                    "type": "array",
+                    "description": "One or more questions to present to the user.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Stable identifier for this question, used when returning answers.",
+                            },
+                            "header": {
+                                "type": "string",
+                                "description": "Short label or category shown above the question.",
+                            },
+                            "question": {
+                                "type": "string",
+                                "description": "The question text to present to the user.",
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": ["text", "single_choice", "multi_select", "confirm"],
+                                "description": "Question type.",
+                            },
+                            "options": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Options for single_choice or multi_select questions.",
+                            },
+                        },
+                        "required": ["id", "question", "type"],
+                    },
+                },
+                "allow_custom_answer": {
+                    "type": "boolean",
+                    "description": "When true, the user may type a custom answer instead of picking from options.",
+                    "default": True,
+                },
+            },
+            "required": ["questions"],
         },
     },
     "select_context": {
