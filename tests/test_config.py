@@ -339,3 +339,91 @@ def test_fde_settings_via_project_config(tmp_home, tmp_path):
     assert cfg.fde_enabled is True
     assert cfg.fde_endpoint == "https://analytics.example.com/fde"
 
+
+# ---------------------------------------------------------------------------
+# P0.2 Sandboxing — Task 2: sandbox config keys
+# ---------------------------------------------------------------------------
+
+def test_sandbox_config_defaults_in_default_config():
+    from aede.config import DEFAULT_CONFIG
+    assert "sandbox_enabled" in DEFAULT_CONFIG
+    assert DEFAULT_CONFIG["sandbox_enabled"] is False
+    assert DEFAULT_CONFIG["sandbox_image"] == "aede-sandbox:latest"
+    assert DEFAULT_CONFIG["sandbox_memory"] == "512m"
+    assert DEFAULT_CONFIG["sandbox_cpus"] == 1.0
+    assert DEFAULT_CONFIG["sandbox_network"] == "off"
+    assert DEFAULT_CONFIG["sandbox_pids_limit"] == 256
+    assert DEFAULT_CONFIG["sandbox_pull_on_start"] is True
+    assert DEFAULT_CONFIG["sandbox_filter_session_search"] is False
+
+
+def test_sandbox_config_defaults_on_empty(tmp_home):
+    cfg = AedeConfig(data={}, home=tmp_home)
+    assert cfg.sandbox_enabled is False
+    assert cfg.sandbox_image == "aede-sandbox:latest"
+    assert cfg.sandbox_memory == "512m"
+    assert cfg.sandbox_cpus == 1.0
+    assert cfg.sandbox_network == "off"
+    assert cfg.sandbox_pids_limit == 256
+    assert cfg.sandbox_pull_on_start is True
+    assert cfg.sandbox_filter_session_search is False
+
+
+def test_sandbox_config_can_be_set(tmp_home):
+    cfg = AedeConfig(data={
+        "sandbox_enabled": True,
+        "sandbox_image": "custom-sandbox:v2",
+        "sandbox_memory": "1g",
+        "sandbox_cpus": 2.0,
+        "sandbox_network": "bridge",
+        "sandbox_pids_limit": 512,
+        "sandbox_pull_on_start": False,
+        "sandbox_filter_session_search": True,
+    }, home=tmp_home)
+    assert cfg.sandbox_enabled is True
+    assert cfg.sandbox_image == "custom-sandbox:v2"
+    assert cfg.sandbox_memory == "1g"
+    assert cfg.sandbox_cpus == 2.0
+    assert cfg.sandbox_network == "bridge"
+    assert cfg.sandbox_pids_limit == 512
+    assert cfg.sandbox_pull_on_start is False
+    assert cfg.sandbox_filter_session_search is True
+
+
+def test_sandbox_config_round_trip_through_write(tmp_home):
+    from aede.config import write_config_value
+    write_config_value(scope="global", key="sandbox_enabled", value=True, home=tmp_home)
+    write_config_value(scope="global", key="sandbox_image", value="my-sandbox:test", home=tmp_home)
+    write_config_value(scope="global", key="sandbox_cpus", value="4.0", home=tmp_home)
+    write_config_value(scope="global", key="sandbox_pids_limit", value="128", home=tmp_home)
+    cfg = load_config(home=tmp_home, project_dir=tmp_home)
+    assert cfg.sandbox_enabled is True
+    assert cfg.sandbox_image == "my-sandbox:test"
+    assert cfg.sandbox_cpus == 4.0
+    assert cfg.sandbox_pids_limit == 128
+
+
+def test_sandbox_config_round_trip_through_project(tmp_home, tmp_path):
+    bootstrap(tmp_home)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "aede.yml").write_text(yaml.dump({
+        "sandbox_enabled": True,
+        "sandbox_image": "project-sandbox:latest",
+        "sandbox_memory": "2g",
+        "sandbox_cpus": 3.0,
+        "sandbox_network": "bridge",
+        "sandbox_pids_limit": 1024,
+        "sandbox_pull_on_start": False,
+        "sandbox_filter_session_search": True,
+    }))
+    cfg = load_config(home=tmp_home, project_dir=project_dir)
+    assert cfg.sandbox_enabled is True
+    assert cfg.sandbox_image == "project-sandbox:latest"
+    assert cfg.sandbox_memory == "2g"
+    assert cfg.sandbox_cpus == 3.0
+    assert cfg.sandbox_network == "bridge"
+    assert cfg.sandbox_pids_limit == 1024
+    assert cfg.sandbox_pull_on_start is False
+    assert cfg.sandbox_filter_session_search is True
+

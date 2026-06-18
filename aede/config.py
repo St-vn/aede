@@ -20,6 +20,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "shell": "powershell",
     "wsl_distro": "",
     "batch_approval_max": 20,
+    "gate_mode": "normal",
     "auto_approve": [],
     "model_prices": {},
     "api_base_url": None,  # None = Anthropic direct; set to OpenAI-compatible base URL (e.g. https://openrouter.ai/api/v1) for non-Anthropic models via OpenAI SDK
@@ -58,6 +59,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # FDE (fair-data-ethics) capture — opt-in
     "fde_enabled": False,
     "fde_endpoint": None,
+    # Sandboxing (P0.2) — flat top-level keys
+    "sandbox_enabled": False,
+    "sandbox_image": "aede-sandbox:latest",
+    "sandbox_memory": "512m",
+    "sandbox_cpus": 1.0,
+    "sandbox_network": "off",
+    "sandbox_pids_limit": 256,
+    "sandbox_pull_on_start": True,
+    "sandbox_filter_session_search": False,
 }
 
 DEFAULT_CONFIG_YAML = """\
@@ -135,6 +145,7 @@ class AedeConfig:
         self.shell: str = data.get("shell", DEFAULT_CONFIG["shell"])
         self.wsl_distro: str = data.get("wsl_distro") or ""
         self.batch_approval_max: int = data.get("batch_approval_max", DEFAULT_CONFIG["batch_approval_max"])
+        self.gate_mode: str = data.get("gate_mode", DEFAULT_CONFIG["gate_mode"])
         self.auto_approve: list[str] = data.get("auto_approve") or []
         self.model_prices: dict[str, Any] = data.get("model_prices") or {}
         self.api_base_url: str | None = data.get("api_base_url") or None
@@ -182,6 +193,15 @@ class AedeConfig:
         raw_sandbox = data.get("sandbox") or {}
         from aede.sandboxing.docker import SandboxConfig
         self.sandbox: SandboxConfig = SandboxConfig.from_dict(raw_sandbox)
+        # Sandboxing (P0.2) — flat top-level keys
+        self.sandbox_enabled: bool = data.get("sandbox_enabled", False)
+        self.sandbox_image: str = data.get("sandbox_image", "aede-sandbox:latest")
+        self.sandbox_memory: str = data.get("sandbox_memory", "512m")
+        self.sandbox_cpus: float = float(data.get("sandbox_cpus", 1.0))
+        self.sandbox_network: str = data.get("sandbox_network", "off")
+        self.sandbox_pids_limit: int = int(data.get("sandbox_pids_limit", 256))
+        self.sandbox_pull_on_start: bool = data.get("sandbox_pull_on_start", True)
+        self.sandbox_filter_session_search: bool = data.get("sandbox_filter_session_search", False)
         # Plugin/skill toggle configuration
         self.plugins: dict = data.get("plugins") or {}
         # OTel observability
