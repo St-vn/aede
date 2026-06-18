@@ -107,3 +107,41 @@ test('turn_done clears streamingBlocks', () => {
   })
   expect(screen.queryByText(/thought/)).not.toBeInTheDocument()
 })
+
+test('ask_user_request renders AskUserCard with question', () => {
+  renderWithClient(<ChatView sessionId="s1" messages={[]} />)
+  act(() => wsEventHandler?.({
+    type: 'ask_user_request', question_id: 'q1', question: 'What framework?',
+  }))
+  expect(screen.getByText('What framework?')).toBeInTheDocument()
+  expect(screen.getByText(/agent asks/i)).toBeInTheDocument()
+})
+
+test('ask_user_request with choices renders choice buttons', () => {
+  renderWithClient(<ChatView sessionId="s1" messages={[]} />)
+  act(() => wsEventHandler?.({
+    type: 'ask_user_request', question_id: 'q2', question: 'Pick:', choices: ['React', 'Vue'],
+  }))
+  expect(screen.getByRole('button', { name: 'React' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Vue' })).toBeInTheDocument()
+})
+
+test('input bar disabled while ask_user prompt is active', () => {
+  renderWithClient(<ChatView sessionId="s1" messages={[]} />)
+  act(() => wsEventHandler?.({
+    type: 'ask_user_request', question_id: 'q3', question: 'Ready?',
+  }))
+  expect(screen.getByRole('textbox', { name: /message/i })).toBeDisabled()
+})
+
+test('ask_user_response clears prompt and re-enables input', () => {
+  renderWithClient(<ChatView sessionId="s1" messages={[]} />)
+  act(() => wsEventHandler?.({
+    type: 'ask_user_request', question_id: 'q4', question: 'Go?',
+  }))
+  expect(screen.getByText('Go?')).toBeInTheDocument()
+  act(() => wsEventHandler?.({
+    type: 'ask_user_response', question_id: 'q4', answer: 'yes',
+  }))
+  expect(screen.queryByText('Go?')).not.toBeInTheDocument()
+})

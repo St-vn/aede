@@ -7,6 +7,7 @@ import { ToolCallCard } from './ToolCallCard'
 import { ThinkingBlock } from './ThinkingBlock'
 import { GateCard } from './GateCard'
 import { GateBatchCard } from './GateBatchCard'
+import { AskUserCard } from './AskUserCard'
 import { InputBar } from '@/components/input/InputBar'
 import { useWebSocket, type WSEvent } from '@/hooks/useWebSocket'
 import { ContextBar } from './ContextBar'
@@ -38,6 +39,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   // streamingBlocks holds interleaved thinking+tool blocks in seq order during streaming.
   const [streamingBlocks, setStreamingBlocks] = useState<StreamingBlock[]>([])
   const [gates, setGates] = useState<GateRequest[]>([])
+  const [askUserRequests, setAskUserRequests] = useState<{ questionId: string; question: string; choices?: string[] }[]>([])
   const [pendingMessages, setPendingMessages] = useState<{ content: string; id: string }[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -63,6 +65,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     if (prevSessionIdRef.current !== sessionId) {
       setStreamingBlocks([])
       setGates([])
+      setAskUserRequests([])
       setStreamingText('')
       setIsStreaming(false)
       setPendingMessages([])
@@ -139,6 +142,14 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
         reason: ev.reason as string | undefined,
         options: ev.options as GateRequestOption[] | undefined,
       }])
+    } else if (ev.type === 'ask_user_request') {
+      setAskUserRequests(reqs => [...reqs, {
+        questionId: ev.question_id as string,
+        question: ev.question as string,
+        choices: ev.choices as string[] | undefined,
+      }])
+    } else if (ev.type === 'ask_user_response') {
+      setAskUserRequests(reqs => reqs.filter(r => r.questionId !== ev.question_id))
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
       // Use server-provided turn_duration_ms if available, fall back to client-side timing
       if (typeof ev.turn_duration_ms === 'number') {
@@ -150,6 +161,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       setIsStreaming(false)
       setStreamingBlocks([])
       setGates([])
+      setAskUserRequests([])
       setStreamingText('')
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
     } else if (ev.type === 'error') {
@@ -205,6 +217,11 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     setGates(gs => gs.filter(g => g.gateId !== gateId))
   }
 
+  const handleAskUserAnswer = (questionId: string, answer: string) => {
+    send({ type: 'ask_user_response', question_id: questionId, answer })
+    setAskUserRequests(reqs => reqs.filter(r => r.questionId !== questionId))
+  }
+
   const handleModelChange = useCallback((model: string) => {
     onModelChange?.(model)
     const acpPrefixes = ['claude-code', 'codex', 'gemini', 'cline', 'cursor', 'goose', 'agy']
@@ -219,7 +236,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     }
   }, [onModelChange])
 
-  const inputDisabled = isStreaming || gates.length > 0
+  const inputDisabled = isStreaming || gates.length > 0 || askUserRequests.length > 0
 
   // Sort streaming blocks by seq for display.
   const sortedBlocks = [...streamingBlocks].sort((a, b) => a.seq - b.seq)
@@ -296,6 +313,9 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
               args={gates[0].args} mode={gates[0].mode} reason={gates[0].reason}
               options={gates[0].options} onDecision={handleGateDecision} />
           )}
+          {askUserRequests.map(req => (
+            <AskUserCard key={req.questionId} request={req} onAnswer={handleAskUserAnswer} />
+          ))}
         </div>
       </ScrollArea>
       <ContextBar sessionId={sessionId} />
