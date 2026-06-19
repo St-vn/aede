@@ -897,7 +897,7 @@ class AgentLoop:
                             "is_error": True,
                         })
                         if redirect_msg:
-                            self._messages.append({"role": "user", "content": redirect_msg})
+                            tool_results.append({"type": "text", "text": redirect_msg})
                         continue
                     elif decision == GateDecision.BATCH_DENY:
                         self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "batch_denied"})
@@ -911,7 +911,7 @@ class AgentLoop:
                             "is_error": True,
                         })
                         if redirect_msg:
-                            self._messages.append({"role": "user", "content": redirect_msg})
+                            tool_results.append({"type": "text", "text": redirect_msg})
                         continue
                     elif decision == GateDecision.BATCH_APPROVE:
                         batch_approval_max = self._cfg.batch_approval_max
