@@ -473,7 +473,8 @@ test('Save & continue advances to next question when multiple exist', () => {
   expect(screen.getByText('Q2?')).toBeInTheDocument()
 })
 
-test('Chat about this toggles chat mode and submits chat answer', () => {
+test('Chat about this sends chat via onChat and does not submit an answer', () => {
+  const onChat = vi.fn()
   const props = makeRequest({
     questions: [
       {
@@ -485,18 +486,13 @@ test('Chat about this toggles chat mode and submits chat answer', () => {
       },
     ],
   })
-  render(<QuestionCard {...props} />)
+  render(<QuestionCard {...props} onChat={onChat} />)
   fireEvent.click(screen.getByTestId('chat-toggle-0'))
   const chatTextarea = screen.getByPlaceholderText(/would you like to discuss/i)
   fireEvent.change(chatTextarea, { target: { value: 'I want to discuss alternatives' } })
-  fireEvent.click(screen.getByTestId('save-question-0'))
-  fireEvent.click(screen.getByTestId('submit-all-answers'))
-  expect(props.onAnswer).toHaveBeenCalledWith('q1', {
-    'How should I format the output?': {
-      value: '',
-      notes: 'I want to discuss alternatives',
-    },
-  })
+  fireEvent.click(screen.getByTestId('send-chat-0'))
+  expect(onChat).toHaveBeenCalledWith('How should I format the output?', 'I want to discuss alternatives')
+  expect(props.onAnswer).not.toHaveBeenCalled()
 })
 
 test('multi-select supports Give your own answer', () => {

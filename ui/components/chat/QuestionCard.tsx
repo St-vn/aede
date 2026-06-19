@@ -24,6 +24,7 @@ interface Props {
     questions: Question[]
   }
   onAnswer: (questionId: string, answers: Record<string, string | string[] | { value: string | string[]; notes: string }>) => void
+  onChat?: (questionText: string, comment: string) => void
 }
 
 type AnswerValue = string | string[]
@@ -77,7 +78,7 @@ function formatAnswerForReview(
   return ans
 }
 
-export function QuestionCard({ request, onAnswer }: Props) {
+export function QuestionCard({ request, onAnswer, onChat }: Props) {
   const { questionId, questions } = request
   const [activeTab, setActiveTab] = useState<string>(
     questions[0] ? `q-0` : REVIEW_TAB,
@@ -135,9 +136,8 @@ export function QuestionCard({ request, onAnswer }: Props) {
     const result: Record<string, string | string[] | { value: string | string[]; notes: string }> = {}
     for (const q of questions) {
       if (chatMode[q.question]) {
-        const comment = chatComments[q.question]?.trim() || ''
-        const emptyValue = q.type === 'multi' ? [] : ''
-        result[q.question] = { value: emptyValue as string | string[], notes: comment || 'Chat about this' }
+        // Chat-mode questions are not submitted as answers; they are sent
+        // separately via onChat while the question stays pending.
         continue
       }
 
@@ -164,7 +164,7 @@ export function QuestionCard({ request, onAnswer }: Props) {
       }
     }
     onAnswer(questionId, result)
-  }, [questionId, questions, answers, notes, customTexts, customSelected, chatMode, chatComments, onAnswer])
+  }, [questionId, questions, answers, notes, customTexts, customSelected, chatMode, onAnswer])
 
   const handleSaveQuestion = useCallback((qi: number) => {
     const q = questions[qi]
@@ -310,9 +310,10 @@ export function QuestionCard({ request, onAnswer }: Props) {
               {isChat && (
                 <Textarea
                   aria-label={`Chat about: ${q.question}`}
-                  placeholder="What would you like to discuss?"
+                  placeholder="What would you like to discuss or clarify?"
                   value={chatComments[q.question] || ''}
                   onChange={e => handleChatCommentChange(q.question, e.target.value)}
+                  data-testid={`chat-input-${qi}`}
                 />
               )}
               {q.allow_notes && !isChat && (
@@ -334,14 +335,31 @@ export function QuestionCard({ request, onAnswer }: Props) {
                 >
                   {isChat ? 'Answer instead' : 'Chat about this'}
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() => handleSaveQuestion(qi)}
-                  disabled={q.required !== false && !currentAnswered}
-                  data-testid={`save-question-${qi}`}
-                >
-                  Save & continue
-                </Button>
+                {isChat ? (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const comment = chatComments[q.question]?.trim() || ''
+                      if (comment && onChat) {
+                        onChat(q.question, comment)
+                        handleChatCommentChange(q.question, '')
+                      }
+                    }}
+                    disabled={!chatComments[q.question]?.trim() || !onChat}
+                    data-testid={`send-chat-${qi}`}
+                  >
+                    Send chat
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => handleSaveQuestion(qi)}
+                    disabled={q.required !== false && !currentAnswered}
+                    data-testid={`save-question-${qi}`}
+                  >
+                    Save & continue
+                  </Button>
+                )}
               </div>
             </TabsContent>
           )

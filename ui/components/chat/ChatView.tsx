@@ -261,6 +261,10 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     setAskUserRequests(reqs => reqs.filter(r => r.questionId !== questionId))
   }
 
+  const handleQuestionChat = (questionText: string, comment: string) => {
+    handleSend(`Regarding "${questionText}": ${comment}`)
+  }
+
   const handleModelChange = useCallback((model: string) => {
     onModelChange?.(model)
     const acpPrefixes = ['claude-code', 'codex', 'gemini', 'cline', 'cursor', 'goose', 'agy']
@@ -369,7 +373,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
               options={gates[0].options} onDecision={handleGateDecision} />
           )}
           {askUserRequests.map(req => (
-            <QuestionCard key={req.questionId} request={req} onAnswer={handleAskUserAnswer} />
+            <QuestionCard key={req.questionId} request={req} onAnswer={handleAskUserAnswer} onChat={handleQuestionChat} />
           ))}
         </div>
       </ScrollArea>
