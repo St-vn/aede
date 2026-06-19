@@ -24,7 +24,7 @@ interface Props {
     questions: Question[]
   }
   onAnswer: (questionId: string, answers: Record<string, string | string[] | { value: string | string[]; notes: string }>) => void
-  onChat?: (questionText: string, comment: string) => void
+  onChat?: (questionId: string, questionText: string, comment: string) => void
 }
 
 type AnswerValue = string | string[]
@@ -190,7 +190,7 @@ export function QuestionCard({ request, onAnswer, onChat }: Props) {
             const Icon = answered ? Check : Circle
             return (
               <TabsTrigger
-                key={qi}
+                  key={`${request.questionId}-review-${qi}`}
                 value={`q-${qi}`}
                 data-answered={answered ? 'true' : 'false'}
                 data-testid={`question-tab-${qi}`}
@@ -217,7 +217,7 @@ export function QuestionCard({ request, onAnswer, onChat }: Props) {
           const isChat = !!chatMode[q.question]
           const currentAnswered = isQuestionAnswered(q, answers, customTexts, customSelected, chatMode)
           return (
-            <TabsContent key={qi} value={`q-${qi}`} className="mt-0 space-y-2">
+            <TabsContent key={`${request.questionId}-panel-${qi}`} value={`q-${qi}`} className="mt-0 space-y-2">
               <div>
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{q.header}</span>
                 <p className="text-sm text-foreground mt-0.5">{q.question}</p>
@@ -341,7 +341,7 @@ export function QuestionCard({ request, onAnswer, onChat }: Props) {
                     onClick={() => {
                       const comment = chatComments[q.question]?.trim() || ''
                       if (comment && onChat) {
-                        onChat(q.question, comment)
+                        onChat(questionId, q.question, comment)
                         handleChatCommentChange(q.question, '')
                       }
                     }}
@@ -375,7 +375,7 @@ export function QuestionCard({ request, onAnswer, onChat }: Props) {
               const Icon = answered ? Check : Circle
               return (
                 <div
-                  key={qi}
+                key={`${request.questionId}-tab-${qi}`}
                   className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-b-0"
                   data-testid={`review-row-${qi}`}
                 >

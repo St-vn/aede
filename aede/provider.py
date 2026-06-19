@@ -743,14 +743,14 @@ class AcpProvider:
                 # args arrive in a later tool_call_update for the same id.
                 # A new tool call ends any current thinking run — reset seq slot.
                 _current_thinking_seq[0] = None
-                call_id = update.get("toolCallId", "")
+                call_id = update.get("toolCallId", "") or f"acp_{_seq[0]}"
                 name = _acp_tool_name(update)
                 args = update.get("rawInput") or {}
                 tc_seq = _seq[0]
                 _seq[0] += 1
                 asyncio.ensure_future(stream_tool_call(call_id, name, args, tc_seq))
             elif update_type == "tool_call_update":
-                call_id = update.get("toolCallId", "")
+                call_id = update.get("toolCallId", "") or f"acp_upd_{_seq[0]}"
                 # Middle update: carry real args (old_string/new_string/file_path).
                 raw_input = update.get("rawInput")
                 if raw_input and stream_tool_call:
