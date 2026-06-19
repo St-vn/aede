@@ -83,6 +83,22 @@ def test_skills_search_path_skips_non_md(tmp_path):
     assert registry == {}
 
 
+def test_skills_loader_skips_binary_skill_bundle(tmp_path, capsys):
+    """A zipped/binary *.skill bundle is skipped quietly, no decode warning."""
+    from aede.skills.loader import load_skills
+
+    skills = tmp_path / "global" / "skills"
+    skills.mkdir(parents=True)
+    # ZIP magic bytes — a packaged skill, not markdown.
+    (skills / "packaged.skill").write_bytes(b"PK\x03\x04\x00\x00binarygunk\xff\xfe")
+
+    registry = load_skills(global_dir=tmp_path / "global", project_dir=tmp_path / "project",
+                           include_claude_fallback=False)
+    combined = capsys.readouterr().out + capsys.readouterr().err
+    assert registry == {}
+    assert "packaged" not in combined  # skipped silently, no warning
+
+
 def test_skills_loader_warns_on_bad_skill(tmp_path, capsys):
     """load_skills should print a warning when a SKILL.md fails to load."""
     from aede.skills.loader import load_skills
