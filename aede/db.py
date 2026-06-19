@@ -229,6 +229,12 @@ class DB:
             self.con.commit()
         except Exception:
             pass
+        # RW-01 migration: add branch_message_id column to sessions if missing.
+        try:
+            self.con.execute("ALTER TABLE sessions ADD COLUMN branch_message_id TEXT")
+            self.con.commit()
+        except Exception:
+            pass
         # Set row_factory after schema is created
         self.con.row_factory = _row_factory
 
@@ -240,12 +246,13 @@ class DB:
         model: str,
         project_dir: str | None = None,
         gate_mode: str | None = None,
+        branch_message_id: str | None = None,
     ) -> None:
         """Insert a new session row with ``status='active'`` and timestamps set to now."""
         now = _now_ms()
         self.con.execute(
-            "INSERT INTO sessions (id, parent_id, title, created_at, updated_at, model, project_dir, gate_mode) VALUES (?,?,?,?,?,?,?,?)",
-            (id, parent_id, title, now, now, model, _normalize_path(project_dir), gate_mode),
+            "INSERT INTO sessions (id, parent_id, title, created_at, updated_at, model, project_dir, gate_mode, branch_message_id) VALUES (?,?,?,?,?,?,?,?,?)",
+            (id, parent_id, title, now, now, model, _normalize_path(project_dir), gate_mode, branch_message_id),
         )
         self.con.commit()
 

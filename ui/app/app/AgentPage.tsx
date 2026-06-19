@@ -131,6 +131,10 @@ export function AgentPage() {
               onOpenSettings={(tab) => { setSettingsTab(tab as SettingsTabId); setSettingsOpen(true) }}
               defaultModel={currentModel} onModelChange={setCurrentModel}
               mode={currentMode} onModeChange={handleModeChange}
+              onRewind={(newSessionId) => {
+                setActiveId(newSessionId)
+                setActiveProjectDir(null)
+              }}
             />
         ) : (
           <div className="flex-1 flex flex-col min-h-0 justify-between">

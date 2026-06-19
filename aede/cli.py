@@ -737,6 +737,17 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
         return await _run(resume_session_id=resume_target)
 
 
+def _handle_esc_key(agent_loop):
+    """Handle ESC key press: request stop on the active agent loop if present.
+
+    Returns True if the loop was found and a stop was requested, False otherwise.
+    """
+    if agent_loop:
+        agent_loop.request_stop()
+        return True
+    return False
+
+
 async def _run_turn_safe(agent: Any, user_input: str, console: Any) -> None:
     """Run one agent turn, printing any unexpected exception instead of crashing."""
     try:

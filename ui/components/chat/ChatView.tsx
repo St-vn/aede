@@ -15,6 +15,7 @@ import { LearningsChip } from './LearningsChip'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
+import { useRewind } from '@/hooks/useSession'
 
 interface ThinkingSegment { text: string; seq: number }
 interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; is_branch_point?: boolean; thinking?: string; thinking_segments?: ThinkingSegment[]; turn_duration_ms?: number | null; tool_calls?: ToolCall[] }
@@ -28,12 +29,12 @@ type StreamingBlock =
   | { kind: 'thinking'; seq: number; text: string }
   | { kind: 'tool'; seq: number; id: string; name: string; args: Record<string, unknown>; status: string; output?: string; durationMs?: number; streamingOutput?: string }
 
-interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void; onOpenSettings?: (tab?: string) => void; onOpenHelp?: () => void; defaultModel?: string; onModelChange?: (model: string) => void; mode?: string; onModeChange?: (mode: string) => void }
+interface Props { sessionId: string; messages: Message[]; initialMessage?: string; onClearInitialMessage?: () => void; onOpenSettings?: (tab?: string) => void; onOpenHelp?: () => void; defaultModel?: string; onModelChange?: (model: string) => void; mode?: string; onModeChange?: (mode: string) => void; onRewind?: (newSessionId: string) => void }
 
 const _stripRich = (text: string): string =>
   text.replace(/\[\/?\w+(?:[ \t]\w+)*\]/g, '').replace(/\r/g, '')
 
-export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp, defaultModel, onModelChange, mode, onModeChange }: Props) {
+export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp, defaultModel, onModelChange, mode, onModeChange, onRewind }: Props) {
   const [streamingText, setStreamingText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   // streamingBlocks holds interleaved thinking+tool blocks in seq order during streaming.
@@ -50,12 +51,17 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   }
   const [askUserRequests, setAskUserRequests] = useState<{ questionId: string; questions: AskUserQuestion[] }[]>([])
   const [pendingMessages, setPendingMessages] = useState<{ content: string; id: string }[]>([])
+  const queueRef = useRef<string[]>([])
+  const [queuedMessages, setQueuedMessages] = useState<string[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
+  const { rewind } = useRewind()
   const prevMessagesLenRef = useRef(messages.length)
   const prevSessionIdRef = useRef<string | null>(null)
   const turnStartRef = useRef<number | null>(null)
   const [lastTurnDurationMs, setLastTurnDurationMs] = useState<number | null>(null)
+  const sendRef = useRef<((msg: Record<string, unknown>) => void) | null>(null)
+  const onEventRef = useRef<((ev: WSEvent) => void) | null>(null)
 
   useEffect(() => {
     if (messages.length > prevMessagesLenRef.current && streamingText && !isStreaming) {
@@ -102,8 +108,6 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       setStreamingBlocks(blocks => {
         const existing = blocks.find(b => b.kind === 'tool' && b.id === id)
         if (existing) {
-          // Later updates carry populated args (ACP rawInput); merge without
-          // resetting a status already advanced to success/error.
           return blocks.map(b =>
             b.kind === 'tool' && b.id === id
               ? { ...b, name, args: Object.keys(args).length ? args : b.args }
@@ -119,7 +123,6 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       const seq = typeof ev.seq === 'number' ? ev.seq as number : 0
       const text = ev.text as string
       setStreamingBlocks(blocks => {
-        // Find an existing thinking block with this seq to append to.
         const idx = blocks.findIndex(b => b.kind === 'thinking' && b.seq === seq)
         if (idx !== -1) {
           return blocks.map((b, i) =>
@@ -166,18 +169,34 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
         setLastTurnDurationMs(Date.now() - turnStartRef.current)
       }
       turnStartRef.current = null
-      setIsStreaming(false)
-      setStreamingBlocks([])
-      setGates([])
-      setAskUserRequests([])
-      setStreamingText('')
+      // Dequeue next message if any are queued
+      if (queueRef.current.length > 0) {
+        const [next, ...rest] = queueRef.current
+        queueRef.current = rest
+        setQueuedMessages(rest)
+        const id = `pending-${Date.now()}`
+        setPendingMessages(p => [...p, { content: next, id }])
+        sendRef.current?.({ type: 'user_turn', content: next })
+        setStreamingText('')
+        setStreamingBlocks([])
+        turnStartRef.current = Date.now()
+        setLastTurnDurationMs(null)
+      } else {
+        setIsStreaming(false)
+        setStreamingBlocks([])
+        setGates([])
+        setAskUserRequests([])
+        setStreamingText('')
+      }
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
     } else if (ev.type === 'error') {
       toast.error(ev.message as string, { duration: 8000 })
     }
   }, [sessionId, queryClient])
+  onEventRef.current = onEvent
 
-  const { send } = useWebSocket(sessionId, onEvent)
+  const { send } = useWebSocket(sessionId, (ev) => onEventRef.current?.(ev))
+  sendRef.current = send
   const initialSentRef = useRef(false)
   const prevSessionRef = useRef(sessionId)
   if (prevSessionRef.current !== sessionId) {
@@ -206,6 +225,15 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       })
     }
   }, [messages, streamingText])
+
+  const handleStop = useCallback(() => {
+    send({ type: 'stop' })
+  }, [send])
+
+  const handleQueue = useCallback((content: string) => {
+    queueRef.current = [...queueRef.current, content]
+    setQueuedMessages([...queueRef.current])
+  }, [])
 
   const handleSend = (content: string, model?: string) => {
     const id = `pending-${Date.now()}`
@@ -244,7 +272,18 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     }
   }, [onModelChange])
 
-  const inputDisabled = isStreaming || gates.length > 0 || askUserRequests.length > 0
+  const handleRewind = useCallback(async (messageId: string, opts: { revertCode: boolean }) => {
+    try {
+      const result = await rewind(sessionId, messageId, opts.revertCode) as { id: string }
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      onRewind?.(result.id)
+    } catch (err) {
+      console.error('Rewind failed:', err)
+      toast.error('Rewind failed — see console for details')
+    }
+  }, [sessionId, rewind, queryClient, onRewind])
+
+  const inputDisabled = gates.length > 0 || askUserRequests.length > 0
 
   // Sort streaming blocks by seq for display.
   const sortedBlocks = [...streamingBlocks].sort((a, b) => a.seq - b.seq)
@@ -284,7 +323,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
                   <div className="flex-1 h-px bg-border" />
                 </div>
               : m.role === 'user'
-                ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} />
+                ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} messageId={m.id} onRewind={handleRewind} />
                 : <React.Fragment key={m.id}>
                     <AssistantMessage
                       content={m.content}
@@ -330,8 +369,21 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       <div className="max-w-[760px] mx-auto w-full px-4 pb-1 flex items-center justify-end">
         <LearningsChip sessionId={sessionId} />
       </div>
+      {queuedMessages.length > 0 && (
+        <div className="max-w-[760px] mx-auto w-full px-4 pb-1">
+          <div className="flex flex-wrap gap-1.5">
+            {queuedMessages.map((msg, i) => (
+              <span key={i} className="inline-flex items-center gap-1 text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-md truncate max-w-[200px]">
+                <span className="shrink-0">#{i + 1}</span>
+                <span className="truncate">{msg}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="max-w-[760px] mx-auto w-full">
-        <InputBar onSend={handleSend} disabled={inputDisabled} sessionId={sessionId}
+        <InputBar onSend={handleSend} disabled={inputDisabled} isStreaming={isStreaming}
+          onStop={handleStop} onQueue={handleQueue} sessionId={sessionId}
           defaultModel={defaultModel} onModelChange={handleModelChange}
           mode={mode} onModeChange={onModeChange} />
       </div>

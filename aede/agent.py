@@ -332,6 +332,8 @@ class AgentLoop:
         self._messages: list[dict] = []
         self._turn = 0
         self._provider: Any = None
+        self._stop_requested = asyncio.Event()
+        self._stop_after_current_tool = asyncio.Event()
         self._system_prompt: SystemPrompt | None = None
         self._skills: list[Any] | None = None
         self._learnings_suffix: str | None = None
@@ -380,6 +382,12 @@ class AgentLoop:
         )
         if prior_messages:
             self._messages = list(prior_messages)
+
+    def request_stop(self) -> None:
+        self._stop_requested.set()
+
+    def request_stop_after_current_tool(self) -> None:
+        self._stop_after_current_tool.set()
 
     def _enrich_edit_args(self, name: str, args: dict) -> dict:
         """For full-content write tools, attach ``old_string``/``new_string`` so

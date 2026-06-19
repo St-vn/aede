@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { ArrowUp, Link } from 'lucide-react'
+import { ArrowUp, Link, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -25,6 +25,9 @@ import { apiFetch } from '@/lib/api'
 interface Props {
   onSend: (content: string, model?: string) => void
   disabled: boolean
+  isStreaming?: boolean
+  onStop?: () => void
+  onQueue?: (content: string) => void
   defaultModel?: string
   sessionId?: string | null
   projectDir?: string | null
@@ -45,7 +48,7 @@ function buildMessageText(text: string, images: ImageAttachment[]): string {
   return text + imageMarkdown
 }
 
-export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', sessionId, projectDir, onOpenSettings, onOpenHelp, model: modelProp, onModelChange: onModelChangeProp, mode: modeProp, onModeChange }: Props) {
+export function InputBar({ onSend, disabled, isStreaming = false, onStop, onQueue, defaultModel = 'claude-sonnet-4', sessionId, projectDir, onOpenSettings, onOpenHelp, model: modelProp, onModelChange: onModelChangeProp, mode: modeProp, onModeChange }: Props) {
   const [text, setText] = useState('')
   const [modelState, setModelState] = useState(defaultModel)
   const model = modelProp ?? modelState
@@ -140,6 +143,15 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
     const trimmed = (override ?? text).trim()
     if ((!trimmed && imageAttachments.length === 0) || disabled) return
     const message = buildMessageText(trimmed, imageAttachments)
+    if (isStreaming) {
+      onQueue?.(message)
+      setText('')
+      setMentionOpen(false)
+      setSlashOpen(false)
+      setImageAttachments([])
+      setMentionedFiles([])
+      return
+    }
     onSend(message, model)
     setText('')
     setMentionOpen(false)
@@ -495,15 +507,21 @@ export function InputBar({ onSend, disabled, defaultModel = 'claude-sonnet-4', s
               onPermissionDenied={() => setPermDenied(true)}
               onError={() => {}}
             />
-            <Tooltip>
-              <TooltipTrigger render={
-                <Button size="icon" className="w-7 h-7" aria-label="Send message"
-                  disabled={disabled || (!text.trim() && imageAttachments.length === 0)} onClick={() => submit()}>
-                  <ArrowUp className="w-4 h-4" />
-                </Button>
-              } />
-              <TooltipContent>Send</TooltipContent>
-            </Tooltip>
+            {isStreaming ? (
+              <Button size="icon" className="w-7 h-7" aria-label="stop generating" onClick={onStop}>
+                <Square className="w-4 h-4 fill-current" />
+              </Button>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger render={
+                  <Button size="icon" className="w-7 h-7" aria-label="Send message"
+                    disabled={disabled || (!text.trim() && imageAttachments.length === 0)} onClick={() => submit()}>
+                    <ArrowUp className="w-4 h-4" />
+                  </Button>
+                } />
+                <TooltipContent>Send</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
       </div>

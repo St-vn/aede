@@ -70,6 +70,19 @@ async def _warmup_acp_on_startup(app: "FastAPI") -> None:
             console.print(f"[dim]ACP warmup: {name} connected[/dim]")
 
 
+class SessionState:
+    """Per-session state tracked across WebSocket reconnects.
+
+    Stores the active turn task, gate state, and current turn ID so that
+    a reconnecting socket can adopt an in-progress turn.
+    """
+
+    def __init__(self) -> None:
+        self.gate: SessionGate = SessionGate()
+        self.turn_task: asyncio.Task | None = None
+        self.current_turn_id: str | None = None
+
+
 class SessionGate:
     """Per-session gate state, shared across successive WebSocket connections.
 
@@ -351,11 +364,12 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
     # earlier socket keeps its pending gates here; this (possibly new) handler
     # binds the live socket and re-sends any unanswered gate requests so the
     # user can still answer them.
-    gate_registry: dict[str, SessionGate] = getattr(app.state, "gate_registry", None)
-    if gate_registry is None:
-        gate_registry = {}
-        app.state.gate_registry = gate_registry
-    gate = gate_registry.setdefault(session_id, SessionGate())
+    session_states: dict[str, SessionState] = getattr(app.state, "session_states", None)
+    if session_states is None:
+        session_states = {}
+        app.state.session_states = session_states
+    state = session_states.setdefault(session_id, SessionState())
+    gate: SessionGate = state.gate
     gate.bind(websocket)
     gate_backend = WebSocketGateBackend(gate)
     ws_console = WebSocketConsole(websocket)
@@ -525,7 +539,8 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 print(f"[WS#{hid}] Starting agent.run_turn...", flush=True)
                 from aede.db import _now_ms as _turn_now_ms
                 turn_start_ms = _turn_now_ms()
-                turn_task = asyncio.create_task(agent.run_turn(resolved_content))
+                state.turn_task = asyncio.create_task(agent.run_turn(resolved_content))
+                turn_task = state.turn_task
                 print(f"[WS#{hid}] agent.run_turn task created", flush=True)
                 
                 def on_turn_done(fut):
@@ -538,7 +553,8 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     # NOT caught by `except Exception`.  Swallow it explicitly so
                     # the done-callback never propagates an unhandled exception.
                     if fut.cancelled():
-                        print(f"[WS#{hid}] run_turn cancelled — skipping completion", flush=True)
+                        print(f"[WS#{hid}] run_turn cancelled — reporting completion", flush=True)
+                        asyncio.create_task(send_live({"type": "turn_completed", "turn_duration_ms": 0, "cancelled": True}))
                         return
                     try:
                         fut.result()
@@ -615,6 +631,14 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 else:
                     await websocket.send_json({"type": "error", "message": f"Unknown gate_id: {gate_id}"})
 
+            elif msg_type == "stop":
+                state = session_states.get(session_id)
+                if state and state.turn_task and not state.turn_task.done():
+                    print(f"[WS#{hid}] stop requested — cancelling turn", flush=True)
+                    state.turn_task.cancel()
+                else:
+                    print(f"[WS#{hid}] stop requested — no active turn to cancel", flush=True)
+
             elif msg_type == "ask_user_response":
                 question_id = data.get("question_id")
                 answers = data.get("answers", {})
@@ -631,13 +655,13 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
         # gate state survives, and a reconnecting socket will adopt it and
         # re-send the pending request.  Only cancel a turn with no outstanding
         # gate (genuinely abandoned work with nothing to resume).
-        turn = gate_registry.get(session_id)
-        gates_pending = bool(turn and turn.futures)
+        turn_state = state
+        gates_pending = bool(turn_state.gate.futures)
         if gate.websocket is websocket:
             gate.websocket = None  # current socket is gone; await reconnect
-        if 'turn_task' in locals() and not turn_task.done() and not gates_pending:
+        if turn_state.turn_task is not None and not turn_state.turn_task.done() and not gates_pending:
             print(f"[WS#{hid}] no pending gate — cancelling abandoned turn", flush=True)
-            turn_task.cancel()
+            turn_state.turn_task.cancel()
         elif gates_pending:
             print(f"[WS#{hid}] gate pending — leaving turn alive for reconnect", flush=True)
     except Exception as e:
@@ -855,8 +879,59 @@ async def delete_session(request: Request, session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/sessions/{session_id}/rewind")
+async def rewind_session(request: Request, session_id: str, payload: dict):
+    """Fork the session at a given user message, optionally reverting code changes.
+
+    Body:
+        ``message_id`` (str, required) — the user message ID to fork at.
+        ``revert_code`` (bool, default False) — whether to revert code changes
+            made after this message by replay tool calls in reverse.
+
+    Returns the new forked session.
+    """
+    db = request.app.state.db
+    cfg = request.app.state.cfg
+    from aede.session import Session
+
+    message_id = payload.get("message_id")
+    if not message_id:
+        raise HTTPException(status_code=400, detail="message_id is required")
+
+    try:
+        parent = Session.load(db, session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    new_session = Session.fork_from_message(db, session_id, message_id)
+
+    revert_code_flag = payload.get("revert_code", False)
+    if revert_code_flag:
+        project_dir = Path(parent.project_dir) if parent.project_dir else Path.cwd()
+        tool_calls = []
+        msg_ids = [m["id"] for m in db.get_messages(session_id) if m["id"] != message_id]
+        if msg_ids:
+            tc_map = db.get_tool_calls_for_message_ids(msg_ids)
+            for mid in msg_ids:
+                for tc in tc_map.get(mid, []):
+                    tool_calls.append({"name": tc["tool_name"], "args": tc.get("args", {})})
+        if tool_calls:
+            from aede.tools.rewind import revert_code as _revert_code
+            try:
+                _revert_code(project_dir, tool_calls)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Code revert failed: {e}")
+
+    return new_session.to_dict()
+
+
 def _walk_parent_messages(db, session_id: str) -> list[dict]:
-    """Recursively collect messages from all ancestor sessions, root-first."""
+    """Recursively collect messages from all ancestor sessions, root-first.
+
+    When the session at *session_id* has a ``branch_message_id`` set, the
+    parent messages are truncated at that message ID (the branch point
+    message itself is included so the UI shows where the fork occurred).
+    """
     from aede.session import Session
     try:
         session = Session.load(db, session_id)
@@ -867,6 +942,14 @@ def _walk_parent_messages(db, session_id: str) -> list[dict]:
     ancestor_msgs = _walk_parent_messages(db, session.parent_id)
     own = list(db.get_messages(session.parent_id))
     ancestor_msgs.extend(own)
+    if session.branch_message_id:
+        idx = None
+        for i, m in enumerate(ancestor_msgs):
+            if m["id"] == session.branch_message_id:
+                idx = i
+                break
+        if idx is not None:
+            ancestor_msgs = ancestor_msgs[: idx + 1]
     return ancestor_msgs
 
 

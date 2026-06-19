@@ -40,6 +40,7 @@ class Session:
     def __init__(self, data: dict[str, Any]) -> None:
         self.id: str = data["id"]
         self.parent_id: str | None = data.get("parent_id")
+        self.branch_message_id: str | None = data.get("branch_message_id")
         self.title: str | None = data.get("title")
         self.model: str = data["model"]
         self.status: str = data["status"]
@@ -52,6 +53,7 @@ class Session:
         return {
             "id": self.id,
             "parent_id": self.parent_id,
+            "branch_message_id": self.branch_message_id,
             "title": self.title,
             "model": self.model,
             "status": self.status,
@@ -128,6 +130,23 @@ class Session:
         """Mark the session as active in the DB and update local state."""
         db.update_session_status(self.id, "active")
         self.status = "active"
+
+    @classmethod
+    def fork_from_message(cls, db: Any, parent_id: str, message_id: str) -> "Session":
+        """Create a new session as a branch of *parent_id*, rooted at *message_id*.
+
+        The new session inherits the parent's model, sets ``parent_id`` and
+        ``branch_message_id``, and loads its message history from the parent
+        chain truncated to the branch point.
+        """
+        parent = cls.load(db, parent_id)
+        s = cls.create(db, parent.model, parent_id=parent_id)
+        db.con.execute(
+            "UPDATE sessions SET branch_message_id = ? WHERE id = ?",
+            (message_id, s.id),
+        )
+        db.con.commit()
+        return cls.load(db, s.id)
 
     def set_gate_mode(self, db: Any, gate_mode: str | None) -> None:
         """Update the session's permission mode and refresh local state."""

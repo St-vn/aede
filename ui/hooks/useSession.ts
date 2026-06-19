@@ -93,6 +93,18 @@ export const useRenameSession = () => {
   })
 }
 
+export function useRewind() {
+  return {
+    rewind: async (sessionId: string, messageId: string, revertCode: boolean) => {
+      return apiFetch(`/api/sessions/${sessionId}/rewind`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_id: messageId, revert_code: revertCode }),
+      })
+    },
+  }
+}
+
 export const useUpdateSessionMode = () => {
   const qc = useQueryClient()
   return useMutation({
