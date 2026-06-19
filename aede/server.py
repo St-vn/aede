@@ -81,6 +81,7 @@ class SessionState:
         self.gate: SessionGate = SessionGate()
         self.turn_task: asyncio.Task | None = None
         self.current_turn_id: str | None = None
+        self.agent: Any = None
 
 
 class SessionGate:
@@ -467,12 +468,17 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                         # Persist to DB (ACP tools run in-subprocess, reported via on_update)
                         if agent._current_assist_id:
                             import json as _json
+                            _model = cfg.model
+                            _base = _model.split('/')[0] if '/' in _model else _model
+                            from aede.provider import ACP_MODEL_IDS
+                            _provider = f"{_base}-acp" if _model in ACP_MODEL_IDS else 'aede'
                             db.upsert_tool_call(
                                 id=call_id,
                                 message_id=agent._current_assist_id,
                                 tool_name=name,
                                 args=_json.dumps(args),
                                 status="running",
+                                provider=_provider,
                             )
                         await send_live({"type": "tool_call", "id": call_id, "name": name, "args": args, "seq": seq})
                     except Exception:
@@ -512,6 +518,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     stream_tool_call=_stream_tool_call,
                     stream_tool_result=_stream_tool_result,
                 )
+                state.agent = agent
 
                 # Load prior messages for context
                 rows = db.get_messages(session.id)
@@ -590,13 +597,16 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                         asyncio.create_task(send_live({"type": "turn_completed", "turn_duration_ms": turn_duration_ms}))
                         # Emit context usage info
                         try:
-                            if hasattr(agent, 'count_context_tokens'):
-                                ctx = agent.count_context_tokens()
-                                asyncio.create_task(send_live({
-                                    "type": "context_usage",
-                                    "used": ctx.get("total_tokens", 0),
-                                    "total": cfg.context_window,
-                                }))
+                            from aede.agent import count_context_tokens, breakdown_to_dict
+                            breakdown = count_context_tokens(agent._messages)
+                            ctx = breakdown_to_dict(breakdown)
+                            asyncio.create_task(send_live({
+                                "type": "context_usage",
+                                "used": ctx["total_tokens"],
+                                "total": cfg.context_window,
+                                "buckets": ctx["buckets"],
+                                "compactions": [],
+                            }))
                         except Exception as e:
                             print(f"[WS#{hid}] context_usage error: {e}", flush=True)
                         # Emit learnings count
@@ -1966,6 +1976,20 @@ async def get_session_token_detail(request: Request, session_id: str):
         "estimated_cost_usd": cost,
         "model": cfg.model,
     }
+
+
+@app.post("/api/compact")
+async def compact_session(request: Request, payload: dict):
+    """Trigger context compaction for a session."""
+    session_id = payload.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+    session_states: dict = getattr(request.app.state, "session_states", {})
+    state: SessionState | None = session_states.get(session_id)
+    if state and getattr(state, 'agent', None) and hasattr(state.agent, 'compact'):
+        result = await state.agent.compact()
+        return {"status": "ok", "method": result.get("method", "none")}
+    return {"status": "ok", "method": "no_active_session"}
 
 
 def _resolve_project_root(path: Path | None = None) -> Path | None:

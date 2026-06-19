@@ -70,6 +70,16 @@ def test_revert_code_fallback_replay(tmp_path):
     assert f.read_text() == "original"
 
 
+def test_reverse_replay_edit_roundtrip(tmp_path):
+    """edit reverse replay swaps new_string back to old_string."""
+    f = tmp_path / "x.txt"
+    f.write_text("original")
+    edits = [{"name": "edit", "args": {"path": "x.txt", "old_string": "original", "new_string": "changed"}}]
+    f.write_text("changed")
+    _try_reverse_replay(tmp_path, edits)
+    assert f.read_text() == "original"
+
+
 def test_reverse_replay_unlinks_created_file(tmp_path):
     """create_file is undone by unlinking the file."""
     f = tmp_path / "new.txt"

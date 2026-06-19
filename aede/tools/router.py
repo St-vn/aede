@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from aede.db import DB
 
 
-GATE_TOOLS = {"powershell", "write_file", "create_file", "write_learning"}
+GATE_TOOLS = {"powershell", "write_file", "create_file", "write_learning", "edit"}
 
 
 class UnknownToolError(Exception):
@@ -92,7 +92,7 @@ class ToolRouter:
         return self._mcp_bridge
 
     def _build_registry(self) -> dict[str, Callable]:
-        from aede.tools.files import read_file, write_file, create_file, list_dir
+        from aede.tools.files import read_file, write_file, create_file, list_dir, edit, glob_files
         from aede.tools.search import search_files
         from aede.tools.web import fetch_url
 
@@ -103,6 +103,8 @@ class ToolRouter:
             "write_file": write_file,
             "create_file": create_file,
             "list_dir": list_dir,
+            "edit": edit,
+            "glob": glob_files,
             "search_files": search_files,
             "fetch_url": partial(fetch_url, sandbox_filter=_sandbox_filter),
         }
@@ -414,11 +416,13 @@ _TOOL_SCHEMAS: dict[str, dict] = {
     },
     "read_file": {
         "name": "read_file",
-        "description": "Read the contents of a file at the given path.",
+        "description": "Read the contents of a file at the given path. Supports optional offset (1-indexed line number to start from) and limit (max lines to return). When omitted, returns the first 2000 lines.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Absolute or relative file path."}
+                "path": {"type": "string", "description": "Absolute or relative file path."},
+                "offset": {"type": "integer", "description": "Line number to start reading from (1-indexed)."},
+                "limit": {"type": "integer", "description": "Maximum number of lines to return."},
             },
             "required": ["path"],
         },
@@ -445,6 +449,20 @@ _TOOL_SCHEMAS: dict[str, dict] = {
                 "content": {"type": "string"},
             },
             "required": ["path", "content"],
+        },
+    },
+    "edit": {
+        "name": "edit",
+        "description": "Apply an exact string replacement edit to a file. The old_string must match exactly once in the file (use replace_all=True for multiple occurrences). Prefer this over write_file for modifications — it sends only the changed hunk.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Absolute or relative file path."},
+                "old_string": {"type": "string", "description": "Exact text to replace. Must match exactly once unless replace_all=True."},
+                "new_string": {"type": "string", "description": "Replacement text."},
+                "replace_all": {"type": "boolean", "description": "If true, replace all occurrences of old_string (default: false)."},
+            },
+            "required": ["path", "old_string", "new_string"],
         },
     },
     "list_dir": {
@@ -703,5 +721,17 @@ _TOOL_SCHEMAS: dict[str, dict] = {
         "name": "infer_fileset",
         "description": "Show the current fileset (inferred from project root).",
         "input_schema": {"type": "object", "properties": {}},
+    },
+    "glob": {
+        "name": "glob",
+        "description": "Find files matching a glob pattern, sorted by modification time descending (newest first). Use this instead of powershell/ls for file discovery.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "Glob pattern (e.g. '**/*.tsx', 'src/**/*.py')."},
+                "path": {"type": "string", "description": "Root directory to search (defaults to current working directory)."},
+            },
+            "required": ["pattern"],
+        },
     },
 }

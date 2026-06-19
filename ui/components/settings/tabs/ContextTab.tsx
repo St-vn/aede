@@ -54,6 +54,16 @@ export function ContextTab({ sessionId }: Props) {
           </div>
           <Separator />
           <div className="space-y-1">
+            <h4 className="text-xs font-medium text-muted-foreground">Per-Source Breakdown</h4>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">
+                Live per-source breakdown is shown in the context bar above the chat input.
+                This section will display aggregated source data from the session.
+              </p>
+            </div>
+          </div>
+          <Separator />
+          <div className="space-y-1">
             <h4 className="text-xs font-medium text-muted-foreground">Per-Turn Breakdown</h4>
             {tokenData.turns.length === 0 ? (
               <p className="text-xs text-muted-foreground">No turn data yet.</p>

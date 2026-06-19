@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     result      TEXT,
     status      TEXT NOT NULL,
     duration_ms INTEGER,
+    provider    TEXT NOT NULL DEFAULT 'aede',
     created_at  INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS thinking_segments (
@@ -235,6 +236,14 @@ class DB:
             self.con.commit()
         except Exception:
             pass
+        # FR-01 migration: add provider column to tool_calls if missing.
+        try:
+            self.con.execute(
+                "ALTER TABLE tool_calls ADD COLUMN provider TEXT NOT NULL DEFAULT 'aede'"
+            )
+            self.con.commit()
+        except Exception:
+            pass  # Column already exists — idempotent
         # Set row_factory after schema is created
         self.con.row_factory = _row_factory
 
@@ -437,9 +446,10 @@ class DB:
         self.con.commit()
 
     def delete_message(self, id: str) -> None:
-        """Delete a message and its tool calls (used to clean up an empty
+        """Delete a message and its child rows (used to clean up an empty
         assistant placeholder when the provider call fails)."""
         self.con.execute("DELETE FROM tool_calls WHERE message_id = ?", (id,))
+        self.con.execute("DELETE FROM thinking_segments WHERE message_id = ?", (id,))
         self.con.execute("DELETE FROM messages WHERE id = ?", (id,))
         self.con.commit()
 
@@ -519,11 +529,12 @@ class DB:
         tool_name: str,
         args: str,
         status: str,
+        provider: str = 'aede',
     ) -> None:
         """Record a tool invocation (without result) immediately after dispatch."""
         self.con.execute(
-            "INSERT INTO tool_calls (id, message_id, tool_name, args, status, created_at) VALUES (?,?,?,?,?,?)",
-            (id, message_id, tool_name, args, status, _now_ms()),
+            "INSERT INTO tool_calls (id, message_id, tool_name, args, status, provider, created_at) VALUES (?,?,?,?,?,?,?)",
+            (id, message_id, tool_name, args, status, provider, _now_ms()),
         )
         self.con.commit()
 
@@ -534,6 +545,7 @@ class DB:
         tool_name: str,
         args: str,
         status: str,
+        provider: str = 'aede',
     ) -> None:
         """Insert or update a tool call, preserving the original ``created_at``.
 
@@ -543,13 +555,14 @@ class DB:
         trigger.
         """
         self.con.execute(
-            "INSERT INTO tool_calls (id, message_id, tool_name, args, status, created_at) "
-            "VALUES (?,?,?,?,?,?) "
+            "INSERT INTO tool_calls (id, message_id, tool_name, args, status, provider, created_at) "
+            "VALUES (?,?,?,?,?,?,?) "
             "ON CONFLICT(id) DO UPDATE SET "
             "  tool_name=excluded.tool_name,"
             "  args=excluded.args,"
-            "  status=excluded.status",
-            (id, message_id, tool_name, args, status, _now_ms()),
+            "  status=excluded.status,"
+            "  provider=excluded.provider",
+            (id, message_id, tool_name, args, status, provider, _now_ms()),
         )
         self.con.commit()
 

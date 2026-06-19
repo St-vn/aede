@@ -52,7 +52,7 @@ def test_db_delete_messages_after_cascades_tool_calls(tmp_path: Path):
     import time
     time.sleep(0.005)
     db.insert_message(id=m2, session_id=s.id, role="assistant", content="second", token_count=None)
-    db.insert_tool_call(id=str(ULID()), message_id=m2, tool_name="write_file", args="{}", status="ok")
+    db.insert_tool_call(id=str(ULID()), message_id=m2, tool_name="write_file", args="{}", status="ok", provider='aede')
 
     rows = db.get_messages(s.id)
     target_ts = next(r["created_at"] for r in rows if r["id"] == m1)
@@ -181,6 +181,7 @@ def test_truncate_endpoint_with_revert_code_invokes_revert_utility(tmp_path: Pat
         tool_name="write_file",
         args='{}',
         status="ok",
+        provider='aede',
     )
 
     called: list[tuple[Path, list[dict]]] = []

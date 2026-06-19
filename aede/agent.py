@@ -28,8 +28,10 @@ You help with coding, research, planning, and general agentic tasks. You operate
 You have the following tools available:
 
 - powershell: Execute PowerShell commands. REQUIRES USER APPROVAL before running.
-- read_file: Read a file at a given path. Runs automatically.
+- read_file: Read a file at a given path. Supports offset (start line) and limit (max lines) for partial reads. Returns up to 2000 lines by default. Runs automatically.
+- glob: Find files matching a glob pattern, sorted by newest first. Use for file discovery instead of powershell/ls. Runs automatically.
 - write_file: Overwrite an existing file. REQUIRES USER APPROVAL. Fails if the file does not exist — use create_file instead.
+- edit: Apply an exact string replacement edit to an existing file. Use this for modifications instead of write_file when changing only part of a file. Sends only the changed hunk, saving tokens. REQUIRES USER APPROVAL.
 - create_file: Create a new file. REQUIRES USER APPROVAL. Fails if the file already exists — use write_file instead.
 - list_dir: List directory contents. Runs automatically.
 - search_files: Search for a pattern across files (ripgrep). Runs automatically.
@@ -190,10 +192,97 @@ def _is_code_content(content: str) -> bool:
     return any(kw in normalised for kw in _CODE_KEYWORDS)
 
 
-def count_context_tokens(messages: list[dict]) -> int:
-    """Return a rough token count for a list of message dicts."""
+@dataclass
+class TokenBucket:
+    source: str
+    source_id: str | None = None
+    tokens: int = 0
+
+
+@dataclass
+class ContextTokenBreakdown:
+    buckets: list[TokenBucket]
+    total_tokens: int
+
+
+def count_context_tokens(messages: list[dict]) -> ContextTokenBreakdown:
+    """Return a token breakdown by source buckets."""
+
+    buckets = {
+        "system": TokenBucket(source="system", tokens=0),
+        "instructions": TokenBucket(source="instructions", tokens=0),
+        "skills": TokenBucket(source="skills", tokens=0),
+        "mcp": TokenBucket(source="mcp", tokens=0),
+        "conversation": TokenBucket(source="conversation", tokens=0),
+    }
+
     from aede.compaction import count_tokens_approx
-    return sum(count_tokens_approx(m.get("content", "")) for m in messages)
+
+    def _add_to_bucket(bucket: TokenBucket, content: str | list) -> None:
+        if isinstance(content, str):
+            bucket.tokens += count_tokens_approx(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    text = block.get("text", "") or block.get("content", "") or ""
+                    if isinstance(text, str):
+                        bucket.tokens += count_tokens_approx(text)
+                    elif isinstance(text, list):
+                        for tb in text:
+                            if isinstance(tb, dict):
+                                bucket.tokens += count_tokens_approx(tb.get("text", ""))
+
+    for msg in messages:
+        content = msg.get("content", "")
+        role = msg.get("role", "")
+
+        if role == "system":
+            _add_to_bucket(buckets["system"], content)
+            continue
+
+        if isinstance(content, str):
+            if content.startswith("## Instructions") or "## Agent Skills" in content:
+                _add_to_bucket(buckets["instructions"], content)
+                continue
+            if "## Skill:" in content or "skill:" in content.lower()[:200]:
+                _add_to_bucket(buckets["skills"], content)
+                continue
+
+        if isinstance(content, list):
+            is_mcp = False
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "tool_use" and block.get("name", "").startswith("mcp__"):
+                        is_mcp = True
+                    elif block.get("type") == "tool_result" and block.get("is_mcp", False):
+                        is_mcp = True
+            if is_mcp:
+                _add_to_bucket(buckets["mcp"], content)
+                continue
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    result = block.get("content", "")
+                    if isinstance(result, str):
+                        if "## Instruction" in result:
+                            _add_to_bucket(buckets["instructions"], result)
+
+        _add_to_bucket(buckets["conversation"], content)
+
+    total = sum(b.tokens for b in buckets.values())
+    return ContextTokenBreakdown(
+        buckets=list(buckets.values()),
+        total_tokens=total,
+    )
+
+
+def breakdown_to_dict(breakdown: ContextTokenBreakdown) -> dict:
+    return {
+        "buckets": [
+            {"source": b.source, "source_id": b.source_id, "tokens": b.tokens}
+            for b in breakdown.buckets
+        ],
+        "total_tokens": breakdown.total_tokens,
+    }
 
 
 def _is_html_body(text: str) -> bool:
@@ -432,6 +521,7 @@ class AgentLoop:
                 tool_name=name,
                 args=_json.dumps(args),
                 status="running",
+                provider='aede',
             )
         # Forward to UI
         cb = getattr(self, "_stream_tool_call", None)
@@ -453,6 +543,7 @@ class AgentLoop:
                 tool_name=name,
                 args=_json.dumps(args),
                 status="running",
+                provider='aede',
             )
 
     def _emit_tool_result(self, call_id: str, status: str, output: str, duration_ms: int) -> None:
@@ -982,6 +1073,50 @@ class AgentLoop:
         panel = Panel(lines, title="[bold]Critic Findings[/bold]", border_style="yellow")
         self._console.print(panel)
 
+    def _dedup_read_results(self) -> int:
+        """Replace older read_file results in message history with stubs.
+
+        Scans tool_result blocks for read_file output (``<file /path ...>``),
+        tracks unique paths, and stubs all but the most recent occurrence
+        with a placeholder that reports how many tokens were saved.
+
+        Returns:
+            The number of tokens saved by deduplication.
+        """
+        from aede.compaction import count_tokens_approx
+        tokens_saved = 0
+        path_to_latest: dict[str, int] = {}
+
+        for i, msg in enumerate(self._messages):
+            if msg.get("role") != "user":
+                continue
+            content = msg.get("content", "")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_result":
+                    continue
+                result_text = block.get("content", "")
+                if not isinstance(result_text, str):
+                    continue
+                if not result_text.startswith("<file "):
+                    continue
+                try:
+                    header_end = result_text.index(">")
+                    header = result_text[5:header_end]
+                    path = header.split(" lines")[0] if " lines" in header else header
+                except ValueError:
+                    continue
+
+                if path in path_to_latest:
+                    tok_count = count_tokens_approx(result_text)
+                    tokens_saved += tok_count
+                    block["content"] = f"[dedup: read earlier in session - ~{tok_count} tokens saved]"
+                else:
+                    path_to_latest[path] = i
+
+        return tokens_saved
+
     async def _maybe_compact(self) -> None:
         """Run compaction if the current message history exceeds the threshold.
 
@@ -989,11 +1124,13 @@ class AgentLoop:
         It is a no-op when the history is below the compaction threshold.
         See ``compact()`` for the forced manual path.
         """
-        from aede.compaction import needs_compaction, count_tokens_approx
-        current_tokens = sum(
-            count_tokens_approx(m.get("content", "") if isinstance(m.get("content"), str) else "")
-            for m in self._messages
-        )
+        saved = self._dedup_read_results()
+        if saved > 0:
+            self._console.print(f"[dim]\u21a9 Deduped read results: ~{saved} tokens saved[/dim]")
+
+        from aede.compaction import needs_compaction
+        breakdown = count_context_tokens(self._messages)
+        current_tokens = breakdown.total_tokens
         if not needs_compaction(current_tokens, self._cfg.context_window, self._cfg.compaction_threshold):
             return
         await self._run_compaction_body()

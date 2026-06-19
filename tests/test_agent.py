@@ -118,7 +118,9 @@ async def test_compaction_fallback_uses_anthropic_model_not_gemini():
 
 
 def test_count_context_tokens_empty():
-    assert count_context_tokens([]) == 0
+    bd = count_context_tokens([])
+    assert bd.total_tokens == 0
+    assert len(bd.buckets) == 5
 
 
 def test_count_context_tokens_sums_content():
@@ -126,8 +128,12 @@ def test_count_context_tokens_sums_content():
         {"role": "user", "content": "a" * 400},
         {"role": "assistant", "content": "b" * 400},
     ]
-    total = count_context_tokens(messages)
-    assert total == pytest.approx(200, abs=20)
+    bd = count_context_tokens(messages)
+    assert bd.total_tokens == pytest.approx(200, abs=20)
+    # Both messages should be in conversation bucket
+    conv = [b for b in bd.buckets if b.source == "conversation"]
+    assert len(conv) == 1
+    assert conv[0].tokens == bd.total_tokens
 
 
 @pytest.mark.asyncio

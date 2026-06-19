@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, user-guide]
-date_updated: 2026-06-10
+date_updated: 2026-06-19
 ---
 
 # Token Tracking
@@ -31,3 +31,17 @@ Configure these in your config:
 |-----|---------|-------------|
 | `context_window` | 200000 | Token limit before compaction triggers |
 | `compaction_threshold` | 0.85 | Fraction of window that triggers auto-compaction |
+
+> **Note on the numbers.** Per-turn usage records the *full context resent each
+> turn*, so summing turns gives a **cumulative billed** figure that grows with
+> turn count and tool-call depth — it is not your live context size. A long
+> tool-heavy session can show millions of cumulative tokens while live context
+> stays well under the window.
+
+## Coming soon
+
+A per-source context breakdown (how much of your context is system prompt,
+instructions, skills, MCP tool schemas, and conversation — raw and %) in the
+settings **Context** tab, plus a Compact button and compaction marker in the
+context bar above the chatbox. The fixed 200K window will become a per-model
+value. See the project roadmap for status.

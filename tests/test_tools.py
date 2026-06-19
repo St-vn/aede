@@ -172,3 +172,64 @@ def test_validate_args_powershell_valid():
     """powershell with cmd string must not raise."""
     r = make_router()
     r.validate_args("powershell", {"cmd": "echo hello"})  # no exception
+
+
+# ---------------------------------------------------------------------------
+# edit tool tests
+# ---------------------------------------------------------------------------
+
+def test_edit_unique_match(tmp_path):
+    f = tmp_path / "test.py"
+    f.write_text("def foo():\n    return 1\n\ndef bar():\n    return 2\n")
+    from aede.tools.files import edit
+    result = edit({"path": str(f), "old_string": "return 1", "new_string": "return 42"})
+    assert "Edited" in result
+    assert "return 42" in f.read_text()
+    assert "return 2" in f.read_text()
+
+
+def test_edit_not_found(tmp_path):
+    f = tmp_path / "test.py"
+    f.write_text("content")
+    from aede.tools.files import edit
+    import pytest
+    with pytest.raises(ValueError, match="not found"):
+        edit({"path": str(f), "old_string": "nonexistent", "new_string": "x"})
+
+
+def test_edit_not_unique(tmp_path):
+    f = tmp_path / "test.py"
+    f.write_text("foo\nbar\nfoo\n")
+    from aede.tools.files import edit
+    import pytest
+    with pytest.raises(ValueError, match="appears 2 times"):
+        edit({"path": str(f), "old_string": "foo", "new_string": "baz"})
+
+
+def test_edit_replace_all(tmp_path):
+    f = tmp_path / "test.py"
+    f.write_text("foo\nbar\nfoo\n")
+    from aede.tools.files import edit
+    result = edit({"path": str(f), "old_string": "foo", "new_string": "baz", "replace_all": True})
+    assert "Edited" in result
+    assert f.read_text() == "baz\nbar\nbaz\n"
+
+
+def test_edit_router_registered():
+    from aede.tools.router import ToolRouter
+    r = ToolRouter(shell="powershell", wsl_distro="", tool_output_max_tokens=8000)
+    assert "edit" in r.tool_names()
+
+
+def test_edit_requires_approval():
+    from aede.tools.router import ToolRouter
+    r = ToolRouter(shell="powershell", wsl_distro="", tool_output_max_tokens=8000)
+    assert r.requires_approval("edit") is True
+
+
+def test_edit_schema():
+    from aede.tools.router import _TOOL_SCHEMAS
+    schema = _TOOL_SCHEMAS["edit"]
+    assert "path" in schema["input_schema"]["required"]
+    assert "old_string" in schema["input_schema"]["required"]
+    assert "new_string" in schema["input_schema"]["required"]

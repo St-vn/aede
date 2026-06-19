@@ -17,6 +17,17 @@ interface TokenDetail {
   model: string
 }
 
+export interface TokenBucket {
+  source: string
+  source_id: string | null
+  tokens: number
+}
+
+export interface ContextBreakdown {
+  buckets: TokenBucket[]
+  total_tokens: number
+}
+
 export const useSessionTokens = (sessionId: string | null) =>
   useQuery({
     queryKey: ['tokens', sessionId],

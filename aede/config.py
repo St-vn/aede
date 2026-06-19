@@ -70,6 +70,65 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "sandbox_filter_session_search": False,
 }
 
+MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    # Anthropic
+    "claude-sonnet-4-20250514": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-opus-4-20250514": 200_000,
+    "claude-opus-4-6": 200_000,
+    "claude-haiku-3-5-20241022": 200_000,
+    "claude-haiku-4-5": 200_000,
+    # DeepSeek
+    "deepseek-v4-flash-free": 1_000_000,
+    "deepseek-v4-flash": 1_000_000,
+    "deepseek-v4-pro": 1_000_000,
+    "deepseek-chat": 1_000_000,
+    "deepseek-reasoner": 1_000_000,
+    # Gemini (via Google AI / Go)
+    "gemini-2.5-flash": 1_000_000,
+    "gemini-2.5-pro": 1_000_000,
+    # OpenCode Zen / Go models
+    "nemotron-3-ultra-free": 128_000,
+    "big-pickle": 128_000,
+    "mimo-v2.5": 1_000_000,
+    "mimo-v2.5-free": 1_000_000,
+    "mimo-v2.5-pro": 1_000_000,
+    "north-mini-code-free": 128_000,
+    "grok-build-0.1": 128_000,
+    "kimi-k2.5": 128_000,
+    "kimi-k2.6": 128_000,
+    "kimi-k2.7": 1_000_000,
+    "glm-5": 128_000,
+    "glm-5.1": 1_000_000,
+    "minimax-m3": 1_000_000,
+    "minimax-m2.7": 1_000_000,
+    "minimax-m2.5": 1_000_000,
+    "qwen3.7-max": 1_000_000,
+    "qwen3.7-plus": 1_000_000,
+    "qwen3.6-plus": 1_000_000,
+    # OpenAI
+    "gpt-4o": 128_000,
+    "o3": 200_000,
+    "o4-mini": 200_000,
+    # Other
+    "claude-code": 200_000,
+    "codex": 200_000,
+}
+
+
+def resolve_context_window(model: str, config_window: int | None = None) -> int:
+    """Resolve the effective context window for a model.
+
+    Priority:
+    1. Explicit config override (non-default, non-None)
+    2. ``MODEL_CONTEXT_WINDOWS`` lookup
+    3. Default 200K
+    """
+    if config_window is not None and config_window != DEFAULT_CONFIG["context_window"]:
+        return config_window
+    return MODEL_CONTEXT_WINDOWS.get(model, DEFAULT_CONFIG["context_window"])
+
+
 DEFAULT_CONFIG_YAML = """\
 model: claude-sonnet-4-20250514
 context_window: 200000
@@ -139,7 +198,8 @@ class AedeConfig:
 
     def __init__(self, data: dict[str, Any], home: Path, sources: dict[str, str] | None = None, project_dir: Path | None = None) -> None:
         self.model: str = data.get("model", DEFAULT_CONFIG["model"])
-        self.context_window: int = data.get("context_window", DEFAULT_CONFIG["context_window"])
+        config_window = data.get("context_window")
+        self.context_window: int = resolve_context_window(self.model, config_window)
         self.compaction_threshold: float = data.get("compaction_threshold", DEFAULT_CONFIG["compaction_threshold"])
         self.tool_output_max_tokens: int = data.get("tool_output_max_tokens", DEFAULT_CONFIG["tool_output_max_tokens"])
         self.shell: str = data.get("shell", DEFAULT_CONFIG["shell"])

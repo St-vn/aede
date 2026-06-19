@@ -105,7 +105,7 @@ def test_delete_message_removes_tool_calls(tmp_path):
     db.insert_message(id=assist_id, session_id=s.id, role="assistant",
                       content="", token_count=None)
     db.upsert_tool_call(id="c1", message_id=assist_id, tool_name="write_file",
-                        args="{}", status="running")
+                        args="{}", status="running", provider='aede')
 
     db.delete_message(assist_id)
 

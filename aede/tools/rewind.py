@@ -83,7 +83,7 @@ def _try_reverse_replay(project_dir: Path, tool_calls: list[dict]) -> None:
     for tc in reversed(tool_calls):
         name = tc.get("name", "")
         args = tc.get("args", {})
-        if name not in ("write_file", "create_file"):
+        if name not in ("write_file", "create_file", "edit"):
             continue
         path_str = args.get("path", "")
         if not path_str:
@@ -109,6 +109,18 @@ def _try_reverse_replay(project_dir: Path, tool_calls: list[dict]) -> None:
                 path.write_text(old, encoding="utf-8")
             else:
                 path.unlink()
+        elif name == "edit":
+            old = args.get("new_string", "")
+            expected = args.get("old_string", "")
+            if _sha256(current) != _sha256(old):
+                warnings.warn(
+                    f"{path} was modified outside aede; "
+                    f"revert may produce unexpected results",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            if old:
+                path.write_text(current.replace(old, expected, 1), encoding="utf-8")
         elif name == "create_file":
             path.unlink()
 
