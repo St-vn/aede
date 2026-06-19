@@ -24,10 +24,16 @@ def _scan_dir(skills_dir: Path) -> dict[str, SkillDef]:
     return registry
 
 
-def load_skills(global_dir: Path, project_dir: Path) -> dict[str, SkillDef]:
+def load_skills(
+    global_dir: Path,
+    project_dir: Path,
+    include_claude_fallback: bool = True,
+) -> dict[str, SkillDef]:
     """Scan global and project skills dirs, return {name -> SkillDef}.
 
-    Also falls back to ~/.claude/skills for skills shared with Claude Code.
+    When ``include_claude_fallback`` is true (the default for the running app),
+    also scans ``~/.claude/skills`` for skills shared with Claude Code.  Tests
+    that pass explicit temp dirs set it false to keep loading hermetic.
     Project skills shadow global skills with the same name.
     """
     global_skills_dir = global_dir / "skills"
@@ -36,7 +42,8 @@ def load_skills(global_dir: Path, project_dir: Path) -> dict[str, SkillDef]:
     registry: dict[str, SkillDef] = {}
     registry.update(_scan_dir(global_skills_dir))
     registry.update(_scan_dir(project_skills_dir))
-    claude_skills = Path.home() / ".claude" / "skills"
-    if claude_skills != global_skills_dir and claude_skills != project_skills_dir:
-        registry.update(_scan_dir(claude_skills))
+    if include_claude_fallback:
+        claude_skills = Path.home() / ".claude" / "skills"
+        if claude_skills != global_skills_dir and claude_skills != project_skills_dir:
+            registry.update(_scan_dir(claude_skills))
     return registry

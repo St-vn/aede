@@ -31,7 +31,8 @@ def test_skills_search_path_shadow(tmp_path):
     _write_skill(project_dir, "shared", "Project version (overrides)")
     _write_skill(project_dir, "unique", "Only in project")
 
-    registry = load_skills(global_dir=global_dir, project_dir=project_dir)
+    registry = load_skills(global_dir=global_dir, project_dir=project_dir,
+                           include_claude_fallback=False)
 
     assert "shared" in registry
     assert registry["shared"].description == "Project version (overrides)"
@@ -49,7 +50,8 @@ def test_skills_search_path_global_only(tmp_path):
 
     _write_skill(global_dir, "alpha", "Global alpha")
 
-    registry = load_skills(global_dir=global_dir, project_dir=project_dir)
+    registry = load_skills(global_dir=global_dir, project_dir=project_dir,
+                           include_claude_fallback=False)
     assert "alpha" in registry
     assert registry["alpha"].description == "Global alpha"
 
@@ -63,7 +65,8 @@ def test_skills_search_path_empty(tmp_path):
     global_dir.mkdir(parents=True)
     project_dir.mkdir(parents=True)
 
-    registry = load_skills(global_dir=global_dir, project_dir=project_dir)
+    registry = load_skills(global_dir=global_dir, project_dir=project_dir,
+                           include_claude_fallback=False)
     assert registry == {}
 
 
@@ -75,7 +78,8 @@ def test_skills_search_path_skips_non_md(tmp_path):
     (global_dir / "skills").mkdir(parents=True)
     (global_dir / "skills" / "readme.txt").write_text("not a skill")
 
-    registry = load_skills(global_dir=global_dir, project_dir=tmp_path / "project")
+    registry = load_skills(global_dir=global_dir, project_dir=tmp_path / "project",
+                           include_claude_fallback=False)
     assert registry == {}
 
 
@@ -90,6 +94,7 @@ def test_skills_loader_warns_on_bad_skill(tmp_path, capsys):
     registry = load_skills(
         global_dir=tmp_path / "global",
         project_dir=tmp_path / "project",
+        include_claude_fallback=False,
     )
     captured = capsys.readouterr()
     combined = captured.out + captured.err
