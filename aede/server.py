@@ -968,20 +968,21 @@ async def truncate_session(request: Request, session_id: str, payload: dict):
 
     if revert_code_flag:
         anchor_row = db.con.execute(
-            "SELECT created_at FROM messages WHERE id = ? AND session_id = ?",
+            "SELECT created_at, rowid FROM messages WHERE id = ? AND session_id = ?",
             (message_id, session_id),
         ).fetchone()
         if anchor_row is None:
             raise HTTPException(status_code=404, detail="Message not found")
         anchor_ts = int(anchor_row["created_at"])
+        anchor_rowid = anchor_row["rowid"]
         tool_calls = []
         tail_rows = db.con.execute(
             """
             SELECT id FROM messages
             WHERE session_id = ?
-              AND (created_at > ? OR (created_at = ? AND id > ?))
+              AND (created_at > ? OR (created_at = ? AND rowid > ?))
             """,
-            (session_id, anchor_ts, anchor_ts, message_id),
+            (session_id, anchor_ts, anchor_ts, anchor_rowid),
         ).fetchall()
         msg_ids = [r["id"] for r in tail_rows]
         if msg_ids:

@@ -106,10 +106,10 @@ def test_truncate_session_classmethod_returns_same_session(tmp_path: Path):
 
     result = Session.truncate_after_message(db, s.id, m1)
     assert result.id == s.id
-    assert [r["id"] for r in db.get_messages(s.id)] == [m1]
+    assert [r["id"] for r in db.get_messages(s.id)] == []
 
 
-def test_truncate_endpoint_removes_messages_after_message_id(tmp_path: Path):
+def test_truncate_endpoint_removes_target_and_messages_after_message_id(tmp_path: Path):
     from fastapi.testclient import TestClient
 
     from aede.config import load_config
@@ -135,7 +135,7 @@ def test_truncate_endpoint_removes_messages_after_message_id(tmp_path: Path):
     data = resp.json()
     assert data["id"] == s.id
     remaining_ids = [m["id"] for m in app.state.db.get_messages(s.id)]
-    assert remaining_ids == [m1]
+    assert remaining_ids == []
 
 
 def test_truncate_endpoint_returns_same_session_id(tmp_path: Path):
@@ -158,6 +158,7 @@ def test_truncate_endpoint_returns_same_session_id(tmp_path: Path):
     )
     assert resp.status_code == 200
     assert resp.json()["id"] == s.id
+    assert [m["id"] for m in app.state.db.get_messages(s.id)] == []
 
 
 def test_truncate_endpoint_with_revert_code_invokes_revert_utility(tmp_path: Path, monkeypatch):
@@ -204,6 +205,38 @@ def test_truncate_endpoint_with_revert_code_invokes_revert_utility(tmp_path: Pat
     project_dir_arg, tcs_arg = called[0]
     assert isinstance(project_dir_arg, Path)
     assert any(tc.get("name") == "write_file" for tc in tcs_arg)
+    assert [m["id"] for m in app.state.db.get_messages(s.id)] == []
+
+
+def test_truncate_endpoint_cascades_thinking_segments(tmp_path: Path):
+    from fastapi.testclient import TestClient
+
+    from aede.config import load_config
+    from aede.server import app
+
+    app.state.db = DB(tmp_path / "test.db")
+    app.state.cfg = load_config(home=tmp_path, project_dir=tmp_path)
+    client = TestClient(app)
+
+    s = Session.create(app.state.db, "sonnet-4", parent_id=None)
+    m1 = _msg_id()
+    m2 = _msg_id()
+    app.state.db.insert_message(id=m1, session_id=s.id, role="user", content="first", token_count=None)
+    app.state.db.insert_message(id=m2, session_id=s.id, role="assistant", content="reply", token_count=None)
+    app.state.db.insert_thinking_segment(
+        message_id=m2, text="thinking...", seq=1
+    )
+
+    resp = client.post(
+        f"/api/sessions/{s.id}/truncate",
+        json={"message_id": m1, "revert_code": False},
+    )
+    assert resp.status_code == 200
+    assert [m["id"] for m in app.state.db.get_messages(s.id)] == []
+    seg_row = app.state.db.con.execute(
+        "SELECT COUNT(*) AS cnt FROM thinking_segments WHERE message_id = ?", (m2,)
+    ).fetchone()
+    assert seg_row["cnt"] == 0
 
 
 def test_truncate_endpoint_with_revert_code_false_does_not_revert(tmp_path: Path, monkeypatch):
@@ -237,3 +270,4 @@ def test_truncate_endpoint_with_revert_code_false_does_not_revert(tmp_path: Path
     )
     assert resp.status_code == 200
     assert called == []
+    assert [m["id"] for m in app.state.db.get_messages(s.id)] == []

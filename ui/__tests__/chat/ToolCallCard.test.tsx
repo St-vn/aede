@@ -34,3 +34,53 @@ test('success card is expandable', async () => {
   fireEvent.click(expand)
   expect(screen.getByText('content')).toBeInTheDocument()
 })
+
+test('question tool renders Q and A on separate lines', async () => {
+  render(
+    <ToolCallCard
+      toolName="question"
+      status="success"
+      args={{}}
+      output={JSON.stringify({ answers: { 'What is your name?': 'Alice' } })}
+      durationMs={10}
+    />
+  )
+  const expand = screen.getByRole('button', { name: /expand/i })
+  fireEvent.click(expand)
+  expect(screen.getByText(/Q: What is your name?/)).toBeInTheDocument()
+  expect(screen.getByText(/A: Alice/)).toBeInTheDocument()
+})
+
+test('question tool renders multi-select options each on their own line', async () => {
+  render(
+    <ToolCallCard
+      toolName="ask_user_choices"
+      status="success"
+      args={{}}
+      output={JSON.stringify({ answers: { 'Pick one': ['A', 'B'] } })}
+      durationMs={10}
+    />
+  )
+  const expand = screen.getByRole('button', { name: /expand/i })
+  fireEvent.click(expand)
+  expect(screen.getByText(/Q: Pick one/)).toBeInTheDocument()
+  expect(screen.getByText(/A: A/)).toBeInTheDocument()
+  expect(screen.getByText(/B/)).toBeInTheDocument()
+})
+
+test('question tool renders notes when answer is an object', async () => {
+  render(
+    <ToolCallCard
+      toolName="question"
+      status="success"
+      args={{}}
+      output={JSON.stringify({ answers: { 'Why?': { value: 'Because', notes: 'More context' } } })}
+      durationMs={10}
+    />
+  )
+  const expand = screen.getByRole('button', { name: /expand/i })
+  fireEvent.click(expand)
+  expect(screen.getByText(/Q: Why?/)).toBeInTheDocument()
+  expect(screen.getByText(/A: Because/)).toBeInTheDocument()
+  expect(screen.getByText(/Note: More context/)).toBeInTheDocument()
+})

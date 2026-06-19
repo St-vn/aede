@@ -111,6 +111,48 @@ function getPrimaryValue(args: Record<string, unknown>): string | undefined {
   return typeof first === 'string' ? first : undefined
 }
 
+function QuestionAnswerView({ output }: { output: string }) {
+  let parsed: { answers?: Record<string, string | string[] | { value: string | string[]; notes: string }> } | undefined
+  try { parsed = JSON.parse(output) } catch { parsed = undefined }
+  if (!parsed?.answers) {
+    return (
+      <pre className="text-xs rounded mx-2 mb-2 p-2 overflow-y-auto overflow-x-hidden max-h-[300px] scroll-thin whitespace-pre-wrap break-words font-mono text-muted-foreground">
+        {output}
+      </pre>
+    )
+  }
+  return (
+    <div className="text-xs mx-2 mb-2 rounded p-2 bg-background/40 border border-border font-mono space-y-2">
+      {Object.entries(parsed.answers).map(([q, a], i) => {
+        let value: string | string[]
+        let note: string | undefined
+        if (a && typeof a === 'object' && !Array.isArray(a)) {
+          value = a.value
+          note = a.notes
+        } else {
+          value = a as string | string[]
+        }
+        const lines = Array.isArray(value) ? value : [value]
+        return (
+          <div key={i}>
+            <div className="text-foreground/80 whitespace-pre-wrap">Q: {q}</div>
+            {lines.map((line, li) => (
+              <div key={li} className="text-foreground/80 whitespace-pre-wrap">
+                {li === 0 ? 'A: ' : '   '}{line}
+              </div>
+            ))}
+            {note && (
+              <div className="text-muted-foreground whitespace-pre-wrap mt-0.5">
+                Note: {note}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function ArgsView({ args, exclude }: { args: Record<string, unknown>; exclude?: string }) {
   const entries = Object.entries(args).filter(([k]) => k !== exclude && PRIMARY_KEYS.indexOf(k) === -1 || k === exclude)
     .filter(([k]) => k !== exclude)
@@ -237,7 +279,9 @@ export function ToolCallCard({ toolName, status, args, output, durationMs, strea
         </pre>
       )}
       {output && !isEdit && (
-        output.includes('\n') ? (
+        (toolName === 'question' || toolName === 'ask_user' || toolName === 'ask_user_choices' || toolName === 'ask_user_confirm') ? (
+          <QuestionAnswerView output={output} />
+        ) : output.includes('\n') ? (
           <div className="text-xs overflow-x-auto scroll-thin bg-background/40 mx-2 mb-2 rounded py-1 font-mono">
             <div className="min-w-full w-max">
               {output.split('\n').map((line, i) => (
