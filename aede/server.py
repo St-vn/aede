@@ -23,6 +23,16 @@ from fastapi.middleware.cors import CORSMiddleware
 @asynccontextmanager
 async def _lifespan(app: "FastAPI"):
     await _warmup_acp_on_startup(app)
+    # Abort any tool_calls stuck as 'running' from a prior crash or restart.
+    db = getattr(app.state, "db", None)
+    if db is not None:
+        cleaned = db.con.execute(
+            "UPDATE tool_calls SET status='aborted', result='Server restarted.' "
+            "WHERE status='running'"
+        )
+        db.con.commit()
+        if cleaned.rowcount:
+            print(f"[startup] Aborted {cleaned.rowcount} stale running tool_calls", flush=True)
     yield
 
 
@@ -1058,6 +1068,11 @@ async def get_messages(request: Request, session_id: str):
         session = Session.load(db, session_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    # Abort any tool_calls still stuck as 'running' from a previous
+    # interrupted turn — page reloads or server restarts can leave these
+    # behind and they would otherwise render as perpetual spinners.
+    db.abort_running_tool_calls(session_id)
 
     parent_msgs = _walk_parent_messages(db, session_id)
     if parent_msgs:
