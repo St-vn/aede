@@ -508,6 +508,16 @@ class AgentLoop:
         if prior_messages:
             self._messages = list(prior_messages)
 
+        # Clean up any tool_calls stuck as "running" from a previous
+        # interrupted turn (e.g. ask_user cancelled mid-question).
+        cleaned = self._db.abort_running_tool_calls(self._session.id)
+        if cleaned:
+            import logging
+            logging.getLogger("aede").debug(
+                "Aborted %d stale running tool_call(s) in session %s",
+                cleaned, self._session.id,
+            )
+
     def request_stop(self) -> None:
         self._stop_requested.set()
 
@@ -797,6 +807,16 @@ class AgentLoop:
                                 question_id=qid,
                                 questions=questions,
                             )
+                        except asyncio.CancelledError:
+                            status_text = "User cancelled the turn."
+                            self._emit_tool_result(tool_use_id, "cancelled", status_text, 0)
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": tool_use_id,
+                                "content": status_text,
+                                "is_error": True,
+                            })
+                            raise
                         except Exception as exc:
                             answers = {"error": str(exc)}
 

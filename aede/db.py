@@ -584,6 +584,23 @@ class DB:
         )
         self.con.commit()
 
+    def abort_running_tool_calls(self, session_id: str) -> int:
+        """Mark any tool_calls still ``status='running'`` in a session as aborted.
+
+        Called at session initialization so interrupted turns don't leave the
+        UI showing perpetual spinners."""
+        result = self.con.execute(
+            "UPDATE tool_calls SET status='aborted', result='Turn interrupted.' "
+            "WHERE id IN ("
+            "  SELECT tc.id FROM tool_calls tc "
+            "  JOIN messages m ON m.id = tc.message_id "
+            "  WHERE m.session_id = ? AND tc.status = 'running'"
+            ")",
+            (session_id,),
+        )
+        self.con.commit()
+        return result.rowcount
+
     def get_tool_calls_for_message_ids(self, message_ids: list[str]) -> dict[str, list[dict]]:
         if not message_ids:
             return {}

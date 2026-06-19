@@ -3,17 +3,19 @@ import React from 'react'
 import { Loader2, CheckCircle2, XCircle, Ban } from 'lucide-react'
 import { CollapsibleBlock } from './CollapsibleBlock'
 
-type Status = 'running' | 'success' | 'error' | 'denied'
+type Status = 'running' | 'success' | 'error' | 'denied' | 'cancelled' | 'aborted'
 interface Props {
   toolName: string; status: Status; args: Record<string, unknown>
   output?: string; durationMs?: number; streamingOutput?: string
 }
 
 const STATUS_CONFIG: Record<Status, { icon: React.ReactNode; label: string; color: string }> = {
-  running: { icon: <Loader2 className="w-3 h-3 animate-spin" />, label: 'running...', color: 'text-muted-foreground' },
-  success: { icon: <CheckCircle2 className="w-3 h-3 text-[--color-success]" />, label: '', color: 'text-muted-foreground' },
-  error:   { icon: <XCircle className="w-3 h-3 text-[--color-error]" />,   label: 'error',  color: 'text-[--color-error]' },
-  denied:  { icon: <Ban className="w-3 h-3" />,                             label: 'denied', color: 'text-muted-foreground' },
+  running:   { icon: <Loader2 className="w-3 h-3 animate-spin" />, label: 'running...',  color: 'text-muted-foreground' },
+  success:   { icon: <CheckCircle2 className="w-3 h-3 text-[--color-success]" />, label: '', color: 'text-muted-foreground' },
+  error:     { icon: <XCircle className="w-3 h-3 text-[--color-error]" />,   label: 'error',  color: 'text-[--color-error]' },
+  denied:    { icon: <Ban className="w-3 h-3" />,                             label: 'denied', color: 'text-muted-foreground' },
+  cancelled: { icon: <Ban className="w-3 h-3" />,                             label: 'cancelled', color: 'text-muted-foreground' },
+  aborted:   { icon: <Ban className="w-3 h-3" />,                             label: 'aborted', color: 'text-muted-foreground' },
 }
 
 type DiffLine = { type: 'add' | 'remove' | 'equal'; line: string }

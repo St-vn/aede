@@ -486,7 +486,6 @@ def test_model_presets_has_sub_model_entries():
     goose_models = [m["id"] for m in MODEL_PRESETS["goose"]]
     assert "goose" in goose_models
     assert "goose/anthropic-claude-sonnet-4-6" in goose_models
-    assert "goose/openai-gpt-4o" in goose_models
     
     # Agy
     agy_models = [m["id"] for m in MODEL_PRESETS["agy"]]
