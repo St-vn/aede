@@ -190,7 +190,7 @@ export function QuestionCard({ request, onAnswer, onChat }: Props) {
             const Icon = answered ? Check : Circle
             return (
               <TabsTrigger
-                  key={`${request.questionId}-review-${qi}`}
+                key={`${request.questionId}-tab-${qi}`}
                 value={`q-${qi}`}
                 data-answered={answered ? 'true' : 'false'}
                 data-testid={`question-tab-${qi}`}
@@ -375,7 +375,7 @@ export function QuestionCard({ request, onAnswer, onChat }: Props) {
               const Icon = answered ? Check : Circle
               return (
                 <div
-                key={`${request.questionId}-tab-${qi}`}
+                key={`${request.questionId}-review-${qi}`}
                   className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-b-0"
                   data-testid={`review-row-${qi}`}
                 >

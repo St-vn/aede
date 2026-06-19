@@ -788,7 +788,7 @@ class AcpProvider:
                 _seq[0] += 1
                 asyncio.ensure_future(stream_tool_call(call_id, name, args, tc_seq))
             elif update_type == "tool_call_update":
-                call_id = update.get("toolCallId", "") or f"acp_upd_{_seq[0]}"
+                call_id = update.get("toolCallId", "")
                 # Middle update: carry real args (old_string/new_string/file_path).
                 raw_input = update.get("rawInput")
                 if raw_input and stream_tool_call:

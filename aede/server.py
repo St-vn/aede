@@ -659,6 +659,21 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 else:
                     await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
 
+            elif msg_type == "ask_user_chat":
+                # User clicked "Chat about this" on a pending question.
+                # Resolve the pending future with a sentinel dict so the agent
+                # receives the comment as a tool result and can respond
+                # conversationally, then re-ask the question(s).
+                question_id = data.get("question_id")
+                question_text = data.get("question", "")
+                comment = data.get("comment", "")
+                key = f"ask:{question_id}"
+                fut = gate.futures.get(key)
+                if fut is not None and not fut.done():
+                    fut.set_result(({"__chat__": comment, "__question__": question_text}, ""))
+                else:
+                    await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+
     except WebSocketDisconnect:
         print(f"[WS#{hid}] WebSocket disconnected", flush=True)
         # Do NOT cancel a turn that is waiting on a gate: the session-level

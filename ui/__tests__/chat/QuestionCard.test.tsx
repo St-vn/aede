@@ -491,7 +491,7 @@ test('Chat about this sends chat via onChat and does not submit an answer', () =
   const chatTextarea = screen.getByPlaceholderText(/would you like to discuss/i)
   fireEvent.change(chatTextarea, { target: { value: 'I want to discuss alternatives' } })
   fireEvent.click(screen.getByTestId('send-chat-0'))
-  expect(onChat).toHaveBeenCalledWith('How should I format the output?', 'I want to discuss alternatives')
+  expect(onChat).toHaveBeenCalledWith('q1', 'How should I format the output?', 'I want to discuss alternatives')
   expect(props.onAnswer).not.toHaveBeenCalled()
 })
 

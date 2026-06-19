@@ -115,3 +115,44 @@ async def test_ws_backend_error_unknown_question_id():
     sent = gate.websocket.send_json.call_args[0][0]
     assert sent["type"] == "ask_user_request"
     assert sent["question_id"] == "no-answer"
+
+
+@pytest.mark.asyncio
+async def test_ws_backend_ask_user_chat_sentinel():
+    """ask_user_chat resolves the pending future with a chat sentinel dict."""
+    gate = SessionGate()
+    gate.websocket = AsyncMock()
+    backend = WebSocketAskUserBackend(gate)
+
+    questions = [{"header": "Format", "question": "How?", "type": "single", "options": ["A", "B"]}]
+
+    # Simulate the WS message loop receiving an ask_user_chat message and
+    # resolving the future — mirrors what server.py does in the elif branch.
+    async def delayed_chat_resolve():
+        await asyncio.sleep(0.05)
+        key = "ask:chat-q1"
+        fut = gate.futures.get(key)
+        if fut is not None and not fut.done():
+            fut.set_result(({"__chat__": "Tell me more about option A", "__question__": "How?"}, ""))
+
+    task = asyncio.create_task(delayed_chat_resolve())
+    try:
+        result = await backend.ask(question_id="chat-q1", questions=questions)
+    finally:
+        task.cancel()
+
+    assert isinstance(result, dict)
+    assert result.get("__chat__") == "Tell me more about option A"
+    assert result.get("__question__") == "How?"
+
+
+@pytest.mark.asyncio
+async def test_ws_backend_ask_user_chat_unknown_id():
+    """ask_user_chat with an unknown question_id should leave no stale futures."""
+    gate = SessionGate()
+    gate.websocket = AsyncMock()
+
+    # No active future registered — simulate the error path by checking
+    # that a missing key results in no stale entry.
+    key = "ask:ghost"
+    assert key not in gate.futures

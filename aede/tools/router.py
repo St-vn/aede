@@ -634,7 +634,24 @@ _TOOL_SCHEMAS: dict[str, dict] = {
             "Ask the user one or more questions during execution. Supports single-choice, "
             "multi-select, and free-form text questions with optional custom answers and notes. "
             "Use when you need input, clarification, or a decision to continue. This tool does "
-            "NOT require gate approval — it is part of the conversation flow."
+            "NOT require gate approval — it is part of the conversation flow.\n\n"
+            "PRESET TEMPLATES — copy and adapt these:\n\n"
+            "1. Single-choice with custom fallback (use when options may not be exhaustive):\n"
+            '   {"header": "Approach", "question": "Which approach?", "type": "single",\n'
+            '    "options": ["Option A", "Option B"], "allow_custom": true, "allow_notes": false}\n\n'
+            "2. Multi-select with custom option and rationale notes:\n"
+            '   {"header": "Features", "question": "Which features to include?", "type": "multi",\n'
+            '    "options": ["Auth", "API", "UI"], "allow_custom": true, "allow_notes": true}\n\n'
+            "3. Free-form text with notes for additional context:\n"
+            '   {"header": "Details", "question": "Describe what you need.", "type": "text",\n'
+            '    "allow_notes": true}\n\n'
+            "WHEN TO SET FLAGS:\n"
+            "- allow_custom: set to true for single/multi questions unless options are genuinely "
+            "exhaustive (e.g. yes/no). Default is true — only set false when you are certain no "
+            "other answer is valid.\n"
+            "- allow_notes: set to true whenever the user's rationale or context would be helpful. "
+            "Default is true. Only set false for purely mechanical choices.\n"
+            "- required: set to false for optional questions the user may skip."
         ),
         "input_schema": {
             "type": "object",
@@ -666,13 +683,19 @@ _TOOL_SCHEMAS: dict[str, dict] = {
                             },
                             "allow_custom": {
                                 "type": "boolean",
-                                "description": "If true, user can type a custom answer instead of selecting.",
-                                "default": False,
+                                "description": (
+                                    "If true, user can type a custom answer instead of selecting. "
+                                    "Default is true — set false only when options are exhaustive."
+                                ),
+                                "default": True,
                             },
                             "allow_notes": {
                                 "type": "boolean",
-                                "description": "If true, user can add free-form notes to the answer.",
-                                "default": False,
+                                "description": (
+                                    "If true, user can add free-form notes to the answer. "
+                                    "Default is true — set false only for purely mechanical choices."
+                                ),
+                                "default": True,
                             },
                             "required": {
                                 "type": "boolean",
