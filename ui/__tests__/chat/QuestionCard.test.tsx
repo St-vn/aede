@@ -1,6 +1,6 @@
 import React from 'react'
 import { vi, test, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { QuestionCard } from '../../components/chat/QuestionCard'
 
 function makeRequest(overrides?: Record<string, unknown>) {
@@ -332,4 +332,168 @@ test('renders AGENT ASKS label', () => {
   const props = makeRequest()
   render(<QuestionCard {...props} />)
   expect(screen.getByText(/agent asks/i)).toBeInTheDocument()
+})
+
+test('renders one tab per question plus a Review tab', () => {
+  const props = makeRequest({
+    questions: [
+      {
+        header: 'First',
+        question: 'Q1?',
+        type: 'single' as const,
+        options: ['A', 'B'],
+        required: true,
+      },
+      {
+        header: 'Second',
+        question: 'Q2?',
+        type: 'text' as const,
+        required: true,
+      },
+      {
+        header: 'Third',
+        question: 'Q3?',
+        type: 'text' as const,
+        required: true,
+      },
+    ],
+  })
+  render(<QuestionCard {...props} />)
+  expect(screen.getByTestId('question-tab-0')).toBeInTheDocument()
+  expect(screen.getByTestId('question-tab-1')).toBeInTheDocument()
+  expect(screen.getByTestId('question-tab-2')).toBeInTheDocument()
+  expect(screen.getByTestId('review-tab')).toBeInTheDocument()
+})
+
+test('clicking a question tab shows that question content', () => {
+  const props = makeRequest({
+    questions: [
+      {
+        header: 'Format',
+        question: 'How should I format the output?',
+        type: 'single' as const,
+        options: ['Summary', 'Detailed'],
+        required: true,
+      },
+      {
+        header: 'Notes',
+        question: 'Any additional context?',
+        type: 'text' as const,
+        required: true,
+      },
+    ],
+  })
+  render(<QuestionCard {...props} />)
+  expect(screen.getByRole('radio', { name: 'Summary' })).toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('question-tab-1'))
+  expect(screen.getByRole('textbox')).toBeInTheDocument()
+})
+
+test('Review tab shows all answers in Q: X; A: Y format', () => {
+  const props = makeRequest({
+    questions: [
+      {
+        header: 'Format',
+        question: 'How should I format the output?',
+        type: 'single' as const,
+        options: ['Summary', 'Detailed'],
+        required: true,
+      },
+      {
+        header: 'Sections',
+        question: 'Which sections?',
+        type: 'multi' as const,
+        options: ['Intro', 'Body', 'Conclusion'],
+        required: true,
+      },
+    ],
+  })
+  render(<QuestionCard {...props} />)
+  fireEvent.click(screen.getByRole('radio', { name: 'Summary' }))
+  fireEvent.click(screen.getByTestId('question-tab-1'))
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Intro' }))
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Conclusion' }))
+  fireEvent.click(screen.getByTestId('review-tab'))
+  expect(screen.getByTestId('review-q-0')).toHaveTextContent('Q: How should I format the output?')
+  expect(screen.getByTestId('review-a-0')).toHaveTextContent('A: Summary')
+  expect(screen.getByTestId('review-q-1')).toHaveTextContent('Q: Which sections?')
+  expect(screen.getByTestId('review-a-1')).toHaveTextContent('A: Intro, Conclusion')
+})
+
+test('Review tab shows unanswered questions with A: —', () => {
+  const props = makeRequest({
+    questions: [
+      {
+        header: 'Format',
+        question: 'How should I format the output?',
+        type: 'single' as const,
+        options: ['Summary', 'Detailed'],
+        required: true,
+      },
+    ],
+  })
+  render(<QuestionCard {...props} />)
+  fireEvent.click(screen.getByTestId('review-tab'))
+  expect(screen.getByTestId('review-a-0')).toHaveTextContent('A: —')
+})
+
+test('Review tab shows check icon for answered and circle for unanswered', () => {
+  const props = makeRequest({
+    questions: [
+      {
+        header: 'Format',
+        question: 'How should I format the output?',
+        type: 'single' as const,
+        options: ['Summary', 'Detailed'],
+        required: true,
+      },
+      {
+        header: 'Notes',
+        question: 'Any additional context?',
+        type: 'text' as const,
+        required: true,
+      },
+    ],
+  })
+  render(<QuestionCard {...props} />)
+  fireEvent.click(screen.getByRole('radio', { name: 'Summary' }))
+  fireEvent.click(screen.getByTestId('review-tab'))
+  expect(screen.getByTestId('review-check-0')).toBeInTheDocument()
+  expect(screen.getByTestId('review-circle-1')).toBeInTheDocument()
+})
+
+test('tabs are keyboard navigable', async () => {
+  const props = makeRequest({
+    questions: [
+      {
+        header: 'First',
+        question: 'Q1?',
+        type: 'single' as const,
+        options: ['A'],
+        required: true,
+      },
+      {
+        header: 'Second',
+        question: 'Q2?',
+        type: 'text' as const,
+        required: true,
+      },
+      {
+        header: 'Third',
+        question: 'Q3?',
+        type: 'text' as const,
+        required: true,
+      },
+    ],
+  })
+  render(<QuestionCard {...props} />)
+  const firstTab = screen.getByTestId('question-tab-0')
+  const secondTab = screen.getByTestId('question-tab-1')
+  firstTab.focus()
+  expect(firstTab).toHaveFocus()
+  await act(async () => {
+    fireEvent.keyDown(firstTab, { key: 'ArrowRight' })
+    await Promise.resolve()
+  })
+  expect(secondTab).toHaveFocus()
 })

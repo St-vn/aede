@@ -1,11 +1,12 @@
 'use client'
 import React, { useState, useCallback } from 'react'
-import { MessageCircleQuestion } from 'lucide-react'
+import { MessageCircleQuestion, Check, Circle, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
 interface Question {
   header: string
@@ -35,8 +36,43 @@ interface NotesState {
   [question: string]: string
 }
 
+const REVIEW_TAB = '__review__'
+
+function isQuestionAnswered(
+  q: Question,
+  answers: AnswersState,
+  customTexts: Record<string, string>,
+  customSelected: Record<string, boolean>,
+): boolean {
+  if (q.type === 'single' && customSelected[q.question]) {
+    return (customTexts[q.question]?.trim()?.length ?? 0) > 0
+  }
+  const ans = answers[q.question]
+  if (!ans) return false
+  if (q.type === 'text') return (ans as string).trim().length > 0
+  if (q.type === 'multi') return (ans as string[]).length > 0
+  return true
+}
+
+function formatAnswerForReview(
+  q: Question,
+  answers: AnswersState,
+  customTexts: Record<string, string>,
+): string {
+  if (q.type === 'single' && answers[q.question] === undefined) {
+    return customTexts[q.question] ?? ''
+  }
+  const ans = answers[q.question]
+  if (ans === undefined) return ''
+  if (Array.isArray(ans)) return ans.join(', ')
+  return ans
+}
+
 export function QuestionCard({ request, onAnswer }: Props) {
   const { questionId, questions } = request
+  const [activeTab, setActiveTab] = useState<string>(
+    questions[0] ? `q-0` : REVIEW_TAB,
+  )
   const [answers, setAnswers] = useState<AnswersState>({})
   const [notes, setNotes] = useState<NotesState>({})
   const [customTexts, setCustomTexts] = useState<Record<string, string>>({})
@@ -44,14 +80,7 @@ export function QuestionCard({ request, onAnswer }: Props) {
 
   const allRequiredAnswered = questions
     .filter(q => q.required !== false)
-    .every(q => {
-      if (q.type === 'single' && customSelected[q.question]) return (customTexts[q.question]?.trim()?.length ?? 0) > 0
-      const ans = answers[q.question]
-      if (!ans) return false
-      if (q.type === 'text') return (ans as string).trim().length > 0
-      if (q.type === 'multi') return (ans as string[]).length > 0
-      return true
-    })
+    .every(q => isQuestionAnswered(q, answers, customTexts, customSelected))
 
   const handleSingleChange = useCallback((questionText: string, value: string) => {
     setAnswers(prev => ({ ...prev, [questionText]: value }))
@@ -114,9 +143,38 @@ export function QuestionCard({ request, onAnswer }: Props) {
         <MessageCircleQuestion className="w-4 h-4 text-[--color-info] shrink-0" />
         <span className="font-mono text-sm text-foreground">Agent asks</span>
       </div>
-      <div className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="flex h-auto w-full justify-start gap-1 overflow-x-auto p-1 mb-3 bg-muted rounded-lg">
+          {questions.map((q, qi) => {
+            const answered = isQuestionAnswered(q, answers, customTexts, customSelected)
+            const Icon = answered ? Check : Circle
+            return (
+              <TabsTrigger
+                key={qi}
+                value={`q-${qi}`}
+                data-answered={answered ? 'true' : 'false'}
+                data-testid={`question-tab-${qi}`}
+                className="flex items-center gap-1.5 px-2 py-1 text-xs whitespace-nowrap"
+              >
+                <Icon
+                  className={`w-3.5 h-3.5 shrink-0 ${answered ? 'text-green-600' : 'text-muted-foreground'}`}
+                  data-testid={answered ? `tab-check-${qi}` : `tab-circle-${qi}`}
+                />
+                <span>{q.header}</span>
+              </TabsTrigger>
+            )
+          })}
+          <TabsTrigger
+            value={REVIEW_TAB}
+            data-testid="review-tab"
+            className="flex items-center gap-1.5 px-2 py-1 text-xs whitespace-nowrap ml-auto"
+          >
+            <ListChecks className="w-3.5 h-3.5 shrink-0" data-testid="review-icon" />
+            <span>Review</span>
+          </TabsTrigger>
+        </TabsList>
         {questions.map((q, qi) => (
-          <div key={qi} className="space-y-2">
+          <TabsContent key={qi} value={`q-${qi}`} className="mt-0 space-y-2">
             <div>
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{q.header}</span>
               <p className="text-sm text-foreground mt-0.5">{q.question}</p>
@@ -191,9 +249,47 @@ export function QuestionCard({ request, onAnswer }: Props) {
                 className="text-xs min-h-[60px]"
               />
             )}
-          </div>
+          </TabsContent>
         ))}
-      </div>
+        <TabsContent value={REVIEW_TAB} className="mt-0">
+          <div className="space-y-2" data-testid="review-content">
+            {questions.map((q, qi) => {
+              const answered = isQuestionAnswered(q, answers, customTexts, customSelected)
+              const answerText = formatAnswerForReview(q, answers, customTexts)
+              const note = notes[q.question]
+              const Icon = answered ? Check : Circle
+              return (
+                <div
+                  key={qi}
+                  className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-b-0"
+                  data-testid={`review-row-${qi}`}
+                >
+                  <Icon
+                    className={`w-4 h-4 mt-0.5 shrink-0 ${answered ? 'text-green-600' : 'text-muted-foreground'}`}
+                    data-testid={answered ? `review-check-${qi}` : `review-circle-${qi}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-foreground" data-testid={`review-q-${qi}`}>
+                      Q: {q.question}
+                    </div>
+                    <div
+                      className={`text-sm ${answered ? 'text-foreground' : 'text-muted-foreground italic'}`}
+                      data-testid={`review-a-${qi}`}
+                    >
+                      A: {answered ? answerText : '—'}
+                    </div>
+                    {note && note.trim() && (
+                      <div className="text-xs text-muted-foreground mt-0.5" data-testid={`review-note-${qi}`}>
+                        Note: {note.trim()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </TabsContent>
+      </Tabs>
       <div className="mt-4">
         <Button size="sm" onClick={handleSubmit} disabled={!allRequiredAnswered}>
           Submit
