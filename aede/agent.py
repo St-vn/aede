@@ -311,7 +311,15 @@ def _normalize_question_payload(tool_name: str, tool_input: dict) -> list[dict]:
         List of unified question dicts matching the ``question`` tool schema.
     """
     if tool_name == "question":
-        return tool_input.get("questions", [])
+        questions = tool_input.get("questions", [])
+        # The JSON-schema `default: true` for these flags is only a hint to the
+        # model — the SDK does not inject defaults into tool_input.  Apply them
+        # here so custom answers and notes render in both the web UI and CLI
+        # unless the model explicitly opts out.
+        for q in questions:
+            q.setdefault("allow_custom", True)
+            q.setdefault("allow_notes", True)
+        return questions
     if tool_name == "ask_user_choices":
         return [{
             "header": "Question",
@@ -764,7 +772,22 @@ class AgentLoop:
                         except Exception as exc:
                             answers = {"error": str(exc)}
 
-                    result_json = json.dumps({"answers": answers})
+                    # Detect chat-sentinel: user clicked "Chat about this"
+                    # instead of answering.  Return a clear nudge to the agent
+                    # so it can respond conversationally and re-ask.
+                    if isinstance(answers, dict) and "__chat__" in answers:
+                        comment = answers["__chat__"]
+                        about = answers.get("__question__", "")
+                        chat_msg = (
+                            f'[User wants to discuss rather than answer'
+                            + (f' "{about}"' if about else "")
+                            + f']: {comment}\n\n'
+                            "Please respond to this comment, then re-ask the "
+                            "question(s) when you are ready to continue."
+                        )
+                        result_json = json.dumps({"chat": chat_msg})
+                    else:
+                        result_json = json.dumps({"answers": answers})
                     self._emit_tool_result(tool_use_id, "success", result_json, 0)
                     tool_results.append({
                         "type": "tool_result",

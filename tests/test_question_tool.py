@@ -49,6 +49,26 @@ class TestT1_Schemas:
         item_props = schemas["question"]["input_schema"]["properties"]["questions"]["items"]["properties"]
         assert item_props["type"]["default"] == "single"
 
+    def test_allow_custom_default_is_true(self):
+        r = make_router()
+        schemas = {s["name"]: s for s in r.anthropic_tool_schemas()}
+        item_props = schemas["question"]["input_schema"]["properties"]["questions"]["items"]["properties"]
+        assert item_props["allow_custom"]["default"] is True, "allow_custom should default to True"
+
+    def test_allow_notes_default_is_true(self):
+        r = make_router()
+        schemas = {s["name"]: s for s in r.anthropic_tool_schemas()}
+        item_props = schemas["question"]["input_schema"]["properties"]["questions"]["items"]["properties"]
+        assert item_props["allow_notes"]["default"] is True, "allow_notes should default to True"
+
+    def test_description_contains_preset_templates(self):
+        r = make_router()
+        schemas = {s["name"]: s for s in r.anthropic_tool_schemas()}
+        desc = schemas["question"]["description"]
+        assert "PRESET TEMPLATES" in desc, "description should contain preset template guidance"
+        assert "allow_custom" in desc, "description should reference allow_custom flag guidance"
+        assert "allow_notes" in desc, "description should reference allow_notes flag guidance"
+
     def test_unified_schema_has_no_legacy_allow_custom_answer_at_top(self):
         r = make_router()
         schemas = {s["name"]: s for s in r.anthropic_tool_schemas()}
@@ -104,7 +124,38 @@ class TestT2_NormalizePayload:
             {"header": "Format", "question": "How?", "type": "single", "options": ["A", "B"]},
         ]
         result = _normalize_question_payload("question", {"questions": questions})
-        assert result == questions
+        # Passthrough preserves the model-supplied fields...
+        assert result[0]["header"] == "Format"
+        assert result[0]["question"] == "How?"
+        assert result[0]["options"] == ["A", "B"]
+
+    def test_normalize_question_injects_custom_and_notes_defaults(self):
+        from aede.agent import _normalize_question_payload
+        qs = _normalize_question_payload(
+            "question",
+            {"questions": [{"header": "H", "question": "Q?", "type": "single", "options": ["a", "b"]}]},
+        )
+        assert qs[0]["allow_custom"] is True
+        assert qs[0]["allow_notes"] is True
+
+    def test_normalize_question_respects_explicit_false(self):
+        from aede.agent import _normalize_question_payload
+        qs = _normalize_question_payload(
+            "question",
+            {"questions": [{"header": "H", "question": "Yes/no?", "type": "single",
+                            "options": ["yes", "no"], "allow_custom": False, "allow_notes": False}]},
+        )
+        assert qs[0]["allow_custom"] is False
+        assert qs[0]["allow_notes"] is False
+
+    def test_normalized_question_drives_cli_custom_option(self):
+        # gate.py reads q.get("allow_custom", False); after normalize it must see True.
+        from aede.agent import _normalize_question_payload
+        q = _normalize_question_payload(
+            "question", {"questions": [{"header": "H", "question": "Q?", "type": "single", "options": ["a"]}]}
+        )[0]
+        assert q.get("allow_custom", False) is True
+        assert q.get("allow_notes", False) is True
 
 
 class TestT3_AutoMode:
