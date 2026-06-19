@@ -31,7 +31,7 @@ credentials.json
 # sdlc-engineer artifacts (spec/design/tasks scratch — internal only)
 /docs/sdlc-engineer/
 
-# Internal docs — not for the public repo
+# Internal docs — not for the public repo (developer-facing only)
 /docs-internal/
 
 # ---------------------------------------------------------------
@@ -42,5 +42,4 @@ credentials.json
 /aede/skills/remediation/
 /skills/remediation/
 /docs/kaizen/2026-06-12-remediation-skill-bootstrap.md
-/docs-internal/research/ai-gtm-landscape-analysis.md
 /scripts/reddit_wedge_count.py
