@@ -26,15 +26,15 @@ def test_cache_hit_rate_zero_input():
 
 
 def test_fallback_prices_exist():
-    assert "claude-sonnet-4-20250514" in FALLBACK_PRICES
-    assert "input" in FALLBACK_PRICES["claude-sonnet-4-20250514"]
-    assert "output" in FALLBACK_PRICES["claude-sonnet-4-20250514"]
-    assert "cache_read" in FALLBACK_PRICES["claude-sonnet-4-20250514"]
+    assert "claude-sonnet-4-6" in FALLBACK_PRICES
+    assert "input" in FALLBACK_PRICES["claude-sonnet-4-6"]
+    assert "output" in FALLBACK_PRICES["claude-sonnet-4-6"]
+    assert "cache_read" in FALLBACK_PRICES["claude-sonnet-4-6"]
 
 
 def test_estimate_cost_known_model():
     cost = estimate_cost(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         input_tokens=1_000_000,
         output_tokens=0,
         cached_tokens=0,
@@ -45,14 +45,14 @@ def test_estimate_cost_known_model():
 
 def test_estimate_cost_cached_cheaper():
     uncached = estimate_cost(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         input_tokens=1_000_000,
         output_tokens=0,
         cached_tokens=0,
         prices=None,
     )
     cached = estimate_cost(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         input_tokens=0,
         output_tokens=0,
         cached_tokens=1_000_000,
@@ -64,12 +64,12 @@ def test_estimate_cost_cached_cheaper():
 def test_price_cache_load_and_save(tmp_path):
     from aede.tokens import PriceCache
     cache_path = tmp_path / "model_prices.json"
-    prices = {"claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0, "cache_read": 0.3}}
+    prices = {"claude-sonnet-4-6": {"input": 3.0, "output": 15.0, "cache_read": 0.3}}
     pc = PriceCache(cache_path)
     pc.save(prices)
     loaded = pc.load()
     assert loaded is not None
-    assert "claude-sonnet-4-20250514" in loaded
+    assert "claude-sonnet-4-6" in loaded
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ def test_token_record_with_role_column(tmp_home, tmp_path):
     db_path = tmp_path / "test.db"
     # Create a dummy session first (foreign key)
     db = DB(db_path)
-    db.insert_session(id="SID-TC", parent_id=None, title="test", model="claude-sonnet-4-20250514")
+    db.insert_session(id="SID-TC", parent_id=None, title="test", model="claude-sonnet-4-6")
 
     tracker = TokenTracker(session_id="SID-TC", db=db)
     tracker.record(turn=1, input_tokens=500, output_tokens=200, cached_tokens=0, role="critic")
