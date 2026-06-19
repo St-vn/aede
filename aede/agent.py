@@ -806,7 +806,31 @@ class AgentLoop:
                             "is_error": True,
                         })
                         continue
-                    elif decision in (GateDecision.REDIRECT, GateDecision.BATCH_DENY):
+                    elif decision == GateDecision.REDIRECT:
+                        self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "redirected"})
+                        self._emit_tool_call(tool_use_id, tool_name, tool_input)
+                        status_text = f"Redirected: {redirect_msg}" if redirect_msg else "Tool call redirected by user."
+                        self._emit_tool_result(tool_use_id, "redirected", status_text, 0)
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "content": status_text,
+                            "is_error": True,
+                        })
+                        if redirect_msg:
+                            self._messages.append({"role": "user", "content": redirect_msg})
+                        continue
+                    elif decision == GateDecision.BATCH_DENY:
+                        self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "batch_denied"})
+                        self._emit_tool_call(tool_use_id, tool_name, tool_input)
+                        status_text = redirect_msg if redirect_msg else "Tool call denied by user (batch deny)."
+                        self._emit_tool_result(tool_use_id, "batch_denied", status_text, 0)
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "content": status_text,
+                            "is_error": True,
+                        })
                         if redirect_msg:
                             self._messages.append({"role": "user", "content": redirect_msg})
                         continue

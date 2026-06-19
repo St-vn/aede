@@ -18,6 +18,7 @@ MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
     ],
     "openrouter": [
         {"id": "openrouter/auto", "label": "OpenRouter Auto"},
+        {"id": "zhipuai/glm-5.2", "label": "GLM-5.2"},
     ],
     "google-ai": [
         {"id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash"},
@@ -50,7 +51,6 @@ MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
     "goose": [
         {"id": "goose", "label": "Goose"},
         {"id": "goose/anthropic-claude-sonnet-4-6", "label": "Goose / Claude Sonnet 4.6"},
-        {"id": "goose/openai-gpt-4o", "label": "Goose / GPT-4o"},
     ],
     "opencode-zen": [
         # Free models
@@ -62,10 +62,12 @@ MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
         # Paid chat-completions models (exclusive to Zen)
         {"id": "grok-build-0.1", "label": "Grok Build 0.1"},
         {"id": "kimi-k2.5", "label": "Kimi K2.5"},
+        {"id": "glm-5.2", "label": "GLM-5.2"},
     ],
     "opencode-go": [
         {"id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro"},
         {"id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash"},
+        {"id": "glm-5.2", "label": "GLM-5.2"},
         {"id": "glm-5.1", "label": "GLM-5.1"},
         {"id": "glm-5", "label": "GLM-5"},
         {"id": "kimi-k2.7", "label": "Kimi K2.7"},

@@ -1,7 +1,7 @@
 # aede — Source of Truth
 
 **Version:** 0.1.0  
-**Last updated:** 2026-06-17  
+**Last updated:** 2026-06-19  
 **Status:** Phase 1 complete · Phase 2 partial (memory, MCP, ACP + chat routing, critic, web server, voice, import)
 
 ---
@@ -165,7 +165,7 @@ Key attributes:
 
 | Attribute | Default | Description |
 |-----------|---------|-------------|
-| `model` | `claude-sonnet-4-20250514` | Active model |
+| `model` | `claude-sonnet-4-6` | Active model |
 | `context_window` | 200000 | Token limit before compaction |
 | `compaction_threshold` | 0.85 | Fraction of window that triggers compaction |
 | `tool_output_max_tokens` | 8000 | Max tokens per tool output |
@@ -270,7 +270,7 @@ class Provider(Protocol):
 
 ## 5. Agent Loop
 
-**File:** `aede/agent.py` (793 lines)
+**File:** `aede/agent.py` (1262 lines)
 
 ### `AgentLoop` class (`aede/agent.py:189-793`)
 
@@ -314,9 +314,19 @@ Two-part structure:
 - Same tool call fails 3× consecutively → print warning and return
 - Param validation failure 2× on same call key → stuck, return early
 
-### Batch approval (`aede/agent.py:451-458`)
+### Batch approval (`aede/agent.py:475-482`)
 
 Scoped to one assistant message's `tool_calls` list. Only honored when `len(tool_calls) <= batch_approval_max`.
+
+### Gate decision handling (`aede/agent.py:798-836`)
+
+Each gate decision produces a tool_result for the tool_call_id:
+- **DENY** — `is_error: True` result with "Tool call denied by user."
+- **REDIRECT** — `is_error: True` result followed by the redirect message injected as a user message. The tool_result ensures the message array remains valid (every `tool_use_id` has a corresponding `tool_result`).
+- **BATCH_DENY** — Same as DENY but scoped per-tool; remaining tools in the batch continue through the gate individually.
+- **BATCH_APPROVE** — Sets `batch_approved = True` for the remainder of the current assistant message's tool_calls (up to `batch_approval_max`).
+
+Prior to 2026-06-19, REDIRECT and BATCH_DENY omitted the tool_result, which violated the provider API contract and caused 400 errors ("An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'").
 
 ### GEPA trace (`aede/agent.py:535-558`)
 
@@ -637,7 +647,7 @@ Accumulates per-turn token usage in memory, persists each row to DB. Methods:
 
 ### `estimate_cost()` (`aede/tokens.py:152`)
 
-Computes USD cost using price table. Cached vs uncached input billing handled separately. `FALLBACK_PRICES` dict for Claude models when OpenRouter data unavailable.
+Computes USD cost using price table. Cached vs uncached input billing handled separately. `FALLBACK_PRICES` dict for Claude, DeepSeek, Gemini, GLM, and GPT models when OpenRouter data unavailable.
 
 ---
 

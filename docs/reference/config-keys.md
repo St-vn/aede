@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, reference]
-date_updated: 2026-06-16
+date_updated: 2026-06-19
 ---
 
 # Config Keys
@@ -10,7 +10,7 @@ date_updated: 2026-06-16
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `model` | string | `claude-sonnet-4-20250514` | Active model ID |
+| `model` | string | `claude-sonnet-4-6` | Active model ID |
 | `context_window` | integer | 200000 | Token limit before compaction triggers |
 | `compaction_threshold` | float | 0.85 | Fraction of window that triggers auto-compaction |
 | `tool_output_max_tokens` | integer | 8000 | Max tokens per tool output before truncation |

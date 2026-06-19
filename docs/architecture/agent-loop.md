@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, architecture]
-date_updated: 2026-06-16
+date_updated: 2026-06-19
 ---
 
 # Agent Loop
@@ -24,7 +24,7 @@ Each turn follows this sequence:
    - Validate tool name (reject unknown without retry)
    - Run hard-deny safety hooks
    - Run code critic (if enabled + gated file write with code)
-   - Gate approval (allow/deny/redirect/batch)
+    - Gate approval (allow/deny/redirect/batch) — every gate decision emits a paired `tool_result` for the `tool_use_id` so the message array stays valid regardless of outcome
    - Validate parameters with Pydantic (one retry on failure)
    - Execute tool synchronously
    - Emit tool call/result to UI (both native and ACP tools)

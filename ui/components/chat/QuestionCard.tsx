@@ -357,7 +357,7 @@ export function QuestionCard({ request, onAnswer, onChat }: Props) {
                     disabled={q.required !== false && !currentAnswered}
                     data-testid={`save-question-${qi}`}
                   >
-                    Save & continue
+                    Continue
                   </Button>
                 )}
               </div>

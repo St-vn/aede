@@ -12,7 +12,7 @@ import os
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-sonnet-4-6",
     "data_dir": None,  # resolved at load time to home/data
     "context_window": 200000,
     "compaction_threshold": 0.85,
@@ -72,11 +72,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     # Anthropic
-    "claude-sonnet-4-20250514": 200_000,
     "claude-sonnet-4-6": 200_000,
-    "claude-opus-4-20250514": 200_000,
     "claude-opus-4-6": 200_000,
-    "claude-haiku-3-5-20241022": 200_000,
+    "claude-opus-4-8": 200_000,
+    "claude-fable-5": 200_000,
     "claude-haiku-4-5": 200_000,
     # DeepSeek
     "deepseek-v4-flash-free": 1_000_000,
@@ -98,6 +97,8 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "kimi-k2.5": 128_000,
     "kimi-k2.6": 128_000,
     "kimi-k2.7": 1_000_000,
+    "glm-5.2": 1_000_000,
+    "zhipuai/glm-5.2": 1_000_000,
     "glm-5": 128_000,
     "glm-5.1": 1_000_000,
     "minimax-m3": 1_000_000,
@@ -107,7 +108,6 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "qwen3.7-plus": 1_000_000,
     "qwen3.6-plus": 1_000_000,
     # OpenAI
-    "gpt-4o": 128_000,
     "o3": 200_000,
     "o4-mini": 200_000,
     # Other
@@ -130,7 +130,7 @@ def resolve_context_window(model: str, config_window: int | None = None) -> int:
 
 
 DEFAULT_CONFIG_YAML = """\
-model: claude-sonnet-4-20250514
+model: claude-sonnet-4-6
 context_window: 200000
 compaction_threshold: 0.85
 tool_output_max_tokens: 8000
@@ -146,7 +146,7 @@ batch_approval_max: 20
 
 # Optional: override model pricing (per million tokens)
 # model_prices:
-#   claude-sonnet-4-20250514:
+#   claude-sonnet-4-6:
 #     input: 3.00
 #     output: 15.00
 #     cache_read: 0.30

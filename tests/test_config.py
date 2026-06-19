@@ -16,7 +16,7 @@ def test_bootstrap_creates_aede_dir(tmp_home):
 def test_bootstrap_writes_default_config(tmp_home):
     bootstrap(tmp_home)
     raw = yaml.safe_load((tmp_home / "config.yml").read_text())
-    assert raw["model"] == "claude-sonnet-4-20250514"
+    assert raw["model"] == "claude-sonnet-4-6"
     assert raw["compaction_threshold"] == 0.85
     assert raw["tool_output_max_tokens"] == 8000
     assert raw["shell"] == "powershell"
@@ -32,7 +32,7 @@ def test_bootstrap_idempotent(tmp_home):
 def test_load_config_defaults(tmp_home):
     bootstrap(tmp_home)
     cfg = load_config(home=tmp_home, project_dir=tmp_home)
-    assert cfg.model == "claude-sonnet-4-20250514"
+    assert cfg.model == "claude-sonnet-4-6"
     assert cfg.shell == "powershell"
 
 
