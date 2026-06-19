@@ -37,6 +37,8 @@ interface Props {
   onModelChange?: (model: string) => void
   mode?: string
   onModeChange?: (mode: string) => void
+  prefillText?: string
+  prefillImages?: ImageAttachment[]
 }
 
 let imageIdCounter = 0
@@ -48,8 +50,8 @@ function buildMessageText(text: string, images: ImageAttachment[]): string {
   return text + imageMarkdown
 }
 
-export function InputBar({ onSend, disabled, isStreaming = false, onStop, onQueue, defaultModel = 'claude-sonnet-4', sessionId, projectDir, onOpenSettings, onOpenHelp, model: modelProp, onModelChange: onModelChangeProp, mode: modeProp, onModeChange }: Props) {
-  const [text, setText] = useState('')
+export function InputBar({ onSend, disabled, isStreaming = false, onStop, onQueue, defaultModel = 'claude-sonnet-4', sessionId, projectDir, onOpenSettings, onOpenHelp, model: modelProp, onModelChange: onModelChangeProp, mode: modeProp, onModeChange, prefillText, prefillImages }: Props) {
+  const [text, setText] = useState(prefillText ?? '')
   const [modelState, setModelState] = useState(defaultModel)
   const model = modelProp ?? modelState
   const setModel = onModelChangeProp ?? setModelState
@@ -59,7 +61,7 @@ export function InputBar({ onSend, disabled, isStreaming = false, onStop, onQueu
   const [slashQuery, setSlashQuery] = useState('')
   const [urlPromptOpen, setUrlPromptOpen] = useState(false)
   const [urlInput, setUrlInput] = useState('')
-  const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([])
+  const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>(prefillImages ?? [])
   const [mentionedFiles, setMentionedFiles] = useState<string[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const ref = useRef<HTMLTextAreaElement>(null)

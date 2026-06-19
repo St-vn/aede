@@ -9,6 +9,7 @@ import { GateCard } from './GateCard'
 import { GateBatchCard } from './GateBatchCard'
 import { QuestionCard } from './QuestionCard'
 import { InputBar } from '@/components/input/InputBar'
+import type { ImageAttachment } from '@/components/input/ImagePreviewBar'
 import { useWebSocket, type WSEvent } from '@/hooks/useWebSocket'
 import { ContextBar } from './ContextBar'
 import { LearningsChip } from './LearningsChip'
@@ -33,6 +34,30 @@ interface Props { sessionId: string; messages: Message[]; initialMessage?: strin
 
 const _stripRich = (text: string): string =>
   text.replace(/\[\/?\w+(?:[ \t]\w+)*\]/g, '').replace(/\r/g, '')
+
+function parseImagesFromMarkdown(content: string): { text: string; images: ImageAttachment[] } {
+  const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
+  const images: ImageAttachment[] = []
+  let imgId = 0
+  const text = content.replace(imgRegex, (match, alt: string, url: string) => {
+    if (url.startsWith('data:image/')) {
+      const id = `rewind-${++imgId}`
+      const mimeMatch = url.match(/data:(image\/[^;]+);/)
+      const mime = mimeMatch ? mimeMatch[1] : 'image/png'
+      const ext = mime.split('/')[1] || 'png'
+      images.push({ id, dataUrl: url, mime, filename: alt || `rewound-image.${ext}` })
+      return ''
+    }
+    return match
+  })
+  return { text: text.trim(), images }
+}
+
+// React key for a tool block. OpenAI-style providers (e.g. DeepSeek) may emit
+// tool calls with an empty/missing id; falling back to a per-index key keeps
+// sibling keys unique ("two children with the same key 0").
+export const toolBlockKey = (b: { id?: string }, idx: number): string =>
+  b.id || `tool-${idx}`
 
 export function ChatView({ sessionId, messages, initialMessage, onClearInitialMessage, onOpenSettings, onOpenHelp, defaultModel, onModelChange, mode, onModeChange, onRewind }: Props) {
   const [streamingText, setStreamingText] = useState('')
@@ -62,6 +87,9 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   const [lastTurnDurationMs, setLastTurnDurationMs] = useState<number | null>(null)
   const sendRef = useRef<((msg: Record<string, unknown>) => void) | null>(null)
   const onEventRef = useRef<((ev: WSEvent) => void) | null>(null)
+  const [rewindKey, setRewindKey] = useState(0)
+  const [rewindText, setRewindText] = useState<string | undefined>(undefined)
+  const [rewindImages, setRewindImages] = useState<ImageAttachment[] | undefined>(undefined)
 
   useEffect(() => {
     if (messages.length > prevMessagesLenRef.current && streamingText && !isStreaming) {
@@ -155,10 +183,18 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
         options: ev.options as GateRequestOption[] | undefined,
       }])
     } else if (ev.type === 'ask_user_request') {
-      setAskUserRequests(reqs => [...reqs, {
+      const incoming = {
         questionId: ev.question_id as string,
         questions: (ev.questions as AskUserQuestion[]) || [],
-      }])
+      }
+      setAskUserRequests(reqs => {
+        const idx = reqs.findIndex(r => r.questionId === incoming.questionId)
+        if (idx !== -1) {
+          // Replace in place — prevents duplicate-key stacking on re-ask
+          return reqs.map((r, i) => i === idx ? incoming : r)
+        }
+        return [...reqs, incoming]
+      })
     } else if (ev.type === 'ask_user_response') {
       setAskUserRequests(reqs => reqs.filter(r => r.questionId !== ev.question_id))
     } else if (ev.type === 'turn_done' || ev.type === 'turn_completed') {
@@ -190,7 +226,12 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       }
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
     } else if (ev.type === 'error') {
-      toast.error(ev.message as string, { duration: 8000 })
+      const msg = ev.message as string
+      // A stale "Chat about this" can target a question whose future already
+      // resolved (answered, or turn ended); the backend replies with an
+      // "Unknown question_id" error. That race is benign — don't toast it.
+      if (msg.startsWith('Unknown question_id')) return
+      toast.error(msg, { duration: 8000 })
     }
   }, [sessionId, queryClient])
   onEventRef.current = onEvent
@@ -219,7 +260,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   useEffect(() => {
     const viewport = containerRef.current?.querySelector('[data-slot="scroll-area-viewport"]')
     if (!viewport) return
-    const threshold = 50 // pixels from bottom
+    const threshold = 150 // pixels from bottom
     const isNearBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < threshold
     if (isNearBottom) {
       viewport.scrollTo({
@@ -261,8 +302,11 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     setAskUserRequests(reqs => reqs.filter(r => r.questionId !== questionId))
   }
 
-  const handleQuestionChat = (questionText: string, comment: string) => {
-    handleSend(`Regarding "${questionText}": ${comment}`)
+  const handleQuestionChat = (questionId: string, questionText: string, comment: string) => {
+    // Optimistically echo the comment so the user sees their message land
+    // immediately; the question card stays pending until the agent replies.
+    setPendingMessages(p => [...p, { content: comment, id: `chat-${Date.now()}` }])
+    send({ type: 'ask_user_chat', question_id: questionId, question: questionText, comment })
   }
 
   const handleModelChange = useCallback((model: string) => {
@@ -275,14 +319,21 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: baseAgent }),
-      }).catch(() => {})
+      }).catch(() => { })
     }
   }, [onModelChange])
 
   const handleRewind = useCallback(async (messageId: string, opts: { mode: 'truncate' | 'fork'; revertCode: boolean }) => {
+    const msg = messages.find(m => m.id === messageId)
+    const parsed = msg ? parseImagesFromMarkdown(msg.content) : null
     try {
       const result = await rewind(sessionId, messageId, opts) as { id: string }
       if (opts.mode === 'truncate') {
+        if (parsed) {
+          setRewindText(parsed.text)
+          setRewindImages(parsed.images.length > 0 ? parsed.images : undefined)
+          setRewindKey(k => k + 1)
+        }
         queryClient.invalidateQueries({ queryKey: ['sessions'] })
         queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
       } else {
@@ -293,7 +344,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       console.error('Rewind failed:', err)
       toast.error('Rewind failed — see console for details')
     }
-  }, [sessionId, rewind, queryClient, onRewind])
+  }, [sessionId, messages, rewind, queryClient, onRewind])
 
   const inputDisabled = gates.length > 0 || askUserRequests.length > 0
 
@@ -330,35 +381,35 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
           {messages.map((m, mi) =>
             m.is_branch_point
               ? <div key={m.id} className="flex items-center gap-3 py-4 px-4 select-none">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-xs text-muted-foreground shrink-0">Branch point</span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-xs text-muted-foreground shrink-0">Branch point</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
               : m.role === 'user'
                 ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} messageId={m.id} onRewind={handleRewind} />
                 : <React.Fragment key={m.id}>
-                    <AssistantMessage
-                      content={m.content}
-                      isStreaming={false}
-                      thinking={m.thinking}
-                      thinkingSegments={m.thinking_segments}
-                      turnDurationMs={getTurnDuration(m, mi)}
-                    />
-                    {!isStreaming && m.tool_calls?.map(tc => (
-                      <ToolCallCard key={tc.id} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
-                        args={tc.args} output={tc.output} durationMs={tc.durationMs} />
-                    ))}
-                  </React.Fragment>
+                  <AssistantMessage
+                    content={m.content}
+                    isStreaming={false}
+                    thinking={m.thinking}
+                    thinkingSegments={m.thinking_segments}
+                    turnDurationMs={getTurnDuration(m, mi)}
+                  />
+                  {!isStreaming && m.tool_calls?.map((tc, ti) => (
+                    <ToolCallCard key={toolBlockKey(tc, ti)} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
+                      args={tc.args} output={tc.output} durationMs={tc.durationMs} />
+                  ))}
+                </React.Fragment>
           )}
           {pendingMessages.map(pm => (
             <UserMessage key={pm.id} content={pm.content} timestamp={new Date().toISOString()} />
           ))}
           {/* Interleaved streaming blocks: thinking + tool calls in execution order */}
-          {sortedBlocks.map(block =>
+          {sortedBlocks.map((block, bi) =>
             block.kind === 'thinking'
               ? <ThinkingBlock key={`thinking-${block.seq}`} thinking={block.text} isStreaming={isStreaming} />
-              : <ToolCallCard key={block.id} toolName={block.name} status={block.status as 'running' | 'success' | 'error' | 'denied'}
-                  args={block.args} output={block.output} durationMs={block.durationMs} streamingOutput={block.streamingOutput} />
+              : <ToolCallCard key={toolBlockKey(block, bi)} toolName={block.name} status={block.status as 'running' | 'success' | 'error' | 'denied'}
+                args={block.args} output={block.output} durationMs={block.durationMs} streamingOutput={block.streamingOutput} />
           )}
           {(streamingText || isStreaming) && (
             <AssistantMessage content={streamingText} isStreaming={isStreaming} turnDurationMs={lastTurnDurationMs ?? undefined} />
@@ -394,10 +445,11 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
         </div>
       )}
       <div className="max-w-[760px] mx-auto w-full">
-        <InputBar onSend={handleSend} disabled={inputDisabled} isStreaming={isStreaming}
+        <InputBar key={rewindKey} onSend={handleSend} disabled={inputDisabled} isStreaming={isStreaming}
           onStop={handleStop} onQueue={handleQueue} sessionId={sessionId}
           defaultModel={defaultModel} onModelChange={handleModelChange}
-          mode={mode} onModeChange={onModeChange} />
+          mode={mode} onModeChange={onModeChange}
+          prefillText={rewindText} prefillImages={rewindImages} />
       </div>
     </div>
   )
