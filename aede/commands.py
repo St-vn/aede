@@ -21,6 +21,7 @@ COMMANDS = {
     "compact", "tokens", "clear", "exit", "setkey",
     "skills", "agents", "mcp", "delete-session", "rm", "acp", "import",
     "extract", "soul", "rename", "approve", "mode",
+    "act",
 }
 
 
@@ -45,6 +46,8 @@ def parse_command(text: str) -> CommandResult | None:
     if not parts:
         return None
     name = parts[0].lower()
+    if name == "act":
+        return CommandResult(name="mode", args=["normal"])
     if name not in COMMANDS:
         return None
     return CommandResult(name=name, args=parts[1:])
@@ -62,6 +65,7 @@ def handle_help(console: Any) -> None:
             "  /delete-session [id]          — delete a session (alias: /rm)",
             "  /tools                        — list tools and approval status",
             "  /mode [plan|normal|allow_write_read|execution|auto] — view or change permission mode (persisted per session)",
+            "  /act                          — exit plan mode and start executing (alias for /mode normal)",
             "  /skills                       — list loaded skills",
             "  /agents                       — list loaded agents",
             "  /mcp                          — list MCP servers and tools",

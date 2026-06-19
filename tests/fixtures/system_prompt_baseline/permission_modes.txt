@@ -1,0 +1,16 @@
+PermissionMode(Enum):
+  PLAN = "plan"         # read-only; write/shell denied before gate
+  NORMAL = "normal"     # read auto; write/shell/tools gated (ask)
+  ALLOW_WRITE_READ = "allow_write_read"  # read + file writes auto-approved; shell still gated
+  EXECUTION = "execution"  # auto-approve gated tools with safety classifier
+  AUTO = "auto"         # true hands-free; all tools run without prompts
+
+default_tool_action per mode:
+  PLAN:          read → allow,  write → deny,  shell → deny
+  ALLOW_WRITE_READ: read → allow, write → allow, shell → gated
+  EXECUTION / AUTO:  all → allow (EXECUTION runs safety classifier first)
+  NORMAL:        read → allow,  write → gated, shell → gated
+
+READ_TOOLS  = {read_file, list_dir, search_files, fetch_url, web_search, session_search, select_context}
+WRITE_TOOLS = {write_file, create_file, write_learning}
+SHELL_TOOLS = {powershell, cmd}

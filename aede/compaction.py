@@ -22,6 +22,12 @@ You are summarizing a session for context compaction. Write a structured handoff
 **Critical Context:** [facts the model must retain: paths, names, values]
 **Next Steps:** [what was about to happen when compaction fired]
 
+Important: When summarizing, preserve the following EXACTLY as written (do not summarize, do not paraphrase):
+- The current goal / objective
+- The plan steps / task list
+- Any open todos or decisions
+Only compress and summarize the conversational content (tool outputs, intermediate reasoning, etc.).
+
 Be specific and dense. Omit nothing that a future instance of yourself would need to continue seamlessly.
 """
 

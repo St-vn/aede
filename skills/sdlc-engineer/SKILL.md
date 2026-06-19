@@ -1,7 +1,7 @@
 ---
 name: sdlc-engineer
-description: Full SDLC lifecycle engineering — requirements, design, implementation, testing, shipping, and documentation
-trigger_phrases: [sdlc, implement, design, spec, plan, requirements, architecture, build, develop, feature]
+description: Full SDLC lifecycle — requirements gathering, architecture design, task breakdown, TDD implementation, testing, shipping, and documentation. Use when you need requirements, architecture, tasks, implementation, testing, shipping, or any full-lifecycle software engineering workflow.
+trigger_phrases: [sdlc, implement, design, spec, plan, requirements, architecture, build, develop, feature, test, ship, deploy, code, write code, user stories, acceptance criteria, tasks, project plan, sprint, tdd]
 allowed_tools: [read_file, write_file, create_file, search_files, list_dir, powershell, web_search, fetch_url]
 model: null
 ---

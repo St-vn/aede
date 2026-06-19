@@ -65,6 +65,10 @@ def _make_loop(tmp_path: Path):
     loop._stream_thinking = None
     loop._accumulated_thinking = ""
     loop._trace_logger = None  # will be lazily set
+    loop._tokens_since_last_reminder = 0
+    loop._current_objective = ""
+    loop._active_constraints = ""
+    loop._open_decisions = ""
     return loop
 
 

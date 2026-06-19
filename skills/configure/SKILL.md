@@ -1,7 +1,7 @@
 ---
 name: configure
-description: First-run project configuration interview — determines intent tier, security tier, and tool gating
-trigger_phrases: [configure, setup, init, initialize, first-run, project config, scaffold]
+description: First-run project configuration interview — asks up to 8 questions to determine intent tier (hackathon/MVP/scaling), security tier, and tool gating, then writes aede.yml. Use when starting a new project or when no configuration exists yet.
+trigger_phrases: [configure, setup, init, initialize, first-run, project config, scaffold, new project, getting started, project setup wizard, start project]
 allowed_tools: [read_file, write_file, create_file, search_files, list_dir]
 model: null
 ---

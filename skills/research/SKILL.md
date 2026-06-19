@@ -1,7 +1,7 @@
 ---
 name: research
-description: Multi-track research — market analysis, technical feasibility, and compliance audit
-trigger_phrases: [research, investigate, find out, search, look into, explore, analyze, competitor, market, technical, compliance]
+description: Multi-track structured research — market analysis (competitors, pricing, positioning), technical feasibility (libraries, APIs, frameworks, CVEs), and compliance audit (GDPR, HIPAA, SOC2). Use when you need to investigate, compare, research, analyze, explore, or look into something before committing to an approach.
+trigger_phrases: [research, investigate, find out, search, look into, explore, analyze, competitor, market, technical, compliance, compare, alternatives, competitive analysis, market research, dig deeper, gdpr, hipaa, soc2, regulations, cve, feasibility]
 allowed_tools: [web_search, fetch_url, read_file, search_files, powershell]
 model: null
 ---

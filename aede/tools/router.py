@@ -115,6 +115,13 @@ class ToolRouter:
         from aede.tools.web import web_search
         reg["web_search"] = partial(web_search, sandbox_filter=_sandbox_filter)
 
+        from aede.tools.plan_mode import write_plan_artifact, read_plan_artifact, write_progress
+        _pid = self._project_dir
+        _sid = self._session_id
+        reg["write_plan_artifact"] = lambda args: write_plan_artifact(args, project_dir=_pid, session_id=_sid)
+        reg["read_plan_artifact"] = lambda args: read_plan_artifact(args, project_dir=_pid, session_id=_sid)
+        reg["write_progress"] = lambda args: write_progress(args, project_dir=_pid, session_id=_sid)
+
         from aede.tools.ask import ask_user, ask_user_choices, ask_user_confirm, question
         reg["ask_user"] = ask_user
         reg["ask_user_choices"] = ask_user_choices
@@ -755,6 +762,38 @@ _TOOL_SCHEMAS: dict[str, dict] = {
                 "path": {"type": "string", "description": "Root directory to search (defaults to current working directory)."},
             },
             "required": ["pattern"],
+        },
+    },
+    "write_plan_artifact": {
+        "name": "write_plan_artifact",
+        "description": "Write a plan artifact file for the current session. Use this in plan mode to produce a reviewable plan document before writing any code. The plan file survives context compaction.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "Full plan markdown content — include goal, files to change, steps, and open questions."},
+            },
+            "required": ["content"],
+        },
+    },
+    "read_plan_artifact": {
+        "name": "read_plan_artifact",
+        "description": "Read the plan artifact for the current session or a specified session. Use this to re-read the plan after context compaction or to check progress.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "Session ID to read the plan for. Defaults to current session if omitted."},
+            },
+        },
+    },
+    "write_progress": {
+        "name": "write_progress",
+        "description": "Append a progress entry to the progress file for the current session. Progress files track step completion during multi-step task execution.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "The progress update to append."},
+            },
+            "required": ["content"],
         },
     },
 }

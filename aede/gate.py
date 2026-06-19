@@ -38,6 +38,7 @@ READ_TOOLS = frozenset({
     "read_file", "list_dir", "search_files",
     "fetch_url", "web_search", "session_search",
     "select_context",
+    "read_plan_artifact", "write_plan_artifact", "write_progress",
 })
 WRITE_TOOLS = frozenset({
     "write_file", "create_file", "write_learning",

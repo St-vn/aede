@@ -1,7 +1,7 @@
 ---
 name: kaizen
-description: Continuous improvement — post-mortem logging with critique-then-fix format after every bug fix, code review, or investigation
-trigger_phrases: [kaizen, post-mortem, retrospective, lesson, improvement, root cause, log, document this]
+description: Continuous improvement logging — structured post-mortem with Symptom→Investigation→Root-Cause→Fix→Lesson format after every bug fix, code review, or investigation. Use when you need to log learnings, write a post-mortem, document a fix, or capture what went wrong.
+trigger_phrases: [kaizen, post-mortem, retrospective, lesson, improvement, root cause, log, document this, document fix, lesson learned, incident report, rca, what went wrong, write up, capture learnings]
 allowed_tools: [read_file, write_file, create_file, search_files, list_dir]
 model: null
 ---

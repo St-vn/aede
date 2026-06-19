@@ -255,6 +255,10 @@ def _make_agent_loop_for_gate_test(batch_approval_max: int) -> "AgentLoop":
     loop._gate_store = PermissionStore(project_dir=loop._project_dir)
     loop._tracker = MagicMock()
     loop._tracker.record = MagicMock()
+    loop._tokens_since_last_reminder = 0
+    loop._current_objective = ""
+    loop._active_constraints = ""
+    loop._open_decisions = ""
 
     from aede.gate import TerminalGateBackend
     loop._gate_backend = TerminalGateBackend(
