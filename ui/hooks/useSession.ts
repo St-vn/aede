@@ -95,11 +95,25 @@ export const useRenameSession = () => {
 
 export function useRewind() {
   return {
-    rewind: async (sessionId: string, messageId: string, revertCode: boolean) => {
+    rewind: async (
+      sessionId: string,
+      messageId: string,
+      opts: { mode: 'truncate' | 'fork'; revertCode: boolean }
+    ) => {
+      if (opts.mode === 'truncate') {
+        return apiFetch(`/api/sessions/${sessionId}/truncate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message_id: messageId,
+            revert_code: opts.revertCode,
+          }),
+        })
+      }
       return apiFetch(`/api/sessions/${sessionId}/rewind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message_id: messageId, revert_code: revertCode }),
+        body: JSON.stringify({ message_id: messageId }),
       })
     },
   }

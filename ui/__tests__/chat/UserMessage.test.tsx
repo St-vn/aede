@@ -41,12 +41,37 @@ test('can open collapsed message in modal', () => {
   expect(screen.getByRole('dialog')).toHaveTextContent('x'.repeat(2000))
 })
 
-test('rewind menu offers conversation and code options', () => {
+test('rewind menu offers three options: in place, in place+code, fork', () => {
   const onRewind = vi.fn()
   render(<UserMessage content="do x" messageId="m1" onRewind={onRewind} timestamp={new Date().toISOString()} />)
   fireEvent.click(screen.getByRole('button', { name: /rewind/i }))
-  fireEvent.click(screen.getByText(/rewind conversation only/i))
-  expect(onRewind).toHaveBeenCalledWith('m1', { revertCode: false })
+  expect(screen.getByText(/rewind in place$/i)).toBeInTheDocument()
+  expect(screen.getByText(/rewind in place \+ revert code/i)).toBeInTheDocument()
+  expect(screen.getByText(/fork to new branch/i)).toBeInTheDocument()
+})
+
+test('rewind in place calls onRewind with mode=truncate, revertCode=false', () => {
+  const onRewind = vi.fn()
+  render(<UserMessage content="do x" messageId="m1" onRewind={onRewind} timestamp={new Date().toISOString()} />)
+  fireEvent.click(screen.getByRole('button', { name: /rewind/i }))
+  fireEvent.click(screen.getByText(/rewind in place$/i))
+  expect(onRewind).toHaveBeenCalledWith('m1', { mode: 'truncate', revertCode: false })
+})
+
+test('rewind in place + code calls onRewind with mode=truncate, revertCode=true', () => {
+  const onRewind = vi.fn()
+  render(<UserMessage content="do x" messageId="m1" onRewind={onRewind} timestamp={new Date().toISOString()} />)
+  fireEvent.click(screen.getByRole('button', { name: /rewind/i }))
+  fireEvent.click(screen.getByText(/rewind in place \+ revert code/i))
+  expect(onRewind).toHaveBeenCalledWith('m1', { mode: 'truncate', revertCode: true })
+})
+
+test('fork to new branch calls onRewind with mode=fork, revertCode=false', () => {
+  const onRewind = vi.fn()
+  render(<UserMessage content="do x" messageId="m1" onRewind={onRewind} timestamp={new Date().toISOString()} />)
+  fireEvent.click(screen.getByRole('button', { name: /rewind/i }))
+  fireEvent.click(screen.getByText(/fork to new branch/i))
+  expect(onRewind).toHaveBeenCalledWith('m1', { mode: 'fork', revertCode: false })
 })
 
 test('all action buttons have aria-labels', () => {

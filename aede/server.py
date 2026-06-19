@@ -925,6 +925,76 @@ async def rewind_session(request: Request, session_id: str, payload: dict):
     return new_session.to_dict()
 
 
+@app.post("/api/sessions/{session_id}/truncate")
+async def truncate_session(request: Request, session_id: str, payload: dict):
+    """Truncate the current session at a given user message, optionally
+    reverting code changes.
+
+    Unlike :func:`rewind_session`, this preserves the session id — the tail
+    of conversation after *message_id* is erased in place rather than forked
+    into a new session.
+
+    Body:
+        ``message_id`` (str, required) — the user message ID to truncate at.
+        ``revert_code`` (bool, default False) — whether to run the three-tier
+            code-revert utility against the tool_calls of the removed
+            messages.
+
+    Returns the same session dict (not a new one).
+    """
+    db = request.app.state.db
+    from aede.session import Session
+
+    message_id = payload.get("message_id")
+    if not message_id:
+        raise HTTPException(status_code=400, detail="message_id is required")
+
+    try:
+        session = Session.load(db, session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    revert_code_flag = bool(payload.get("revert_code", False))
+
+    if revert_code_flag:
+        anchor_row = db.con.execute(
+            "SELECT created_at FROM messages WHERE id = ? AND session_id = ?",
+            (message_id, session_id),
+        ).fetchone()
+        if anchor_row is None:
+            raise HTTPException(status_code=404, detail="Message not found")
+        anchor_ts = int(anchor_row["created_at"])
+        tool_calls = []
+        tail_rows = db.con.execute(
+            """
+            SELECT id FROM messages
+            WHERE session_id = ?
+              AND (created_at > ? OR (created_at = ? AND id > ?))
+            """,
+            (session_id, anchor_ts, anchor_ts, message_id),
+        ).fetchall()
+        msg_ids = [r["id"] for r in tail_rows]
+        if msg_ids:
+            tc_map = db.get_tool_calls_for_message_ids(msg_ids)
+            for mid in msg_ids:
+                for tc in tc_map.get(mid, []):
+                    tool_calls.append({"name": tc["tool_name"], "args": tc.get("args", {})})
+        if tool_calls:
+            project_dir = Path(session.project_dir) if session.project_dir else Path.cwd()
+            from aede.tools.rewind import revert_code as _revert_code
+            try:
+                _revert_code(project_dir, tool_calls)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Code revert failed: {e}")
+
+    try:
+        session = Session.truncate_after_message(db, session_id, message_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return session.to_dict()
+
+
 def _walk_parent_messages(db, session_id: str) -> list[dict]:
     """Recursively collect messages from all ancestor sessions, root-first.
 

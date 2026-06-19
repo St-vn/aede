@@ -148,6 +148,31 @@ class Session:
         db.con.commit()
         return cls.load(db, s.id)
 
+    @classmethod
+    def truncate_after_message(cls, db: Any, session_id: str, message_id: str) -> "Session":
+        """Delete every message in *session_id* that comes after *message_id*
+        in the conversation sequence, then return the same session.
+
+        Unlike :meth:`fork_from_message`, the session id is preserved — this
+        is the in-place rewind used to erase a tail of conversation from the
+        current branch.
+        """
+        session = cls.load(db, session_id)
+        row = db.con.execute(
+            "SELECT created_at FROM messages WHERE id = ? AND session_id = ?",
+            (message_id, session_id),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Message not found: {message_id}")
+        db.delete_messages_after(session_id, int(row["created_at"]), boundary_id=message_id)
+        now = int(time.time() * 1000)
+        db.con.execute(
+            "UPDATE sessions SET updated_at = ? WHERE id = ?",
+            (now, session_id),
+        )
+        db.con.commit()
+        return session
+
     def set_gate_mode(self, db: Any, gate_mode: str | None) -> None:
         """Update the session's permission mode and refresh local state."""
         db.update_session_gate_mode(self.id, gate_mode)

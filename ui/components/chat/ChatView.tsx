@@ -215,10 +215,13 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     }
   }, [initialMessage, send, onClearInitialMessage])
 
-  // Auto-scroll to bottom using scroll container viewport directly
+  // Auto-scroll to bottom only if user is already near the bottom
   useEffect(() => {
     const viewport = containerRef.current?.querySelector('[data-slot="scroll-area-viewport"]')
-    if (viewport) {
+    if (!viewport) return
+    const threshold = 50 // pixels from bottom
+    const isNearBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < threshold
+    if (isNearBottom) {
       viewport.scrollTo({
         top: viewport.scrollHeight,
         behavior: 'smooth',
@@ -272,11 +275,16 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     }
   }, [onModelChange])
 
-  const handleRewind = useCallback(async (messageId: string, opts: { revertCode: boolean }) => {
+  const handleRewind = useCallback(async (messageId: string, opts: { mode: 'truncate' | 'fork'; revertCode: boolean }) => {
     try {
-      const result = await rewind(sessionId, messageId, opts.revertCode) as { id: string }
-      queryClient.invalidateQueries({ queryKey: ['sessions'] })
-      onRewind?.(result.id)
+      const result = await rewind(sessionId, messageId, opts) as { id: string }
+      if (opts.mode === 'truncate') {
+        queryClient.invalidateQueries({ queryKey: ['sessions'] })
+        queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['sessions'] })
+        onRewind?.(result.id)
+      }
     } catch (err) {
       console.error('Rewind failed:', err)
       toast.error('Rewind failed — see console for details')

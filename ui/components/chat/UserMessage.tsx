@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
-import { Copy, Check, Undo } from 'lucide-react'
+import { Copy, Check, Undo2 } from 'lucide-react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import {
   DropdownMenu,
@@ -18,7 +18,10 @@ interface Props {
   content: string
   timestamp: string
   messageId?: string
-  onRewind?: (messageId: string, opts: { revertCode: boolean }) => void
+  onRewind?: (
+    messageId: string,
+    opts: { mode: 'truncate' | 'fork'; revertCode: boolean }
+  ) => void
 }
 
 export function UserMessage({ content, timestamp, messageId, onRewind }: Props) {
@@ -94,15 +97,18 @@ export function UserMessage({ content, timestamp, messageId, onRewind }: Props) 
             <DropdownMenu>
               <DropdownMenuTrigger aria-label="rewind" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded">
                 <div className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-                  <Undo className="size-3.5" />
+                  <Undo2 className="size-3.5" />
                 </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onRewind(messageId, { revertCode: false })}>
-                  Rewind conversation only
+                <DropdownMenuItem onClick={() => onRewind(messageId, { mode: 'truncate', revertCode: false })}>
+                  Rewind in place
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onRewind(messageId, { revertCode: true })}>
-                  Rewind conversation + code
+                <DropdownMenuItem onClick={() => onRewind(messageId, { mode: 'truncate', revertCode: true })}>
+                  Rewind in place + revert code
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onRewind(messageId, { mode: 'fork', revertCode: false })}>
+                  Fork to new branch
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

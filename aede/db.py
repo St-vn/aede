@@ -443,6 +443,48 @@ class DB:
         self.con.execute("DELETE FROM messages WHERE id = ?", (id,))
         self.con.commit()
 
+    def delete_messages_after(
+        self,
+        session_id: str,
+        timestamp_ms: int,
+        boundary_id: str | None = None,
+    ) -> int:
+        """Delete every message in *session_id* strictly after *timestamp_ms*
+        along with the tool_calls that belong to those messages, returning
+        the number of messages removed.
+
+        When *boundary_id* is provided, messages that share the same
+        ``created_at`` as the boundary are tie-broken by ``id`` so the
+        boundary message itself is always preserved — this is the path used
+        by the in-place rewind endpoint, where two messages can land in the
+        same millisecond on fast machines.
+
+        When *boundary_id* is ``None``, deletion is purely a timestamp
+        comparison (``created_at > timestamp_ms``); the boundary is whatever
+        happens to carry that exact timestamp.
+        """
+        if boundary_id is not None:
+            rows = self.con.execute(
+                """
+                SELECT id FROM messages
+                WHERE session_id = ?
+                  AND (created_at > ? OR (created_at = ? AND id > ?))
+                """,
+                (session_id, timestamp_ms, timestamp_ms, boundary_id),
+            ).fetchall()
+        else:
+            rows = self.con.execute(
+                "SELECT id FROM messages WHERE session_id = ? AND created_at > ?",
+                (session_id, timestamp_ms),
+            ).fetchall()
+        if not rows:
+            return 0
+        ids = [r["id"] for r in rows]
+        placeholders = ",".join("?" for _ in ids)
+        for mid in ids:
+            self.delete_message(mid)
+        return len(ids)
+
     def get_messages(
         self, session_id: str, include_compacted: bool = False
     ) -> list[dict[str, Any]]:
