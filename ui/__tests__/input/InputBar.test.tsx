@@ -58,3 +58,39 @@ test('queues message when streaming', () => {
   expect(onQueue).toHaveBeenCalledWith('next')
   expect(onSend).not.toHaveBeenCalled()
 })
+
+test('during streaming, both stop and queue send buttons are visible', () => {
+  renderWithQC(<InputBar onSend={vi.fn()} onStop={vi.fn()} onQueue={vi.fn()} isStreaming={true} />)
+  expect(screen.getByRole('button', { name: /stop generating/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /send queued message/i })).toBeInTheDocument()
+})
+
+test('queue button is disabled when text is empty', () => {
+  renderWithQC(<InputBar onSend={vi.fn()} onQueue={vi.fn()} isStreaming={true} />)
+  expect(screen.getByRole('button', { name: /send queued message/i })).toBeDisabled()
+})
+
+test('queue button is enabled when text is present', () => {
+  renderWithQC(<InputBar onSend={vi.fn()} onQueue={vi.fn()} isStreaming={true} />)
+  const ta = screen.getByRole('textbox')
+  fireEvent.change(ta, { target: { value: 'queued' } })
+  expect(screen.getByRole('button', { name: /send queued message/i })).not.toBeDisabled()
+})
+
+test('clicking queue button calls onQueue with the text', () => {
+  const onQueue = vi.fn()
+  renderWithQC(<InputBar onSend={vi.fn()} onQueue={onQueue} isStreaming={true} />)
+  const ta = screen.getByRole('textbox')
+  fireEvent.change(ta, { target: { value: 'queued msg' } })
+  fireEvent.click(screen.getByRole('button', { name: /send queued message/i }))
+  expect(onQueue).toHaveBeenCalledWith('queued msg')
+})
+
+test('during streaming, Enter still queues (regression check)', () => {
+  const onQueue = vi.fn()
+  renderWithQC(<InputBar onSend={vi.fn()} onQueue={onQueue} isStreaming={true} />)
+  const ta = screen.getByRole('textbox')
+  fireEvent.change(ta, { target: { value: 'hello' } })
+  fireEvent.keyDown(ta, { key: 'Enter', shiftKey: false })
+  expect(onQueue).toHaveBeenCalledWith('hello')
+})

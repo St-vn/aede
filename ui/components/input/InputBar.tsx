@@ -508,9 +508,23 @@ export function InputBar({ onSend, disabled, isStreaming = false, onStop, onQueu
               onError={() => {}}
             />
             {isStreaming ? (
-              <Button size="icon" className="w-7 h-7" aria-label="stop generating" onClick={onStop}>
-                <Square className="w-4 h-4 fill-current" />
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button size="icon" className="w-7 h-7" variant="destructive"
+                  aria-label="Stop generating" onClick={onStop}>
+                  <Square className="w-4 h-4 fill-current" />
+                </Button>
+                <Tooltip>
+                  <TooltipTrigger render={
+                    <Button size="icon" className="w-7 h-7" variant="ghost"
+                      aria-label="Send queued message"
+                      disabled={!text.trim() && imageAttachments.length === 0}
+                      onClick={() => submit()}>
+                      <ArrowUp className="w-4 h-4" />
+                    </Button>
+                  } />
+                  <TooltipContent>Will queue until current turn ends</TooltipContent>
+                </Tooltip>
+              </div>
             ) : (
               <Tooltip>
                 <TooltipTrigger render={
