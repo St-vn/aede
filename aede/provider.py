@@ -309,6 +309,16 @@ def _convert_messages_to_openai(
     return result
 
 
+def _finalize_tool_call_id(provider_id: str | None, idx: int) -> str:
+    """Guarantee a non-empty, index-stable tool-call id.
+
+    OpenAI-style providers (e.g. DeepSeek) may stream tool_call deltas with no
+    id; an empty id collides across calls and breaks React keys in the UI
+    ("two children with the same key").  Fall back to a stable per-index id.
+    """
+    return provider_id or f"call_{idx}"
+
+
 def _convert_tools_to_openai(tools: list[dict]) -> list[dict]:
     """
     Convert Anthropic tool schemas to OpenAI tool format.
@@ -478,20 +488,21 @@ class OpenAIProvider:
         assistant_tool_use_blocks: list[dict] = []
         for idx in sorted(tool_calls_acc.keys()):
             tc = tool_calls_acc[idx]
+            call_id = _finalize_tool_call_id(tc["id"], idx)
             raw_args = "".join(tc["arguments_parts"])
             try:
                 parsed_input = json.loads(raw_args) if raw_args else {}
             except json.JSONDecodeError:
                 parsed_input = {"_raw": raw_args}
             tool_calls.append({
-                "id": tc["id"],
+                "id": call_id,
                 "name": tc["name"],
                 "input": parsed_input,
             })
             # Synthesize Anthropic-format tool_use block (as dict) for message history
             assistant_tool_use_blocks.append({
                 "type": "tool_use",
-                "id": tc["id"],
+                "id": call_id,
                 "name": tc["name"],
                 "input": parsed_input,
             })
