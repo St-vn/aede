@@ -345,6 +345,34 @@ def _normalize_question_payload(tool_name: str, tool_input: dict) -> list[dict]:
     }]
 
 
+def _build_ask_user_result(answers: dict) -> tuple[str, str, bool]:
+    """Map an ask-user backend result to a tool_result ``(status, content, is_error)``.
+
+    Three shapes:
+      - chat sentinel (``__chat__``) → success nudge so the agent responds and re-asks
+      - error (``{"error": ...}``) → ``is_error`` result; tool errors return to the
+        model as results, never hidden (CLAUDE.md)
+      - normal answers → success ``{"answers": ...}``
+    """
+    import json as _json
+
+    if isinstance(answers, dict) and "__chat__" in answers:
+        comment = answers["__chat__"]
+        about = answers.get("__question__", "")
+        about_clause = f' "{about}"' if about else ""
+        chat_msg = (
+            f"[User wants to discuss rather than answer{about_clause}]: {comment}\n\n"
+            "Please respond to this comment, then re-ask the "
+            "question(s) when you are ready to continue."
+        )
+        return "success", _json.dumps({"chat": chat_msg}), False
+
+    if isinstance(answers, dict) and set(answers) == {"error"}:
+        return "error", str(answers["error"]), True
+
+    return "success", _json.dumps({"answers": answers}), False
+
+
 def _build_auto_answers(questions: list[dict]) -> dict:
     """Build safe-default answers for AUTO permission mode.
 
@@ -772,28 +800,16 @@ class AgentLoop:
                         except Exception as exc:
                             answers = {"error": str(exc)}
 
-                    # Detect chat-sentinel: user clicked "Chat about this"
-                    # instead of answering.  Return a clear nudge to the agent
-                    # so it can respond conversationally and re-ask.
-                    if isinstance(answers, dict) and "__chat__" in answers:
-                        comment = answers["__chat__"]
-                        about = answers.get("__question__", "")
-                        chat_msg = (
-                            f'[User wants to discuss rather than answer'
-                            + (f' "{about}"' if about else "")
-                            + f']: {comment}\n\n'
-                            "Please respond to this comment, then re-ask the "
-                            "question(s) when you are ready to continue."
-                        )
-                        result_json = json.dumps({"chat": chat_msg})
-                    else:
-                        result_json = json.dumps({"answers": answers})
-                    self._emit_tool_result(tool_use_id, "success", result_json, 0)
+                    # Map the backend result to a tool_result: chat-sentinel
+                    # (user clicked "Chat about this") → conversational nudge;
+                    # error → is_error result (never hidden); else normal answers.
+                    status, result_content, is_error = _build_ask_user_result(answers)
+                    self._emit_tool_result(tool_use_id, status, result_content, 0)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tool_use_id,
-                        "content": result_json,
-                        "is_error": False,
+                        "content": result_content,
+                        "is_error": is_error,
                     })
                     continue
 

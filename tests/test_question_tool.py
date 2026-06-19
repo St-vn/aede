@@ -158,6 +158,34 @@ class TestT2_NormalizePayload:
         assert q.get("allow_notes", False) is True
 
 
+class TestAskUserResult:
+    def test_normal_answers_are_success(self):
+        from aede.agent import _build_ask_user_result
+        status, content, is_error = _build_ask_user_result({"Q?": "a"})
+        assert is_error is False
+        assert status == "success"
+        assert json.loads(content) == {"answers": {"Q?": "a"}}
+
+    def test_chat_sentinel_returns_chat_payload(self):
+        from aede.agent import _build_ask_user_result
+        status, content, is_error = _build_ask_user_result(
+            {"__chat__": "tell me more", "__question__": "Which DB?"}
+        )
+        assert is_error is False
+        assert status == "success"
+        payload = json.loads(content)
+        assert "chat" in payload
+        assert "tell me more" in payload["chat"]
+        assert "Which DB?" in payload["chat"]
+
+    def test_error_answer_is_is_error(self):
+        from aede.agent import _build_ask_user_result
+        status, content, is_error = _build_ask_user_result({"error": "ws gone"})
+        assert is_error is True
+        assert status == "error"
+        assert "ws gone" in content
+
+
 class TestT3_AutoMode:
     def test_auto_mode_single(self):
         from aede.agent import _build_auto_answers
