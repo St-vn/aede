@@ -4,6 +4,24 @@ from typing import Any
 import json
 
 
+VISION_MODELS: set[str] = {
+    # Anthropic
+    "claude-sonnet-4-6", "claude-opus-4-8", "claude-fable-5",
+    "claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-haiku-4-20250514",
+    # OpenAI
+    "gpt-5.5", "gpt-4.1", "gpt-4o", "gpt-4o-mini", "gpt-4-turbo",
+    # Google
+    "gemini-3.5-flash", "gemini-2.5-flash",
+    # DeepSeek (via API)
+    "deepseek-v4-pro", "deepseek-v4-flash",
+    # MiniMax
+    "minimax-m3",
+    # GLM
+    "glm-5.2", "glm-5.1", "glm-5",
+    # Kimi
+    "kimi-k2.7", "kimi-k2.5",
+}
+
 MODEL_PRESETS: dict[str, list[dict[str, str]]] = {
     "anthropic": [
         {"id": "claude-fable-5", "label": "Claude Fable 5"},

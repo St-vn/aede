@@ -641,7 +641,27 @@ class AgentLoop:
         a row), printing a warning.
         """
         self._turn += 1
-        self._messages.append({"role": "user", "content": user_input})
+        from aede.image_utils import parse_image_content
+
+        content_blocks = parse_image_content(user_input)
+
+        if not content_blocks:
+            content_blocks = [{"type": "text", "text": user_input}]
+
+        # Vision capability check — strip images for text-only models
+        has_images = any(b.get("type") == "image" for b in content_blocks)
+        stored_input = user_input
+        if has_images:
+            provider = self._get_provider()
+            if not provider.has_vision():
+                text_blocks = [b for b in content_blocks if b.get("type") != "image"]
+                text_blocks.append({
+                    "type": "text",
+                    "text": "\n[Image omitted: this model does not support vision.]"
+                })
+                stored_input = "".join(b.get("text", "") for b in text_blocks)
+
+        self._messages.append({"role": "user", "content": stored_input})
 
         from ulid import ULID
         msg_id = str(ULID())
@@ -649,10 +669,10 @@ class AgentLoop:
             id=msg_id,
             session_id=self._session.id,
             role="user",
-            content=user_input,
+            content=stored_input,
             token_count=None,
         )
-        self._rollout.write({"type": "user_message", "content": user_input})
+        self._rollout.write({"type": "user_message", "content": stored_input})
 
         await self._maybe_compact()
 
@@ -1039,6 +1059,7 @@ class AgentLoop:
         surfaced immediately without retry.
         """
         provider = self._get_provider()
+        from aede.image_utils import normalize_messages_for_provider
         last_exc: Exception | None = None
         for attempt in range(self._MAX_ATTEMPTS):
             try:
@@ -1053,7 +1074,7 @@ class AgentLoop:
                     model=self._cfg.model,
                     system=self._system_prompt,
                     tools=self._router.anthropic_tool_schemas(),
-                    messages=self._messages,
+                    messages=normalize_messages_for_provider(self._messages),
                     max_tokens=8096,
                     console=self._console,
                     reasoning_effort=self._cfg.reasoning_effort,

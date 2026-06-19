@@ -34,6 +34,10 @@ class NormalizedResponse:
 class Provider(Protocol):
     """Duck-type interface that both provider implementations satisfy."""
 
+    model_id: str
+
+    def has_vision(self) -> bool: ...
+
     async def stream_turn(
         self,
         *,
@@ -58,10 +62,15 @@ class Provider(Protocol):
 class AnthropicProvider:
     """Wraps AsyncAnthropic and streams a turn, returning a NormalizedResponse."""
 
-    def __init__(self, api_key: str, base_url: str | None = None) -> None:
+    def __init__(self, api_key: str, base_url: str | None = None, model_id: str = "") -> None:
         self._api_key = api_key
         self._base_url = base_url
         self._client: Any = None
+        self.model_id = model_id
+
+    def has_vision(self) -> bool:
+        from aede.models import VISION_MODELS
+        return self.model_id in VISION_MODELS
 
     def _get_client(self) -> Any:
         if self._client is None:
@@ -129,12 +138,15 @@ class AnthropicProvider:
                     {"type": "text", "text": last_content, "cache_control": {"type": "ephemeral"}}
                 ]
             else:
-                # Content is already a list; shallow-copy and inject on last block
+                # Content is already a list; copy all blocks as-is.
+                # Anthropic format is already canonical — image blocks pass through.
                 last_content_blocks = list(last_content)
                 if last_content_blocks:
+                    # Shallow-copy last block and attach cache_control at block level
+                    # (never inside source — image blocks keep their source intact)
                     last_block = dict(last_content_blocks[-1])
                     last_block["cache_control"] = {"type": "ephemeral"}
-                    last_content_blocks = last_content_blocks[:-1] + [last_block]
+                    last_content_blocks[-1] = last_block
             # Build a modified copy of the messages list — only the last message differs
             api_messages = messages[:-1] + [dict(last_msg, content=last_content_blocks)]
         else:
@@ -263,6 +275,23 @@ def _convert_messages_to_openai(
                 elif btype == "text":
                     text = block.get("text", "") if isinstance(block, dict) else getattr(block, "text", "")
                     pending_text_parts.append(text)
+                elif btype == "image":
+                    _flush_text()
+                    source = block.get("source", {})
+                    media_type = source.get("media_type", "image/png")
+                    b64 = source.get("data", "")
+                    result.append({
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{media_type};base64,{b64}",
+                                    "detail": "auto",
+                                },
+                            }
+                        ],
+                    })
                 else:
                     # Unknown block type — convert to string
                     _flush_text()
@@ -346,10 +375,15 @@ class OpenAIProvider:
     response on the way back.
     """
 
-    def __init__(self, api_key: str, base_url: str) -> None:
+    def __init__(self, api_key: str, base_url: str, model_id: str = "") -> None:
         self._api_key = api_key
         self._base_url = base_url
         self._client: Any = None
+        self.model_id = model_id
+
+    def has_vision(self) -> bool:
+        from aede.models import VISION_MODELS
+        return self.model_id in VISION_MODELS
 
     def _get_client(self) -> Any:
         if self._client is None:
@@ -591,6 +625,7 @@ class AcpProvider:
         stream_text: Any = None,
     ) -> None:
         self._model = model
+        self.model_id = model
         self._acp_manager = acp_manager
         self._credential_provider = credential_provider
         self._current_agent: str | None = None
@@ -600,6 +635,9 @@ class AcpProvider:
         # Set by AgentLoop after construction (mirrors _stream_text wiring).
         self._stream_tool_call = None
         self._stream_tool_result = None
+
+    def has_vision(self) -> bool:
+        return True
 
     async def stream_turn(
         self,
@@ -858,6 +896,8 @@ def _build_prompt_text(messages: list[dict]) -> str:
                         text_parts.append(block.get("text", ""))
                     elif block.get("type") == "tool_result":
                         text_parts.append(f"[tool result]: {block.get('content', '')}")
+                    elif block.get("type") == "image":
+                        text_parts.append("[Image attached]")
             if text_parts:
                 parts.append(f"[{role}]: {' '.join(text_parts)}")
     return "\n".join(parts)
@@ -906,7 +946,7 @@ def get_provider(cfg: Any, acp_manager: Any = None) -> AnthropicProvider | OpenA
             raise RuntimeError(
                 f"{env_key} is not set. Use /setkey {env_key} <key> first."
             )
-        return OpenAIProvider(api_key=api_key, base_url=base)
+        return OpenAIProvider(api_key=api_key, base_url=base, model_id=model)
 
     if model in GO_OPENAI_MODEL_IDS:
         providers = getattr(cfg, "providers", {})
@@ -918,7 +958,7 @@ def get_provider(cfg: Any, acp_manager: Any = None) -> AnthropicProvider | OpenA
             raise RuntimeError(
                 f"{env_key} is not set. Use /setkey {env_key} <key> first."
             )
-        return OpenAIProvider(api_key=api_key, base_url=base)
+        return OpenAIProvider(api_key=api_key, base_url=base, model_id=model)
 
     if model in GO_ANTHROPIC_MODEL_IDS:
         providers = getattr(cfg, "providers", {})
@@ -933,7 +973,7 @@ def get_provider(cfg: Any, acp_manager: Any = None) -> AnthropicProvider | OpenA
             raise RuntimeError(
                 f"{env_key} is not set. Use /setkey {env_key} <key> first."
             )
-        return AnthropicProvider(api_key=api_key, base_url=base)
+        return AnthropicProvider(api_key=api_key, base_url=base, model_id=model)
 
     is_anthropic_model = (
         model.startswith("claude-") or model.startswith("anthropic/")
@@ -946,7 +986,7 @@ def get_provider(cfg: Any, acp_manager: Any = None) -> AnthropicProvider | OpenA
             raise RuntimeError(
                 "DEEPSEEK_API_KEY is not set. Use /setkey DEEPSEEK_API_KEY <key> first."
             )
-        return OpenAIProvider(api_key=api_key, base_url=base_url or "https://api.deepseek.com")
+        return OpenAIProvider(api_key=api_key, base_url=base_url or "https://api.deepseek.com", model_id=model)
 
     if base_url and not is_anthropic_model:
         api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
@@ -955,11 +995,11 @@ def get_provider(cfg: Any, acp_manager: Any = None) -> AnthropicProvider | OpenA
                 "OpenRouter/OpenAI-compatible provider requires OPENROUTER_API_KEY "
                 "(or OPENAI_API_KEY) to be set. Use /setkey OPENROUTER_API_KEY <key> first."
             )
-        return OpenAIProvider(api_key=api_key, base_url=base_url)
+        return OpenAIProvider(api_key=api_key, base_url=base_url, model_id=model)
     else:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise RuntimeError(
                 "ANTHROPIC_API_KEY is not set. Use /setkey ANTHROPIC_API_KEY <key> first."
             )
-        return AnthropicProvider(api_key=api_key)
+        return AnthropicProvider(api_key=api_key, model_id=model)
