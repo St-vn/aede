@@ -453,7 +453,21 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
                 gate_store = PermissionStore()
                 gate_store.load_from_config(cfg.auto_approve)
-                gate_store.mode = PermissionMode.from_str(cfg.gate_mode)
+                # Resolve the permission mode for this turn. Precedence:
+                #   1. mode sent in the user_message payload (authoritative; the
+                #      UI sends the live selection, avoiding a PATCH-vs-send race)
+                #   2. the persisted per-session mode (PATCH /api/sessions)
+                #   3. the process-global cfg.gate_mode (shared fallback)
+                # cfg.gate_mode is shared across all WS connections, so relying
+                # on it alone would leak one session's mode into another.
+                _turn_mode = data.get("gate_mode") or session.gate_mode or cfg.gate_mode
+                gate_store.mode = PermissionMode.from_str(_turn_mode)
+                # Persist a payload-supplied mode so /resume and later turns keep it.
+                if data.get("gate_mode") and data["gate_mode"] != session.gate_mode:
+                    try:
+                        session.set_gate_mode(db, data["gate_mode"])
+                    except Exception:
+                        pass
 
                 router = ToolRouter(
                     shell=cfg.shell,
@@ -1555,6 +1569,19 @@ def _resolve_skill_path(home: Path, name: str, scope: str = "global", project_di
     return home / "skills" / f"{name}.md"
 
 
+def _find_skill_path(request: Request, name: str, scope: str = "global", project_dir: str | None = None) -> Path:
+    """Resolve a skill's file path using the registry (source of truth) first.
+
+    Falls back to :func:`_resolve_skill_path` for skills that don't exist in
+    the registry yet (e.g. brand-new skills created between cache invalidations).
+    """
+    sd = _get_skill_registry(request).get(name)
+    if sd is not None and sd.source_path is not None:
+        return sd.source_path
+    home = request.app.state.cfg.home
+    return _resolve_skill_path(home, name, scope, project_dir)
+
+
 @app.post("/api/agents/upload")
 async def upload_agent(request: Request, file: UploadFile = File(...)):
     """Upload an agent .md or .agent file and save it to the agents directory."""
@@ -1768,10 +1795,9 @@ async def create_skill(request: Request, payload: dict):
 @app.put("/api/skills/{name}")
 async def update_skill(request: Request, name: str, payload: dict):
     """Update an existing skill definition file."""
-    home = request.app.state.cfg.home
     scope = payload.get("scope", "global")
     project_dir = payload.get("project_dir")
-    filepath = _resolve_skill_path(home, name, scope, project_dir)
+    filepath = _find_skill_path(request, name, scope, project_dir)
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
     _write_skill_file(filepath, payload)
@@ -1782,10 +1808,9 @@ async def update_skill(request: Request, name: str, payload: dict):
 @app.delete("/api/skills/{name}")
 async def delete_skill(request: Request, name: str):
     """Delete a skill definition file."""
-    home = request.app.state.cfg.home
     scope = request.query_params.get("scope", "global")
     project_dir = request.query_params.get("project_dir")
-    filepath = _resolve_skill_path(home, name, scope, project_dir)
+    filepath = _find_skill_path(request, name, scope, project_dir)
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
     filepath.unlink()
@@ -1796,10 +1821,9 @@ async def delete_skill(request: Request, name: str):
 @app.post("/api/skills/{name}/open")
 async def open_skill_file(name: str, request: Request):
     """Open a skill definition file in the default OS editor."""
-    home = request.app.state.cfg.home
     scope = request.query_params.get("scope", "global")
     project_dir = request.query_params.get("project_dir")
-    filepath = _resolve_skill_path(home, name, scope, project_dir)
+    filepath = _find_skill_path(request, name, scope, project_dir)
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
     os.startfile(str(filepath))

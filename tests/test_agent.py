@@ -250,9 +250,9 @@ def _make_agent_loop_for_gate_test(batch_approval_max: int) -> "AgentLoop":
     loop._stream_text = None
     loop._stream_thinking = None
     loop._accumulated_thinking = ""
-    loop._mode = PermissionMode.NORMAL
     from aede.gate import PermissionStore, TerminalGateBackend
     loop._gate_store = PermissionStore(project_dir=loop._project_dir)
+    loop._gate_store.mode = PermissionMode.NORMAL
     loop._tracker = MagicMock()
     loop._tracker.record = MagicMock()
     loop._tokens_since_last_reminder = 0
@@ -410,7 +410,7 @@ async def test_auto_mode_skips_ask_user():
     from aede.gate import PermissionMode
 
     loop = _make_agent_loop_for_gate_test(batch_approval_max=5)
-    loop._mode = PermissionMode.AUTO
+    loop._gate_store.mode = PermissionMode.AUTO
 
     tool_calls = [
         {"id": "q1", "name": "ask_user_choices", "input": {"question": "Pick", "choices": ["a", "b"]}},

@@ -92,6 +92,7 @@ export function useWebSocket(
       type: 'user_message',
       content: msg.content,
       ...(msg.model ? { model: msg.model } : {}),
+      ...(msg.gate_mode ? { gate_mode: msg.gate_mode } : {}),
     } : msg
 
     const attemptSend = () => {

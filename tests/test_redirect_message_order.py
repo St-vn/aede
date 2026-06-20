@@ -60,8 +60,8 @@ def _make_agent_loop(batch_approval_max: int = 5):
     loop._stream_text = None
     loop._stream_thinking = None
     loop._accumulated_thinking = ""
-    loop._mode = PermissionMode.NORMAL
     loop._gate_store = PermissionStore(project_dir=loop._project_dir)
+    loop._gate_store.mode = PermissionMode.NORMAL
     loop._tracker = MagicMock()
     loop._tracker.record = MagicMock()
     loop._gate_backend = TerminalGateBackend(

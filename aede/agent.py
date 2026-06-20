@@ -535,8 +535,13 @@ class AgentLoop:
         self._ask_user_backend = ask_user_backend or TerminalAskUserBackend(
             console=self._console,
         )
+        # The gate_store is the single source of truth for the active permission
+        # mode (see the _mode property below).  Seed it from the session/config
+        # if a stored mode is present so /resume restores the right mode; the
+        # CLI/server may also have already set it.
         session_mode = getattr(session, "gate_mode", None)
-        self._mode = PermissionMode.from_str(session_mode or getattr(cfg, "gate_mode", "normal"))
+        if session_mode:
+            self._gate_store.mode = PermissionMode.from_str(session_mode)
 
         self._messages: list[dict] = []
         self._turn = 0
@@ -551,6 +556,17 @@ class AgentLoop:
         self._current_objective: str = ""
         self._active_constraints: str = ""
         self._open_decisions: str = ""
+
+    @property
+    def _mode(self):
+        """Active permission mode, read live from the gate_store.
+
+        The gate_store is the single source of truth; ``/mode`` mutates it via
+        handle_mode.  Reading through this property prevents the agent from
+        acting on a stale mode captured at construction time, which previously
+        caused AUTO/EXECUTION to keep prompting after a mid-session switch.
+        """
+        return self._gate_store.mode
 
     def initialize(
         self,

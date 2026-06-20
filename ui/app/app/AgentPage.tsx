@@ -101,6 +101,13 @@ export function AgentPage() {
         model: selectedModel,
         projectDir: activeProjectDir ?? undefined,
       })
+      // Persist the selected permission mode to the new session BEFORE the WS
+      // turn fires. The server reads session.gate_mode per turn, so without
+      // this a mode chosen on a fresh chat (no activeId yet) would be lost and
+      // the turn would run under the default mode, re-prompting for shell/edits.
+      if (currentMode && currentMode !== 'normal') {
+        await updateSessionMode.mutateAsync({ sessionId: session.id, gateMode: currentMode })
+      }
       setInitialMessage(content)
       setActiveId(session.id)
       setActiveProjectDir(null)

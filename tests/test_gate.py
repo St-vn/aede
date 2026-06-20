@@ -95,6 +95,40 @@ def test_safety_classifier_shell_safe_patterns():
     assert sc.classify("powershell", {"cmd": "ls -la"})[0].name == "ALLOW"
 
 
+@pytest.mark.parametrize("cmd", [
+    "Get-ChildItem -Path .",
+    "Get-Content foo.txt",
+    "Test-Path foo",
+    "Resolve-Path .",
+    "Select-String pattern file",
+    "Where-Object { $_.Name }",
+])
+def test_safety_classifier_allows_readonly_powershell(cmd):
+    sc = SafetyClassifier()
+    assert sc.classify("powershell", {"cmd": cmd})[0].name == "ALLOW"
+
+
+@pytest.mark.parametrize("cmd", [
+    "Remove-Item foo",
+    "Set-Content foo bar",
+    "New-Item foo",
+])
+def test_safety_classifier_still_asks_mutating_powershell(cmd):
+    sc = SafetyClassifier()
+    assert sc.classify("powershell", {"cmd": cmd})[0].name == "ASK"
+
+
+def test_execution_mode_auto_allows_readonly_powershell():
+    """Regression: EXECUTION mode used to gate every PowerShell command because
+    the safe-command allowlist had no PowerShell cmdlets."""
+    store = PermissionStore()
+    store.mode = PermissionMode.EXECUTION
+    assert store.tool_action("powershell", {"cmd": "Get-ChildItem"}) == "allow"
+    assert store.tool_action("powershell", {"cmd": "Get-Content x"}) == "allow"
+    # Mutating cmdlets still gate.
+    assert store.tool_action("powershell", {"cmd": "Remove-Item x"}) is None
+
+
 def test_safety_classifier_shell_unknown_asks():
     sc = SafetyClassifier()
     assert sc.classify("powershell", {"cmd": "terraform apply"})[0].name == "ASK"

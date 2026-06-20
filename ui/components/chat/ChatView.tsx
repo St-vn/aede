@@ -15,6 +15,7 @@ import { ContextBar } from './ContextBar'
 import { LearningsChip } from './LearningsChip'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { ChevronDown } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useRewind } from '@/hooks/useSession'
 
@@ -90,6 +91,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   const [rewindKey, setRewindKey] = useState(0)
   const [rewindText, setRewindText] = useState<string | undefined>(undefined)
   const [rewindImages, setRewindImages] = useState<ImageAttachment[] | undefined>(undefined)
+  const [nearBottom, setNearBottom] = useState(true)
 
   useEffect(() => {
     if (messages.length > prevMessagesLenRef.current && streamingText && !isStreaming) {
@@ -250,25 +252,50 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
       initialSentRef.current = true
       const id = `pending-${Date.now()}`
       setPendingMessages(p => [...p, { content: initialMessage, id }])
-      send({ type: 'user_turn', content: initialMessage })
+      send({ type: 'user_turn', content: initialMessage, gate_mode: mode })
       setIsStreaming(true)
       onClearInitialMessage?.()
     }
   }, [initialMessage, send, onClearInitialMessage])
 
-  // Auto-scroll to bottom only if user is already near the bottom
+  // Track whether user is near bottom via scroll events (for the scroll-to-bottom button)
   useEffect(() => {
     const viewport = containerRef.current?.querySelector('[data-slot="scroll-area-viewport"]')
     if (!viewport) return
-    const threshold = 150 // pixels from bottom
+    const handleScroll = () => {
+      const threshold = 75
+      setNearBottom(viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < threshold)
+    }
+    handleScroll()
+    viewport.addEventListener('scroll', handleScroll, { passive: true })
+    return () => viewport.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Initial scroll to bottom when session loads with messages
+  useEffect(() => {
+    if (messages.length === 0) return
+    const viewport = containerRef.current?.querySelector('[data-slot="scroll-area-viewport"]')
+    if (!viewport) return
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' })
+  }, [sessionId, messages.length])
+
+  // Auto-scroll when new content arrives if user is near bottom (inline DOM check)
+  useEffect(() => {
+    const viewport = containerRef.current?.querySelector('[data-slot="scroll-area-viewport"]')
+    if (!viewport) return
+    const threshold = 100
     const isNearBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < threshold
     if (isNearBottom) {
-      viewport.scrollTo({
-        top: viewport.scrollHeight,
-        behavior: 'smooth',
-      })
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' })
     }
-  }, [messages, streamingText])
+  }, [messages, streamingText, streamingBlocks, gates, askUserRequests])
+
+  const scrollToBottom = () => {
+    const viewport = containerRef.current?.querySelector('[data-slot="scroll-area-viewport"]')
+    if (!viewport) return
+    setNearBottom(true)
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' })
+  }
 
   const handleStop = useCallback(() => {
     send({ type: 'stop' })
@@ -282,7 +309,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   const handleSend = (content: string, model?: string) => {
     const id = `pending-${Date.now()}`
     setPendingMessages(p => [...p, { content, id }])
-    send({ type: 'user_turn', content, model })
+    send({ type: 'user_turn', content, model, gate_mode: mode })
     setStreamingText('')
     setIsStreaming(true)
     setStreamingBlocks([])
@@ -376,58 +403,69 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
 
   return (
     <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
-      <ScrollArea className="flex-1 min-h-0 px-4">
-        <div className="max-w-[760px] mx-auto py-4 px-4 space-y-1">
-          {messages.map((m, mi) =>
-            m.is_branch_point
-              ? <div key={m.id} className="flex items-center gap-3 py-4 px-4 select-none">
-                <div className="flex-1 h-px bg-border" />
-                <span className="text-xs text-muted-foreground shrink-0">Branch point</span>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-              : m.role === 'user'
-                ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} messageId={m.id} onRewind={handleRewind} />
-                : <React.Fragment key={m.id}>
-                  <AssistantMessage
-                    content={m.content}
-                    isStreaming={false}
-                    thinking={m.thinking}
-                    thinkingSegments={m.thinking_segments}
-                    turnDurationMs={getTurnDuration(m, mi)}
-                  />
-                  {!isStreaming && m.tool_calls?.map((tc, ti) => (
-                    <ToolCallCard key={toolBlockKey(tc, ti)} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
-                      args={tc.args} output={tc.output} durationMs={tc.durationMs} />
-                  ))}
-                </React.Fragment>
-          )}
-          {pendingMessages.map(pm => (
-            <UserMessage key={pm.id} content={pm.content} timestamp={new Date().toISOString()} />
-          ))}
-          {/* Interleaved streaming blocks: thinking + tool calls in execution order */}
-          {sortedBlocks.map((block, bi) =>
-            block.kind === 'thinking'
-              ? <ThinkingBlock key={`thinking-${block.seq}`} thinking={block.text} isStreaming={isStreaming} />
-              : <ToolCallCard key={toolBlockKey(block, bi)} toolName={block.name} status={block.status as 'running' | 'success' | 'error' | 'denied'}
-                args={block.args} output={block.output} durationMs={block.durationMs} streamingOutput={block.streamingOutput} />
-          )}
-          {(streamingText || isStreaming) && (
-            <AssistantMessage content={streamingText} isStreaming={isStreaming} turnDurationMs={lastTurnDurationMs ?? undefined} />
-          )}
-          {gates.length > 1 && (
-            <GateBatchCard gates={gates} onDecision={(gateId, decision) =>
-              handleGateDecision({ gateId, decision })} />
-          )}
-          {gates.length === 1 && (
-            <GateCard gateId={gates[0].gateId} toolName={gates[0].toolName}
-              args={gates[0].args} mode={gates[0].mode} reason={gates[0].reason}
-              options={gates[0].options} onDecision={handleGateDecision} />
-          )}
-          {askUserRequests.map(req => (
-            <QuestionCard key={req.questionId} request={req} onAnswer={handleAskUserAnswer} onChat={handleQuestionChat} />
-          ))}
-        </div>
-      </ScrollArea>
+      <div className="relative flex flex-col flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0 px-4">
+          <div className="max-w-[760px] mx-auto py-4 px-4 space-y-1">
+            {messages.map((m, mi) =>
+              m.is_branch_point
+                ? <div key={m.id} className="flex items-center gap-3 py-4 px-4 select-none">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-xs text-muted-foreground shrink-0">Branch point</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+                : m.role === 'user'
+                  ? <UserMessage key={m.id} content={m.content} timestamp={m.created_at} messageId={m.id} onRewind={handleRewind} />
+                  : <React.Fragment key={m.id}>
+                    <AssistantMessage
+                      content={m.content}
+                      isStreaming={false}
+                      thinking={m.thinking}
+                      thinkingSegments={m.thinking_segments}
+                      turnDurationMs={getTurnDuration(m, mi)}
+                    />
+                    {!isStreaming && m.tool_calls?.map((tc, ti) => (
+                      <ToolCallCard key={toolBlockKey(tc, ti)} toolName={tc.name} status={tc.status as 'running' | 'success' | 'error' | 'denied'}
+                        args={tc.args} output={tc.output} durationMs={tc.durationMs} />
+                    ))}
+                  </React.Fragment>
+            )}
+            {pendingMessages.map(pm => (
+              <UserMessage key={pm.id} content={pm.content} timestamp={new Date().toISOString()} />
+            ))}
+            {/* Interleaved streaming blocks: thinking + tool calls in execution order */}
+            {sortedBlocks.map((block, bi) =>
+              block.kind === 'thinking'
+                ? <ThinkingBlock key={`thinking-${block.seq}`} thinking={block.text} isStreaming={isStreaming} />
+                : <ToolCallCard key={toolBlockKey(block, bi)} toolName={block.name} status={block.status as 'running' | 'success' | 'error' | 'denied'}
+                  args={block.args} output={block.output} durationMs={block.durationMs} streamingOutput={block.streamingOutput} />
+            )}
+            {(streamingText || isStreaming) && (
+              <AssistantMessage content={streamingText} isStreaming={isStreaming} turnDurationMs={lastTurnDurationMs ?? undefined} />
+            )}
+            {gates.length > 1 && (
+              <GateBatchCard gates={gates} onDecision={(gateId, decision) =>
+                handleGateDecision({ gateId, decision })} />
+            )}
+            {gates.length === 1 && (
+              <GateCard gateId={gates[0].gateId} toolName={gates[0].toolName}
+                args={gates[0].args} mode={gates[0].mode} reason={gates[0].reason}
+                options={gates[0].options} onDecision={handleGateDecision} />
+            )}
+            {askUserRequests.map(req => (
+              <QuestionCard key={req.questionId} request={req} onAnswer={handleAskUserAnswer} onChat={handleQuestionChat} />
+            ))}
+          </div>
+        </ScrollArea>
+        {!nearBottom && (
+          <div className="absolute bottom-2 left-0 right-0 flex justify-center pointer-events-none z-10">
+            <button onClick={scrollToBottom}
+              className="pointer-events-auto w-7 h-7 flex items-center justify-center rounded-full bg-card/90 hover:bg-card transition-colors"
+              aria-label="Scroll to bottom">
+              <ChevronDown className="w-3.5 h-3.5 text-white" />
+            </button>
+          </div>
+        )}
+      </div>
       <ContextBar sessionId={sessionId} />
       <div className="max-w-[760px] mx-auto w-full px-4 pb-1 flex items-center justify-end">
         <LearningsChip sessionId={sessionId} />

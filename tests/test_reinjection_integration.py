@@ -51,7 +51,6 @@ def test_reinjection_adds_user_message():
     loop._provider = None
     loop._system_prompt = ""
     loop._turn = 0
-    loop._mode = MagicMock()
     loop._skills = None
     loop._learnings_suffix = None
     loop._trace_logger = None

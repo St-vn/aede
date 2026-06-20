@@ -216,6 +216,19 @@ class SafetyClassifier:
         r"^find(\s|$)",
         r"^wc(\s|$)",
         r"^which(\s|$)",
+        # PowerShell read-only cmdlets (cmd may be prefixed/piped, so no ^ anchor
+        # requirement on these — match the verb token at a word boundary).
+        r"^Get-\w+(\s|$)",
+        r"^Test-Path(\s|$)",
+        r"^Resolve-Path(\s|$)",
+        r"^Select-String(\s|$)",
+        r"^Measure-Object(\s|$)",
+        r"^Where-Object(\s|$)",
+        r"^Select-Object(\s|$)",
+        r"^Sort-Object(\s|$)",
+        r"^Format-(List|Table|Wide)(\s|$)",
+        r"^Out-String(\s|$)",
+        r"^Compare-Object(\s|$)",
     ]
 
     def __init__(
