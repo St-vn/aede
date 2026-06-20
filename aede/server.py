@@ -530,11 +530,20 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 )
                 state.agent = agent
 
-                # Load prior messages for context
+                # Load prior messages for context.
+                #
+                # Tool-only assistant turns are persisted with empty content
+                # (the tool_use blocks live in the tool_calls table and are not
+                # reattached here). Replaying {"role":"assistant","content":""}
+                # makes OpenAI-style providers (DeepSeek via opencode-go) reject
+                # the request with "content or tool_calls must be set". Drop
+                # assistant rows whose content is blank so resumed sessions with
+                # heavy tool use stay sendable.
                 rows = db.get_messages(session.id)
                 prior_messages = [
                     {"role": r["role"], "content": r["content"]}
                     for r in rows
+                    if not (r["role"] == "assistant" and not (r["content"] or "").strip())
                 ]
                 agent.initialize(is_resume=True, prior_messages=prior_messages)
                 print(f"[WS#{hid}] AgentLoop initialized", flush=True)

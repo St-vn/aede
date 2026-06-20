@@ -173,6 +173,75 @@ class TestConvertMessagesToOpenAI:
         result = self._convert("sys", [{"role": "assistant", "content": "hi"}])
         assert result[1] == {"role": "assistant", "content": "hi"}
 
+    def test_empty_assistant_string_is_skipped(self):
+        # Tool-only assistant turns are persisted with empty content; replayed
+        # as a bare "" string they must not be emitted (DeepSeek rejects an
+        # assistant message with neither content nor tool_calls).
+        messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": ""},
+            {"role": "user", "content": "still there?"},
+        ]
+        result = self._convert("sys", messages)
+        roles = [m["role"] for m in result]
+        assert roles == ["system", "user", "user"]
+        assert all(not (m["role"] == "assistant" and not m.get("content")) for m in result)
+
+    def test_whitespace_assistant_string_is_skipped(self):
+        messages = [{"role": "assistant", "content": "   \n"}]
+        result = self._convert("sys", messages)
+        assert result == [{"role": "system", "content": "sys"}]
+
+    def test_consecutive_assistant_strings_are_merged(self):
+        # Multi-step turns persist as multiple assistant rows. Replayed, they
+        # become adjacent assistant messages, which DeepSeek/opencode-go reject.
+        messages = [
+            {"role": "user", "content": "go"},
+            {"role": "assistant", "content": "step one"},
+            {"role": "assistant", "content": "step two"},
+            {"role": "user", "content": "next"},
+        ]
+        result = self._convert("sys", messages)
+        roles = [m["role"] for m in result]
+        assert roles == ["system", "user", "assistant", "user"]
+        assert result[2]["content"] == "step one\n\nstep two"
+
+    def test_consecutive_user_strings_are_merged(self):
+        messages = [
+            {"role": "user", "content": "first"},
+            {"role": "user", "content": "second"},
+        ]
+        result = self._convert("sys", messages)
+        assert [m["role"] for m in result] == ["system", "user"]
+        assert result[1]["content"] == "first\n\nsecond"
+
+    def test_resumed_session_shape_has_strict_alternation(self):
+        # Reproduces the failing-session shape: empty (tool-only) assistant
+        # rows interleaved with consecutive filled assistant rows. After
+        # conversion the message roles must strictly alternate user/assistant
+        # with no empty assistant messages — what OpenAI-style providers require.
+        messages = [
+            {"role": "user", "content": "read file"},
+            {"role": "assistant", "content": ""},          # tool-only, dropped
+            {"role": "assistant", "content": "here it is"},
+            {"role": "user", "content": "edit it"},
+            {"role": "assistant", "content": "not found"},
+            {"role": "assistant", "content": "still not found"},  # merged
+            {"role": "user", "content": "list files"},
+            {"role": "assistant", "content": ""},          # tool-only, dropped
+            {"role": "assistant", "content": "10 files"},
+        ]
+        result = self._convert("sys", messages)
+        roles = [m["role"] for m in result]
+        # system then strict U/A alternation
+        assert roles[0] == "system"
+        body = roles[1:]
+        for i in range(1, len(body)):
+            assert body[i] != body[i - 1], (i, body)
+        for m in result:
+            if m["role"] == "assistant":
+                assert m.get("content") or m.get("tool_calls"), m
+
     def test_tool_result_user_block_becomes_role_tool(self):
         messages = [
             {

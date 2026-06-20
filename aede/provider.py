@@ -231,11 +231,41 @@ def _convert_messages_to_openai(
     """
     result: list[dict] = [{"role": "system", "content": system}]
 
+    # Coalesce consecutive same-role plain-string messages. aede sometimes
+    # persists more than one row for a single logical turn (e.g. a multi-step
+    # assistant turn split across rows, or two user messages sent in a row).
+    # On resume these replay as adjacent same-role messages, which OpenAI-style
+    # providers (DeepSeek via opencode-go) reject:
+    #   "An assistant message ... must be followed by ..." / role-alternation
+    #   errors surfacing as 400. Merge only plain strings — list-content
+    #   messages carry tool_use/tool_result blocks whose ordering must be
+    #   preserved and are handled block-by-block below.
+    coalesced: list[dict] = []
+    for msg in messages:
+        if (
+            coalesced
+            and coalesced[-1]["role"] == msg["role"]
+            and isinstance(coalesced[-1].get("content"), str)
+            and isinstance(msg.get("content"), str)
+        ):
+            joined = (coalesced[-1]["content"] + "\n\n" + msg["content"]).strip()
+            coalesced[-1] = {"role": msg["role"], "content": joined}
+        else:
+            coalesced.append(msg)
+    messages = coalesced
+
     for msg in messages:
         role = msg["role"]
         content = msg["content"]
 
         if isinstance(content, str):
+            # An assistant message with empty content and no tool_calls is
+            # rejected by OpenAI-style providers (DeepSeek via opencode-go:
+            # "content or tool_calls must be set"). This happens when a
+            # tool-only assistant turn is replayed from history as a bare
+            # string. Skip it — it carries no usable content.
+            if role == "assistant" and not content.strip():
+                continue
             result.append({"role": role, "content": content})
             continue
 
