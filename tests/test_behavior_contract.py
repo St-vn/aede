@@ -58,3 +58,14 @@ def test_confirmation_policy_present():
 def test_tool_output_authority_present():
     prompt = _prompt()
     assert "tool output" in prompt.lower() or "information" in prompt.lower()
+
+
+def test_binding_switch_clause_present():
+    prompt = _prompt()
+    assert '"Use X instead of Y" is a binding switch' in prompt
+
+
+def test_unavailable_tool_clause_present():
+    prompt = _prompt()
+    assert "report that it is unavailable" in prompt
+    assert "do NOT substitute" in prompt

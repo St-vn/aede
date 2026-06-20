@@ -11,6 +11,19 @@ venv/
 # build / scripts
 *.exe
 
+# node (only present when MCP plugins pull JS deps; never aede's own)
+node_modules/
+
+# Playwright MCP scratch — screenshots, page snapshots, console/network dumps
+# left in the repo root by the browser MCP plugin during sessions. Never source.
+.playwright-mcp/
+/desktop.png
+/*_pdf.png
+/portfolio_html.txt
+/portfolio_text.txt
+/all_text_nodes.txt
+/js_bundle.txt
+
 # env
 .env
 

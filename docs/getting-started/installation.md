@@ -34,6 +34,23 @@ uv sync
 uv run aede
 ```
 
+## Optional external tools
+
+aede can drive tools that live on your machine but are **not bundled** with aede —
+you install them yourself, and aede uses them only if present. Nothing here is
+required for core aede; install only what you need.
+
+| Tool | What it adds | How to install |
+|------|--------------|----------------|
+| **agent-browser** (Vercel) | Render JavaScript pages / SPAs that `fetch_url` can't read (it refuses HTML by design) | Install the `agent-browser` CLI per Vercel's docs, ensure it's on your `PATH` |
+| **Python 3.12+** | Required by agent-browser and most external CLIs aede shells out to | Same Python aede already needs (see Prerequisites above) |
+| **Docker** | Sandbox boundary for running external CLIs / browsers safely on untrusted pages | Install Docker Desktop (<https://docs.docker.com/get-docker/>) — only needed if you enable sandboxed execution |
+
+> **Note for non-technical users:** these are advanced, opt-in capabilities.
+> If a tool isn't installed, aede simply reports it as unavailable rather than
+> guessing — it will never silently substitute a different tool. You can ignore
+> this whole section unless you specifically want browser/SPA scraping.
+
 ## First Run
 
 On first launch, aede creates its home directory at `~/.aede/` with this structure:
