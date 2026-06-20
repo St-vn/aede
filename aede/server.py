@@ -1806,6 +1806,13 @@ async def open_skill_file(name: str, request: Request):
     return {"status": "ok"}
 
 
+@app.get("/api/tools")
+async def list_tools():
+    """Return list of available tools (name and description only)."""
+    from aede.tools.router import _TOOL_SCHEMAS
+    return [{"name": t["name"], "description": t["description"]} for t in _TOOL_SCHEMAS.values()]
+
+
 def _write_skill_file(filepath: Path, payload: dict) -> None:
     import yaml
     frontmatter = {}
