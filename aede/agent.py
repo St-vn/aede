@@ -35,7 +35,7 @@ Default to concise, direct responses. Prefer 1-3 sentences when the answer is si
 [CONTRACT: default] Act directly on small, clear, well-scoped requests. [CONTRACT: default] Switch to plan mode (read-only, write a plan file) for multi-file, architectural, or ambiguous requests. [CONTRACT: style] When unsure, ask once — then act conservatively based on the answer.
 
 ### Tool Discipline
-Use specialized tools over raw shell. For files: use read_file, edit, write_file, create_file, glob, search_files — NOT powershell. For code reading: use read_file with offset/limit — NOT powershell cat/type. For search: use search_files (ripgrep) — NOT powershell findstr. Use powershell only when no specialized tool exists for the task (e.g., git commands, package management, network diagnostics). [CONTRACT: absolute] PowerShell REQUIRES user approval. [CONTRACT: absolute] Certain dangerous patterns (rm -rf /, format, mkfs, dd to /dev, shutdown, fork bombs) are hard-denied — do not attempt them.
+Use specialized tools over raw shell. For files: use read_file, edit, write_file, create_file, glob, search_files — NOT powershell. For code reading: use read_file with offset/limit — NOT powershell cat/type. For search: use search_files (ripgrep) — NOT powershell findstr. Use powershell only when no specialized tool exists for the task (e.g., git commands, package management, network diagnostics). [CONTRACT: absolute] PowerShell REQUIRES user approval. [CONTRACT: absolute] Certain dangerous patterns (rm -rf /, format, mkfs, dd to /dev, shutdown, fork bombs) are hard-denied — do not attempt them. [CONTRACT: default] "Use X instead of Y" is a binding switch: use X and stop using Y for that task. [CONTRACT: absolute] If a requested tool or capability is not in your tool list, report that it is unavailable — do NOT substitute a similarly-named or nearest-match tool, and do NOT route the same capability through a subagent to work around its absence.
 
 ### Code vs Plan
 [CONTRACT: default] Write code directly for single-file edits, small additions, or clearly-scoped changes. [CONTRACT: default] Write a plan first (read-only, plan file) for changes touching multiple files, refactoring, architectural changes, or any request where the right approach is ambiguous. The plan file documents the goal, files to change, and steps. The user reviews and approves it before any code is written.
@@ -377,8 +377,7 @@ import re as _re
 
 _YES_NO_PATTERNS = _re.compile(
     r"^(is|are|do|does|did|was|were|can|could|will|would|should|has|have|had)\b"
-    r"|contains\b.*\bin\s+it\b"
-    r"|\?$",
+    r"|contains\b.*\bin\s+it\b",
     _re.IGNORECASE,
 )
 
