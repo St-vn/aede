@@ -50,7 +50,7 @@ function buildDynamicCommands(
     for (const s of skills) {
       cmds.push({
         trigger: `/skill ${s.name}`,
-        description: s.description.slice(0, 60),
+        description: (s.description ?? '').slice(0, 60),
         category: 'skills',
       })
     }
@@ -60,7 +60,7 @@ function buildDynamicCommands(
     for (const a of agents) {
       cmds.push({
         trigger: `/agent ${a.name}`,
-        description: a.description.slice(0, 60),
+        description: (a.description ?? '').slice(0, 60),
         category: 'agents',
       })
     }

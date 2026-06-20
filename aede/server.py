@@ -709,19 +709,26 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
 
     except WebSocketDisconnect:
         print(f"[WS#{hid}] WebSocket disconnected", flush=True)
-        # Do NOT cancel a turn that is waiting on a gate: the session-level
-        # gate state survives, and a reconnecting socket will adopt it and
-        # re-send the pending request.  Only cancel a turn with no outstanding
-        # gate (genuinely abandoned work with nothing to resume).
+        # Turn durability (Tier 1): a disconnect — browser close or session
+        # switch — never cancels the in-flight turn. The turn task lives in the
+        # process-global ``session_states`` map, independent of any socket, so
+        # it runs to completion and ``on_turn_done`` persists the final assistant
+        # message to the DB. A reconnecting (or returning) browser re-reads the
+        # turn via ``db.get_messages`` on session load.
+        #
+        # Note: live deltas emitted while no socket is bound are dropped
+        # (``send_live`` swallows the send error) — the reconnect sees the final
+        # persisted result, not a replay of the stream. Buffering deltas for
+        # replay is Tier 1.5 (out of scope); an orphan-turn TTL sweep for turns
+        # whose browser never returns is a deferred follow-up. See
+        # docs-internal/roadmap/phase2-gap-backlog.md P0.10.
+        #
+        # Only the explicit ``stop`` message (handled above) cancels a turn.
         turn_state = state
-        gates_pending = bool(turn_state.gate.futures)
         if gate.websocket is websocket:
             gate.websocket = None  # current socket is gone; await reconnect
-        if turn_state.turn_task is not None and not turn_state.turn_task.done() and not gates_pending:
-            print(f"[WS#{hid}] no pending gate — cancelling abandoned turn", flush=True)
-            turn_state.turn_task.cancel()
-        elif gates_pending:
-            print(f"[WS#{hid}] gate pending — leaving turn alive for reconnect", flush=True)
+        if turn_state.turn_task is not None and not turn_state.turn_task.done():
+            print(f"[WS#{hid}] disconnect — leaving turn alive (durable; finishes detached)", flush=True)
     except Exception as e:
         print(f"[WS#{hid}] UNHANDLED EXCEPTION: {e}", flush=True)
         import traceback
@@ -1181,7 +1188,7 @@ async def get_config(request: Request):
                  "api_base_url", "grounding_enabled", "critic_enabled", "critic_model",
                  "critic_api_base_url", "ollama_base_url", "ollama_embed_model",
                  "ollama_timeout_s", "learnings_top_k", "learnings_max_tokens",
-                 "reasoning_effort", "thinking_budget",
+                 "reasoning_effort", "thinking_budget", "gate_mode",
                  "voice_input_enabled", "voice_wake_word_enabled",
                  "voice_asr_model", "voice_wake_model"):
         val = getattr(cfg, key, None)

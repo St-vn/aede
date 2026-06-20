@@ -26,6 +26,7 @@ export interface AedeConfig {
   learnings_max_tokens: number
   reasoning_effort: string
   thinking_budget: number
+  gate_mode?: string
   model_prices: Record<string, unknown>
   mcp_servers: Record<string, unknown>
 }

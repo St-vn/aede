@@ -29,10 +29,36 @@ function Wrapper({ children }: any) {
   )
 }
 
+// Route apiFetch by URL so every query in the (large) component tree resolves
+// to a sane default. A bare mockResolvedValueOnce chain breaks the moment a new
+// query (useSoul, useSkills, useAgents, useMcpServers, useModels, ...) is added
+// to the tree, since unmatched calls then resolve to undefined and crash on
+// `.then`/`.slice`. Tests override specific endpoints via `routes`.
+const sessionsResponse = {
+  projects: {} as Record<string, unknown>,
+  global: { sessions: [sess], total: 1, limit: 50, offset: 0, has_more: false },
+}
+
+function mockApi(routes: Record<string, unknown> = {}) {
+  vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+    for (const [prefix, value] of Object.entries(routes)) {
+      if (path === prefix || path.startsWith(prefix)) return value as any
+    }
+    // GET /api/sessions returns the grouped {projects, global} shape; the POST
+    // path and the /messages sub-path are handled by `routes` overrides.
+    if (path === '/api/sessions' || path.startsWith('/api/sessions?')) {
+      return sessionsResponse as any
+    }
+    if (path.startsWith('/api/config')) return {} as any
+    if (path.startsWith('/api/soul')) return {} as any
+    // Skills/agents/models/projects are list-shaped; mcp servers object-shaped.
+    if (path.startsWith('/api/mcp')) return {} as any
+    return [] as any
+  })
+}
+
 test('clicking session loads messages', async () => {
-  vi.mocked(apiFetch)
-    .mockResolvedValueOnce([sess])  // sessions list
-    .mockResolvedValueOnce([])      // messages for s1
+  mockApi({ '/api/sessions/s1/messages': [] })
   render(<AgentPage />, { wrapper: Wrapper })
   await waitFor(() => screen.getByText('debug session'))
   fireEvent.click(screen.getByText('debug session'))
@@ -40,7 +66,7 @@ test('clicking session loads messages', async () => {
 })
 
 test('new session button shows empty state', async () => {
-  vi.mocked(apiFetch).mockResolvedValue([sess])
+  mockApi()
   render(<AgentPage />, { wrapper: Wrapper })
   await waitFor(() => screen.getByText('debug session'))
   fireEvent.click(screen.getByRole('button', { name: /new session/i }))
