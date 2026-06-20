@@ -396,6 +396,13 @@ def _normalize_question_payload(tool_name: str, tool_input: dict) -> list[dict]:
         for q in questions:
             q.setdefault("allow_custom", True)
             q.setdefault("allow_notes", True)
+            # Normalize type to match data shape: options present → choice, absent → text.
+            # The LLM's declared ``type`` is unreliable — ``options`` is the source of truth.
+            if q.get("options"):
+                if q.get("type") == "text":
+                    q["type"] = "single"
+            else:
+                q["type"] = "text"
         return questions
     if tool_name == "ask_user_choices":
         return [{
