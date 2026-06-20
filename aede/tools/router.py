@@ -658,7 +658,9 @@ _TOOL_SCHEMAS: dict[str, dict] = {
             "other answer is valid.\n"
             "- allow_notes: set to true whenever the user's rationale or context would be helpful. "
             "Default is true. Only set false for purely mechanical choices.\n"
-            "- required: set to false for optional questions the user may skip."
+            "- required: set to false for optional questions the user may skip.\n\n"
+            "IMPORTANT: Yes/no questions MUST use type \"single\" with options [\"Yes\", \"No\"]. "
+            "Never use type \"text\" for questions with a finite set of answers."
         ),
         "input_schema": {
             "type": "object",

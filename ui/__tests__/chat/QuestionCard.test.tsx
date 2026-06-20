@@ -71,6 +71,27 @@ test('renders text textarea', () => {
   expect(textarea).toHaveValue('Keep it short')
 })
 
+test('Continue enabled after typing in text question', () => {
+  const props = makeRequest({
+    questions: [
+      {
+        header: 'Quiz Q1',
+        question: 'Your email contains chhun in it?',
+        type: 'text' as const,
+        allow_custom: false,
+        allow_notes: false,
+        required: true,
+      },
+    ],
+  })
+  render(<QuestionCard {...props} />)
+  const saveButton = screen.getByTestId('save-question-0')
+  expect(saveButton).toBeDisabled()
+  const textarea = screen.getByRole('textbox')
+  fireEvent.change(textarea, { target: { value: 'yes' } })
+  expect(saveButton).toBeEnabled()
+})
+
 test('custom "Give your own answer" reveals text input for single-select', () => {
   const props = makeRequest({
     questions: [

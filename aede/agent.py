@@ -373,6 +373,24 @@ def _is_html_body(text: str) -> bool:
     )
 
 
+import re as _re
+
+_YES_NO_PATTERNS = _re.compile(
+    r"^(is|are|do|does|did|was|were|can|could|will|would|should|has|have|had)\b"
+    r"|contains\b.*\bin\s+it\b"
+    r"|\?$",
+    _re.IGNORECASE,
+)
+
+
+def _is_yes_no_question(text: str) -> bool:
+    """Heuristic: detect questions that expect a yes/no answer."""
+    text = text.strip()
+    if not text:
+        return False
+    return bool(_YES_NO_PATTERNS.search(text))
+
+
 def _normalize_question_payload(tool_name: str, tool_input: dict) -> list[dict]:
     """Normalize legacy ask-user tool inputs into the unified questions format.
 
@@ -396,6 +414,19 @@ def _normalize_question_payload(tool_name: str, tool_input: dict) -> list[dict]:
         for q in questions:
             q.setdefault("allow_custom", True)
             q.setdefault("allow_notes", True)
+            # Infer type from data shape — don't trust the LLM's declared type
+            options = q.get("options") or []
+            declared = q.get("type", "single")
+            if options and declared == "text":
+                q["type"] = "single"
+            elif not options and declared in ("single", "multi"):
+                q["type"] = "text"
+            # Detect yes/no questions rendered as free text and convert to single-choice
+            if q.get("type") == "text" and not q.get("options"):
+                if _is_yes_no_question(q.get("question", "")):
+                    q["type"] = "single"
+                    q["options"] = ["Yes", "No"]
+                    q["allow_custom"] = False
         return questions
     if tool_name == "ask_user_choices":
         return [{
