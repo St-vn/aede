@@ -266,6 +266,35 @@ class TestConvertMessagesToOpenAI:
         assert result[2]["role"] == "tool"
         assert result[2]["tool_call_id"] == "call-2"
 
+    def test_empty_assistant_content_list_does_not_emit_null_content(self):
+        # Reasoning-only / aborted turns leave an empty content block list in
+        # history. OpenAI-style providers (DeepSeek, MiMo via opencode-go)
+        # reject an assistant message with neither content nor tool_calls
+        # ("content or tool_calls must be set"). Must never emit such a message.
+        messages = [{"role": "assistant", "content": []}]
+        result = self._convert("sys", messages)
+        asst_msg = result[1]
+        assert asst_msg["role"] == "assistant"
+        # Valid = content is set (non-null) OR tool_calls present.
+        has_content = asst_msg.get("content") is not None
+        has_tool_calls = bool(asst_msg.get("tool_calls"))
+        assert has_content or has_tool_calls, asst_msg
+
+    def test_assistant_thinking_only_block_does_not_emit_null_content(self):
+        # A thinking/reasoning block carries no text and no tool_use. After the
+        # loop drops it, the message must still be valid for OpenAI providers.
+        messages = [
+            {
+                "role": "assistant",
+                "content": [{"type": "thinking", "thinking": "hmm, let me think"}],
+            }
+        ]
+        result = self._convert("sys", messages)
+        asst_msg = result[1]
+        has_content = asst_msg.get("content") is not None
+        has_tool_calls = bool(asst_msg.get("tool_calls"))
+        assert has_content or has_tool_calls, asst_msg
+
 
 # ---------------------------------------------------------------------------
 # Tool schema conversion: Anthropic → OpenAI

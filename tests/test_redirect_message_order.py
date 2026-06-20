@@ -70,6 +70,12 @@ def _make_agent_loop(batch_approval_max: int = 5):
         global_config_path=loop._cfg.home / "config.yml",
         console=loop._console,
     )
+    # Intent-alignment / token-cadence re-injection state (set in __init__,
+    # which __new__ bypasses).
+    loop._tokens_since_last_reminder = 0
+    loop._current_objective = ""
+    loop._active_constraints = ""
+    loop._open_decisions = ""
     return loop
 
 

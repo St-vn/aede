@@ -327,9 +327,19 @@ def _convert_messages_to_openai(
                     })
 
             oai_msg: dict[str, Any] = {"role": "assistant"}
-            oai_msg["content"] = "".join(text_parts) or None
+            joined_text = "".join(text_parts)
+            oai_msg["content"] = joined_text or None
             if tool_calls_oai:
                 oai_msg["tool_calls"] = tool_calls_oai
+            # OpenAI-style providers (DeepSeek / MiMo via opencode-go, etc.)
+            # reject an assistant message with neither content nor tool_calls
+            # ("content or tool_calls must be set"). This happens for
+            # reasoning-only turns — the model emits reasoning_content but no
+            # text or tool calls, leaving an empty content-block list in
+            # history. Emit empty-string content instead of null to keep the
+            # message valid.
+            if not tool_calls_oai and not joined_text:
+                oai_msg["content"] = ""
             result.append(oai_msg)
         else:
             # Passthrough for any other role
