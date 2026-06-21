@@ -212,7 +212,10 @@ class TestSkillEndpointsWithClaudeFallback:
         self._seed_registry("open-me", claude_path)
 
         opened: list[str] = []
-        monkeypatch.setattr(os, "startfile", lambda p: opened.append(p))
+        # Patch the cross-platform opener (os.startfile is Windows-only and
+        # absent on Linux CI, so patching it directly fails there).
+        import aede.server
+        monkeypatch.setattr(aede.server, "_open_in_default_app", lambda p: opened.append(p))
 
         resp = client.post("/api/skills/open-me/open")
         assert resp.status_code == 200

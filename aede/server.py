@@ -15,6 +15,26 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+
+def _open_in_default_app(path: str) -> None:
+    """Open *path* in the OS default application, cross-platform.
+
+    ``os.startfile`` exists only on Windows; on Linux/macOS it raises
+    ``AttributeError``.  This dispatches to the platform opener so the
+    open-file endpoints work when aede runs on a non-Windows host (e.g. CI,
+    a Linux server).
+    """
+    import subprocess
+
+    if sys.platform == "win32":
+        os.startfile(path)  # type: ignore[attr-defined]  # Windows-only
+    elif sys.platform == "darwin":
+        subprocess.run(["open", path], check=False)
+    else:
+        subprocess.run(["xdg-open", path], check=False)
+
+
 from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -1230,7 +1250,7 @@ async def open_config_file(request: Request, payload: dict = {}):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Config file not found")
 
-    os.startfile(str(file_path))
+    _open_in_default_app(str(file_path))
     return {"status": "ok"}
 
 
@@ -1700,7 +1720,7 @@ async def open_agent_file(name: str, request: Request):
     filepath = _resolve_agent_path(home, name, scope, project_dir)
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"Agent {name!r} not found")
-    os.startfile(str(filepath))
+    _open_in_default_app(str(filepath))
     return {"status": "ok"}
 
 
@@ -1833,7 +1853,7 @@ async def open_skill_file(name: str, request: Request):
     filepath = _find_skill_path(request, name, scope, project_dir)
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
-    os.startfile(str(filepath))
+    _open_in_default_app(str(filepath))
     return {"status": "ok"}
 
 
@@ -2430,7 +2450,7 @@ async def open_soul_file(request: Request, payload: dict = {}):
     if not target.exists():
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("---\n---\n", encoding="utf-8")
-    os.startfile(str(target))
+    _open_in_default_app(str(target))
     return {"status": "ok", "path": str(target)}
 
 
@@ -2496,7 +2516,7 @@ async def open_project_instructions(request: Request, payload: dict = {}):
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
-    os.startfile(str(path))
+    _open_in_default_app(str(path))
     return {"status": "ok", "path": str(path)}
 
 
