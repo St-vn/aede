@@ -14,11 +14,11 @@ class CredentialProvider:
         self._load()
 
     def get(self, name: str) -> str:
-        if name in self._cache:
-            return self._cache[name]
         val = os.environ.get(name)
         if val is not None:
             return val
+        if name in self._cache:
+            return self._cache[name]
         raise KeyError(f"Credential '{name}' not found in vault")
 
     def get_for_agent(self, config: AgentConfig) -> Optional[str]:

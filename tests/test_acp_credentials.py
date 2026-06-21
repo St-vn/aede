@@ -109,3 +109,19 @@ def test_get_for_agent_returns_none_when_no_ref(tmp_path):
     provider = CredentialProvider(home=tmp_path)
     config = AgentConfig(name="test", transport=AgentTransport.LOCAL, command="echo")
     assert provider.get_for_agent(config) is None
+
+
+def test_env_wins_over_vault_us_sec_7(tmp_path, monkeypatch):
+    """US-SEC-7 Scenario 7.1: env var takes precedence over vault/cache entry for same name."""
+    vault = tmp_path / "credentials.json"
+    vault.write_text(json.dumps({"CONFLICT_KEY": "vault-value"}))
+
+    monkeypatch.setenv("CONFLICT_KEY", "env-value")
+
+    provider = CredentialProvider(home=tmp_path)
+    # Both vault AND env define CONFLICT_KEY — env must win.
+    result = provider.get("CONFLICT_KEY")
+    assert result == "env-value", (
+        f"Expected env-value but got {result!r}. "
+        "US-SEC-7: env vars must take precedence over vault entries."
+    )
