@@ -43,9 +43,19 @@ class AcpError(Exception):
         super().__init__(f"ACP error {code}: {message}")
 
 
+_MAX_FS_BYTES = 10 * 1024 * 1024  # 10 MB hard cap for read/write content
+
+
 class AcpClient:
-    def __init__(self, config: AgentConfig) -> None:
+    def __init__(
+        self,
+        config: AgentConfig,
+        project_dir: Optional[Path] = None,
+        permission_store: Optional[Any] = None,
+    ) -> None:
         self._config = config
+        self._project_dir: Path | None = project_dir
+        self._permission_store = permission_store
         self._proc: asyncio.subprocess.Process | None = None
         self._pending: dict[int | str, asyncio.Future] = {}
         self._next_id = 0
@@ -368,32 +378,88 @@ class AcpClient:
             "fs/write_text_file", self._default_fs_write)
 
     async def _default_permission(self, params: dict) -> dict:
-        """Auto-approve a tool call by selecting an allow option.
+        """Route a tool-permission request through the AcpPermissionBridge gate.
 
-        Echoes back the optionId of the option whose kind is allow_once
-        (fallback allow_always, then the first option).  Returning the wrong
-        shape or a missing optionId stalls the agent.
+        When a PermissionStore is configured, the bridge is consulted: if the
+        tool was already pre-approved (allow_session / allow_project / allow_global)
+        the request is allowed; otherwise it is cancelled (no interactive backend
+        is available inside an automated handler).
+
+        Without a PermissionStore the handler conservatively returns cancelled so
+        the agent can decide how to proceed, rather than blindly selecting allow.
+
+        Returning the correct shape (outcome dict) is required — an incorrect or
+        missing shape stalls the agent turn.
         """
         options = params.get("options", []) or []
-        chosen = None
-        for kind in ("allow_once", "allow_always"):
-            for opt in options:
-                if isinstance(opt, dict) and opt.get("kind") == kind:
-                    chosen = opt.get("optionId")
-                    break
-            if chosen is not None:
-                break
-        if chosen is None and options:
-            first = options[0]
-            chosen = first.get("optionId") if isinstance(first, dict) else None
-        if chosen is None:
+        tool_call = params.get("toolCall", {}) or {}
+        tool_call_id = tool_call.get("toolCallId", "unknown")
+
+        if self._permission_store is not None:
+            from .permissions import AcpPermissionBridge, AcpPermissionOutcome
+            bridge = AcpPermissionBridge(self._permission_store)
+
+            # Check if already pre-approved in the store
+            if self._permission_store.is_allowed(f"acp__{tool_call_id}"):
+                # Find an allow option to echo back
+                for opt in options:
+                    if isinstance(opt, dict) and opt.get("kind") in (
+                        "allow_once", "allow_always"
+                    ):
+                        result = bridge.resolve(
+                            tool_call_id=tool_call_id,
+                            options=options,
+                            choice=opt["optionId"],
+                        )
+                        if result.outcome == AcpPermissionOutcome.ALLOWED:
+                            return {
+                                "outcome": {
+                                    "outcome": "selected",
+                                    "optionId": result.option_id,
+                                }
+                            }
+
+            # No pre-approval → cancel; no interactive backend available here.
+            bridge.resolve_cancelled(tool_call_id)
             return {"outcome": {"outcome": "cancelled"}}
-        return {"outcome": {"outcome": "selected", "optionId": chosen}}
+
+        # No store configured → safe default: cancel the permission request.
+        return {"outcome": {"outcome": "cancelled"}}
 
     async def _default_fs_read(self, params: dict) -> dict:
-        from pathlib import Path
-        path = params.get("path", "")
-        text = Path(path).read_text(encoding="utf-8")
+        raw_path = params.get("path", "")
+        p = Path(raw_path).resolve()
+
+        # Sandbox check: path must be inside project_dir when one is set.
+        if self._project_dir is not None:
+            project_resolved = self._project_dir.resolve()
+            try:
+                p.relative_to(project_resolved)
+            except ValueError:
+                raise RuntimeError(
+                    f"fs/read_text_file denied: path {p} is outside project_dir "
+                    f"{project_resolved}"
+                )
+
+        # Permission gate: must be explicitly pre-approved in the store.
+        # We use is_allowed() directly rather than tool_action() because
+        # tool_action() defaults to "allow" for unknown tool names — which is
+        # unsafe for ACP filesystem access.  Only explicit session/project/global
+        # grants in the PermissionStore may open a read.
+        if self._permission_store is not None:
+            if not self._permission_store.is_allowed("acp__fs_read_text_file"):
+                raise RuntimeError(
+                    "fs/read_text_file denied: no explicit grant in permission store"
+                )
+
+        text = p.read_text(encoding="utf-8")
+
+        # Content size cap to prevent memory exhaustion from giant files.
+        if len(text.encode("utf-8")) > _MAX_FS_BYTES:
+            raise RuntimeError(
+                f"fs/read_text_file denied: content exceeds {_MAX_FS_BYTES} byte limit"
+            )
+
         line = params.get("line")
         limit = params.get("limit")
         if line is not None or limit is not None:
@@ -404,12 +470,41 @@ class AcpClient:
         return {"content": text}
 
     async def _default_fs_write(self, params: dict) -> dict:
-        from pathlib import Path
-        path = params.get("path", "")
+        raw_path = params.get("path", "")
         content = params.get("content", "")
-        p = Path(path)
+        p = Path(raw_path).resolve()
+
+        # Content size cap before any I/O.
+        if len(content.encode("utf-8")) > _MAX_FS_BYTES:
+            raise RuntimeError(
+                f"fs/write_text_file denied: content exceeds {_MAX_FS_BYTES} byte limit"
+            )
+
+        # Sandbox check: resolved path must be inside project_dir when one is set.
+        if self._project_dir is not None:
+            project_resolved = self._project_dir.resolve()
+            try:
+                p.relative_to(project_resolved)
+            except ValueError:
+                raise RuntimeError(
+                    f"fs/write_text_file denied: path {p} is outside project_dir "
+                    f"{project_resolved}"
+                )
+
+        # Permission gate: must be explicitly pre-approved in the store.
+        # We use is_allowed() directly rather than tool_action() because
+        # tool_action() defaults to "allow" for unknown tool names — which is
+        # unsafe for ACP filesystem access.  Only explicit session/project/global
+        # grants in the PermissionStore may authorise a write.
+        if self._permission_store is not None:
+            if not self._permission_store.is_allowed("acp__fs_write_text_file"):
+                raise RuntimeError(
+                    "fs/write_text_file denied: no explicit grant in permission store"
+                )
+
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
+        logger.info("ACP fs/write_text_file: wrote %d bytes to %s", len(content), p)
         return {}
 
     # ── preserved methods ──

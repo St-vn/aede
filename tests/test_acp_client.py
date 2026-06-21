@@ -447,9 +447,14 @@ def _last_reply(writer, rid):
     return None
 
 
-async def test_default_permission_handler_auto_approves():
-    """session/request_permission (never capability-gated) must be auto-approved
-    by echoing the allow option's optionId in the selected outcome shape."""
+async def test_default_permission_handler_returns_cancelled_without_store():
+    """session/request_permission without a PermissionStore must return cancelled,
+    NOT blindly select an allow option.  Blindly selecting allow was the
+    vulnerability: any prompt-injected agent could self-approve arbitrary tools.
+
+    The correct behaviour without an interactive gate is to cancel the request
+    so the agent can decide how to handle the absence of approval.
+    """
     c = AcpClient(AgentConfig(name="x", transport=AgentTransport.LOCAL, command="x"))
     r, w = _wire(c)
     r.feed({"jsonrpc": "2.0", "id": 7, "method": "session/request_permission",
@@ -459,25 +464,60 @@ async def test_default_permission_handler_auto_approves():
                            {"optionId": "opt-rej", "name": "Reject", "kind": "reject_once"}]}})
     await asyncio.sleep(0.02)
     reply = _last_reply(w, 7)
-    assert reply["result"]["outcome"] == {"outcome": "selected", "optionId": "opt-allow"}
+    # Must NOT select the allow option; cancelled is the safe default.
+    assert reply is not None
+    outcome = reply["result"]["outcome"]
+    assert outcome.get("outcome") == "cancelled", (
+        f"expected cancelled, got: {outcome}"
+    )
     await c.aclose()
 
 
-async def test_default_permission_prefers_allow_always_then_allow_once():
-    c = AcpClient(AgentConfig(name="x", transport=AgentTransport.LOCAL, command="x"))
+async def test_default_permission_pre_approved_in_store_is_allowed():
+    """session/request_permission with a PermissionStore that has a pre-existing
+    session grant for the toolCallId must select an allow option.
+
+    This is the positive case: explicit approval in the store is honoured.
+    """
+    from aede.gate import PermissionStore
+    store = PermissionStore()
+    store.allow_session("acp__pre_approved_tool")
+    c = AcpClient(
+        AgentConfig(name="x", transport=AgentTransport.LOCAL, command="x"),
+        permission_store=store,
+    )
     r, w = _wire(c)
     r.feed({"jsonrpc": "2.0", "id": 8, "method": "session/request_permission",
-            "params": {"options": [
-                {"optionId": "a1", "name": "Allow", "kind": "allow_once"},
-                {"optionId": "a2", "name": "Always", "kind": "allow_always"}]}})
+            "params": {"toolCall": {"toolCallId": "pre_approved_tool"},
+                       "options": [
+                           {"optionId": "a1", "name": "Allow", "kind": "allow_once"},
+                           {"optionId": "a2", "name": "Reject", "kind": "reject_once"}]}})
     await asyncio.sleep(0.02)
-    # allow_once is scanned first → a1
-    assert _last_reply(w, 8)["result"]["outcome"]["optionId"] == "a1"
+    reply = _last_reply(w, 8)
+    assert reply is not None
+    outcome = reply["result"]["outcome"]
+    assert outcome.get("outcome") == "selected"
+    assert outcome.get("optionId") == "a1"
     await c.aclose()
 
 
-async def test_default_fs_read_write_handlers(tmp_path):
-    c = AcpClient(AgentConfig(name="x", transport=AgentTransport.LOCAL, command="x"))
+async def test_default_fs_read_write_handlers_with_grant(tmp_path):
+    """fs/write_text_file and fs/read_text_file work correctly when:
+    - project_dir is set to tmp_path (path is inside sandbox), AND
+    - the permission store has explicit session grants for both operations.
+
+    Without these grants the handlers must deny (see SEC-1/SEC-2 in
+    test_acp_permissions.py for the denial cases).
+    """
+    from aede.gate import PermissionStore
+    store = PermissionStore(project_dir=tmp_path)
+    store.allow_session("acp__fs_write_text_file")
+    store.allow_session("acp__fs_read_text_file")
+    c = AcpClient(
+        AgentConfig(name="x", transport=AgentTransport.LOCAL, command="x"),
+        project_dir=tmp_path,
+        permission_store=store,
+    )
     r, w = _wire(c)
     target = tmp_path / "f.txt"
     r.feed({"jsonrpc": "2.0", "id": 9, "method": "fs/write_text_file",
