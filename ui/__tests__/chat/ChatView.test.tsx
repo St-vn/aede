@@ -30,14 +30,18 @@ const errorMessages = (): string[] =>
 
 // Mock useWebSocket to return a controllable dispatch.
 //
-// Multiple sub-components (ChatView itself, ContextBar, LearningsChip) each
-// call useWebSocket.  React 19 also double-invokes component bodies in strict /
-// concurrent mode, so the same logical component registers its handler twice.
+// Three components call useWebSocket: ChatView, ContextBar, LearningsChip.
+// React 19 also double-invokes component bodies in strict / concurrent mode,
+// so each logical component registers its handler twice (6 calls total for N=3).
 //
-// Strategy: track "slots" by call order.  On the first render pass we append
-// handlers; on the second pass (double-invoke) we overwrite slots by wrapping
-// index — that way only the committed (second) handler lives in each slot.
-// Broadcasting to wsSlots then calls each logical component exactly once.
+// Strategy: the first N=3 registrations (first pass) fill wsSlots[0..2].
+// The next N registrations (second pass, committed handlers) overwrite those
+// slots via wsSlots[i % N].  Broadcasting to wsSlots then calls each logical
+// component exactly once with its committed handler.
+//
+// WS_COMPONENT_COUNT must equal the number of components that call useWebSocket
+// inside ChatView's render tree (ChatView + ContextBar + LearningsChip = 3).
+const WS_COMPONENT_COUNT = 3
 const wsSlots: Array<(ev: any) => void> = []  // one slot per unique component
 let _wsRegCount = 0  // total registrations since last beforeEach
 const wsSendCalls: any[][] = []
@@ -45,16 +49,14 @@ const wsSend = (...args: any[]) => { wsSendCalls.push(args) }
 const wsEventHandler = (ev: any) => wsSlots.forEach(h => h(ev))
 vi.mock('@/hooks/useWebSocket', () => ({
   useWebSocket: (_id: any, handler: any) => {
-    // _wsRegCount 0..N-1 → first pass (append).
-    // _wsRegCount N..2N-1 → second pass (overwrite slot i-N).
-    const n = wsSlots.length
-    const i = _wsRegCount
-    if (n === 0 || i < n) {
+    // _wsRegCount 0..N-1 → first pass (fill slots).
+    // _wsRegCount N..2N-1 → second pass (overwrite with committed handlers).
+    const i = _wsRegCount++
+    if (i < WS_COMPONENT_COUNT) {
       wsSlots.push(handler)
     } else {
-      wsSlots[i % n] = handler
+      wsSlots[i % WS_COMPONENT_COUNT] = handler
     }
-    _wsRegCount++
     return { send: wsSend }
   },
 }))
@@ -97,7 +99,10 @@ test('streaming text_delta appends text with cursor', () => {
   act(() => wsEventHandler?.({ type: 'text_delta', text: 'Hello ' }))
   act(() => wsEventHandler?.({ type: 'text_delta', text: 'world' }))
   expect(screen.getByText(/Hello world/)).toBeInTheDocument()
-  expect(screen.getByText(/▌/)).toBeInTheDocument()
+  // The streaming indicator is an aria-live="polite" region that shows while
+  // isStreaming=true.  The component renders a spinner + cycling verb text
+  // (not a '▌' block cursor).  Assert the live-region is present instead.
+  expect(document.querySelector('[aria-live="polite"]')).toBeInTheDocument()
 })
 
 test('turn_done removes streaming cursor', () => {
