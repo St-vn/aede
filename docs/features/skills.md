@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, features]
-date_updated: 2026-06-10
+date_updated: 2026-06-20
 ---
 
 # Skills
@@ -39,12 +39,22 @@ Available frontmatter fields:
 
 ## How Skills Work
 
-Skills are loaded from two locations:
+Skills are loaded from three locations, scanned in this order (a later scan replaces an earlier skill with the same name):
 
-- **Global** — `~/.aede/skills/` — every `.md` file or `SKILL.md` inside a subdirectory
-- **Project** — `./skills/` — same format, shadows globally loaded skills with the same name
+1. **Global** — `~/.aede/skills/` — every `.md` file or `SKILL.md` inside a subdirectory
+2. **Project** — `./skills/` — same format; this is also where the bundled skills ship (see below)
+3. **Claude Code fallback** — `~/.claude/skills/` — skills installed for Claude Code are automatically available in aede
 
 Loaded skills are injected into the dynamic portion of the system prompt under the "## Agent Skills" section. The agent is instructed to consider them when performing relevant tasks.
+
+## Bundled Skills
+
+aede ships with two pre-installed skills in the repo's `skills/` directory. They load automatically when you run aede from the project root and become active when their trigger phrases match the task:
+
+| Skill | What it does |
+|-------|-------------|
+| `agent-orchestration` | Guides delegation decisions using the orchestrator-worker pattern. Helps the agent decide when to split work across subagents, how to size and scope subagent tasks, which model to assign to each role, and how to coordinate parallel or sequential dispatch. Triggers on phrases like "delegate", "subagent", "parallel", "fan-out", and "decompose". |
+| `documents` | Creates, edits, and inspects Office documents and PDFs (`.docx`, `.pdf`, `.pptx`, `.xlsx`). Picks the right library per format, includes code templates and format-specific pitfalls, and runs a visual-QA pass for slides and complex documents. Triggers on phrases like "report", "spreadsheet", "build a deck", "convert to pdf", and "extract tables". |
 
 ## Managing Skills
 

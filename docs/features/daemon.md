@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, features]
-date_updated: 2026-06-14
+date_updated: 2026-06-20
 ---
 
 # Background Runtime Daemon
@@ -30,3 +30,19 @@ File watch and webhook event definitions persisted to SQLite. `WatchEvent` monit
 ### Timers (`daemon/timers.py`)
 
 One-shot delay timers. A `Timer` fires once after a specified duration, then auto-removes. Persisted to SQLite so timers survive daemon restarts.
+
+## Web UI — Daemon tab
+
+The web UI exposes a **Daemon** tab in Settings that manages the running daemon
+without dropping to the CLI. It is backed by the `/api/daemon/*` REST endpoints
+and refreshes live while the daemon is up.
+
+| Section | What you can do |
+|---------|-----------------|
+| **Status** | See whether the daemon is running; start or stop it with a button (`GET /api/daemon/status`, `POST /api/daemon/start`, `POST /api/daemon/stop`). |
+| **Timers** | List active one-shot timers and add a new one (delay + action + optional label) or delete one (`GET`/`POST` `/api/daemon/timers`, `DELETE /api/daemon/timers/{id}`). |
+| **Cron** | List repeating cron jobs and add a new one (schedule expression + action + optional label) or delete one (`GET`/`POST` `/api/daemon/cron`, `DELETE /api/daemon/cron/{id}`). The schedule field is validated client-side against standard 5-field cron syntax before submit. |
+
+Timer and cron lists only load while the daemon is running; when it is stopped
+the tab shows the start control instead. File-watch and webhook **events** are
+configured through the CLI/config, not this tab.

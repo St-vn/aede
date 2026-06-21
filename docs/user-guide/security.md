@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, user-guide]
-date_updated: 2026-06-18
+date_updated: 2026-06-20
 ---
 
 # Security
@@ -17,14 +17,17 @@ Before executing dangerous operations, aede pauses and shows an approval prompt.
 
 The gate offers these decisions:
 
-| Decision | Meaning |
-|----------|---------|
-| Allow once | Run this one call |
-| Allow session | Skip gate for this tool for the rest of the session |
-| Allow project | Persist to `aede.yml` (project scope) |
-| Allow global | Persist to `~/.aede/config.yml` |
-| Deny | Reject the call |
-| Redirect | Send a message back to the agent instead |
+| Decision | Key | Meaning |
+|----------|-----|---------|
+| Allow once | `a` | Run this one call |
+| Allow session | `s` | Skip gate for this tool for the rest of the session |
+| Allow project | `p` | Persist to `aede.yml` (project scope) |
+| Allow global | `g` | Persist to `~/.aede/config.yml` |
+| Deny | `d` | Reject the call |
+| Redirect | `r` | Send a message back to the agent instead |
+| Batch approve/deny | `b` | Approve or deny all pending tools at once |
+
+In the Web UI, the same options appear as buttons in a gate dialog card.
 
 ## Safety Hooks
 

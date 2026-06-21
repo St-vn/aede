@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, reference]
-date_updated: 2026-06-10
+date_updated: 2026-06-20
 ---
 
 # Tool Reference
@@ -25,6 +25,28 @@ Read the contents of a file.
 | `path` | string | yes | Absolute or relative file path |
 
 Returns the file content as UTF-8 text.
+
+## edit
+
+Apply an exact string replacement to an existing file. Prefer this over `write_file` for modifications — it sends only the changed hunk.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | yes | File path |
+| `old_string` | string | yes | Exact text to replace (must match exactly once unless `replace_all` is true) |
+| `new_string` | string | yes | Replacement text |
+| `replace_all` | boolean | no | If true, replace all occurrences (default: false) |
+
+Gated.
+
+## glob
+
+Find files matching a glob pattern, sorted by modification time (newest first).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `pattern` | string | yes | Glob pattern (e.g. `**/*.tsx`, `src/**/*.py`) |
+| `path` | string | no | Root directory to search (defaults to current working directory) |
 
 ## write_file
 
@@ -110,6 +132,38 @@ Search past session message history by keyword using FTS5 full-text search.
 | `limit` | integer | no | Max results (default: 10) |
 
 Returns matching messages with ±5 message context window.
+
+## question
+
+Ask the user one or more questions mid-task. Does not require gate approval.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `questions` | array | yes | Array of question objects (max 8) |
+
+Each question object:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `header` | string | yes | Short label shown above the question (max 40 chars) |
+| `question` | string | yes | The question text |
+| `type` | string | no | `single` (default), `multi`, or `text` |
+| `options` | array | no | Answer choices for `single` or `multi` questions |
+| `allow_custom` | boolean | no | Allow a custom typed answer (default: true) |
+| `allow_notes` | boolean | no | Allow the user to add notes (default: true) |
+| `required` | boolean | no | Whether the question can be skipped (default: true) |
+
+In `auto` mode questions are answered automatically with safe defaults.
+
+## select_context
+
+Pull relevant context from up to four sources in one call.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | yes | Natural-language search query |
+| `sources` | array | no | Sources to query: `learnings`, `sessions`, `docs`, `files` (default: all four) |
+| `k` | integer | no | Total results to return, divided across sources (default: 5, max: 20) |
 
 ## write_learning
 

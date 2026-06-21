@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, developer]
-date_updated: 2026-06-16
+date_updated: 2026-06-20
 ---
 
 # Tests
@@ -13,6 +13,20 @@ uv run pytest              # run all tests
 uv run pytest -xvs         # verbose, stop on first failure
 uv run pytest tests/test_file.py  # run a specific test file
 ```
+
+UI tests run from the `ui/` directory with Vitest:
+
+```bash
+cd ui && npx vitest run    # run the UI test suite
+```
+
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs on every push and pull request to `main`/`master`.
+Two jobs run in parallel:
+
+- **Python tests** — `uv sync --frozen` then `uv run pytest tests/`
+- **UI tests** — `npm ci` then `npx vitest run` in `ui/`
 
 ## Test Configuration
 

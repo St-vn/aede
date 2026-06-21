@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, features]
-date_updated: 2026-06-18
+date_updated: 2026-06-20
 ---
 
 # Tools
@@ -13,10 +13,12 @@ aede provides a set of built-in tools that the agent can invoke during a convers
 | Tool | Gated | Description |
 |------|-------|-------------|
 | `powershell` | Yes | Execute a PowerShell, CMD, or WSL command |
-| `read_file` | No | Read a UTF-8 file at a given path |
+| `read_file` | No | Read a UTF-8 file at a given path (supports `offset`/`limit` for partial reads) |
 | `write_file` | Yes | Overwrite an existing file |
 | `create_file` | Yes | Create a new file (fails if it exists) |
+| `edit` | Yes | Apply an exact string replacement to an existing file; prefer over `write_file` for modifications |
 | `list_dir` | No | List directory contents with configurable depth |
+| `glob` | No | Find files matching a glob pattern, sorted by newest first |
 | `search_files` | No | Search for a regex pattern across files (ripgrep) |
 | `fetch_url` | No | HTTP GET a URL, return content as text |
 | `web_search` | No | Search the web via DuckDuckGo |
@@ -36,10 +38,12 @@ These tools do not require gate approval — they are part of the conversation f
 
 | Tool | Description |
 |------|-------------|
-| `ask_user` | Ask a free-form question. |
-| `ask_user_choices` | Present a list of options and return the selected one. |
-| `ask_user_confirm` | Ask a yes/no question. |
-| `question` | Unified question tool supporting `text`, `single_choice`, `multi_select`, and `confirm` question types, plus multiple questions in one call. |
+| `question` | Unified question tool. Supports `text`, `single`, and `multi` question types with optional custom answers, notes, and multiple questions per call. |
+| `ask_user` | Legacy alias — free-form text question. |
+| `ask_user_choices` | Legacy alias — single-choice from a list. |
+| `ask_user_confirm` | Legacy alias — yes/no question. |
+
+The three legacy tools are still accepted; prefer `question` for new agent definitions as it supports richer question types and batching.
 
 In `auto` mode, these questions are answered automatically with safe defaults so the agent can keep running hands-free.
 

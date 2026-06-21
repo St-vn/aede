@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, features]
-date_updated: 2026-06-14
+date_updated: 2026-06-20
 ---
 
 # Per-Task Model Selection
@@ -12,7 +12,7 @@ Aede lets you assign different models to different tasks within a single session
 
 | Task | Config Key | Default | Example Override |
 |------|-----------|---------|-----------------|
-| Orchestrator | `model` | `claude-sonnet-4-20250514` | `gpt-5.5` |
+| Orchestrator | `model` | `claude-sonnet-4-6` | `gpt-5.5` |
 | Subagent | `model:` in `AGENT.md` frontmatter | inherit from orchestrator | `model: gpt-5.5` |
 | Critic | `critic_model` | `null` (same as main) | `claude-haiku-4-20250514` |
 | Compaction | `compaction_model` | `null` (use active model) | `deepseek-v4-flash-free` |
@@ -23,7 +23,7 @@ Use a free OpenCode Zen model for the main agent while keeping Claude for compac
 
 ```yaml
 model: deepseek-v4-flash-free
-compaction_model: claude-sonnet-4-20250514
+compaction_model: claude-sonnet-4-6
 
 providers:
   opencode-zen:

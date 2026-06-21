@@ -1,7 +1,7 @@
 ---
 type: doc
 tags: [docs, reference]
-date_updated: 2026-06-19
+date_updated: 2026-06-20
 ---
 
 # Config Keys
@@ -70,9 +70,28 @@ date_updated: 2026-06-19
 
 ## Sandbox
 
+Two equivalent ways to configure Docker sandboxing — the nested object and flat top-level keys. Flat keys take priority when both are set.
+
+**Nested object:**
+
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `sandbox` | object | `{}` | Sandbox config with `enabled`, `image`, `workspace_mount`, `memory_limit`, `cpu_limit`, `env` |
+| `sandbox` | object | `{}` | Sandbox config with sub-keys: `enabled`, `image`, `workspace_mount`, `memory_limit`, `cpu_limit`, `env` |
+
+**Flat top-level keys:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `sandbox_enabled` | bool | `false` | Enable Docker sandboxing |
+| `sandbox_image` | string | `aede-sandbox:latest` | Container image to use |
+| `sandbox_memory` | string | `512m` | Memory limit (e.g. `2g`) |
+| `sandbox_cpus` | float | `1.0` | CPU quota |
+| `sandbox_network` | string | `off` | Network mode (`off` or `bridge`) |
+| `sandbox_pids_limit` | integer | `256` | Maximum processes in the container |
+| `sandbox_pull_on_start` | bool | `true` | Pull image on startup |
+| `sandbox_filter_session_search` | bool | `false` | Redact session data from `session_search` inside sandbox |
+
+See [Sandboxed Execution](../features/sandbox.md) for details.
 
 ## Plugins
 
