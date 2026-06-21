@@ -4,6 +4,21 @@ import { render, screen, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ChatView, toolBlockKey } from '../../components/chat/ChatView'
 
+// Replace @base-ui ScrollArea with a plain passthrough div.
+// In JSDOM the @base-ui ScrollArea.Root performs async internal state updates
+// (scrollbar measurement) that land outside act(), swallowing the children
+// and causing spurious act() warnings that prevent child state (gates,
+// askUserRequests) from settling before assertions run.
+// The factory imports React internally so the reference is safe at hoist time.
+vi.mock('@/components/ui/scroll-area', async () => {
+  const { default: R } = await import('react')
+  return {
+    ScrollArea: ({ children, className, ...rest }: { children?: React.ReactNode; className?: string; [k: string]: unknown }) =>
+      R.createElement('div', { className, ...rest }, children),
+    ScrollBar: () => null,
+  }
+})
+
 // Mock sonner so we can assert toast suppression for stale-chat errors.
 // vi.hoisted keeps the capture array available inside the hoisted mock factory.
 vi.mock('sonner', () => ({
@@ -13,19 +28,41 @@ import { toast } from 'sonner'
 const errorMessages = (): string[] =>
   (toast.error as ReturnType<typeof vi.fn>).mock.calls.map(c => String(c[0]))
 
-// Mock useWebSocket to return a controllable dispatch
-let wsEventHandler: ((ev: any) => void) | null = null
+// Mock useWebSocket to return a controllable dispatch.
+//
+// Multiple sub-components (ChatView itself, ContextBar, LearningsChip) each
+// call useWebSocket.  React 19 also double-invokes component bodies in strict /
+// concurrent mode, so the same logical component registers its handler twice.
+//
+// Strategy: track "slots" by call order.  On the first render pass we append
+// handlers; on the second pass (double-invoke) we overwrite slots by wrapping
+// index — that way only the committed (second) handler lives in each slot.
+// Broadcasting to wsSlots then calls each logical component exactly once.
+const wsSlots: Array<(ev: any) => void> = []  // one slot per unique component
+let _wsRegCount = 0  // total registrations since last beforeEach
 const wsSendCalls: any[][] = []
 const wsSend = (...args: any[]) => { wsSendCalls.push(args) }
+const wsEventHandler = (ev: any) => wsSlots.forEach(h => h(ev))
 vi.mock('@/hooks/useWebSocket', () => ({
   useWebSocket: (_id: any, handler: any) => {
-    wsEventHandler = handler
+    // _wsRegCount 0..N-1 → first pass (append).
+    // _wsRegCount N..2N-1 → second pass (overwrite slot i-N).
+    const n = wsSlots.length
+    const i = _wsRegCount
+    if (n === 0 || i < n) {
+      wsSlots.push(handler)
+    } else {
+      wsSlots[i % n] = handler
+    }
+    _wsRegCount++
     return { send: wsSend }
   },
 }))
 
 beforeEach(() => {
   wsSendCalls.length = 0
+  wsSlots.length = 0
+  _wsRegCount = 0
   ;(toast.error as ReturnType<typeof vi.fn>).mockClear()
 })
 
