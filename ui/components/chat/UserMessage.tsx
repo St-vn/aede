@@ -31,7 +31,6 @@ export function UserMessage({ content, timestamp, messageId, onRewind }: Props) 
 
   const lines = content.split('\n')
   const shouldCollapse = lines.length > 8 || content.length > 800
-  const displayContent = shouldCollapse && !expanded ? content.slice(0, 800) + '…' : content
 
   async function handleCopy() {
     await navigator.clipboard.writeText(content)
@@ -43,27 +42,34 @@ export function UserMessage({ content, timestamp, messageId, onRewind }: Props) 
     <div className="group flex justify-end gap-3 py-2">
       <div className="flex flex-col items-end gap-1 max-w-[80%]">
         <div className="bg-muted rounded-xl px-4 py-3 text-sm">
-          <div className="prose prose-invert prose-sm max-w-none">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex]}
-              components={{
-                code({ className, children, ...props }) {
-                  return (
-                    <code className="bg-background/50 rounded px-1 py-0.5 font-mono text-xs" {...props}>
-                      {children}
-                    </code>
-                  )
-                },
-                img({ src, alt, ...props }) {
-                  if (!src) return null
-                  return <img src={src} alt={alt ?? ''} {...props} />
-                }
-              }}
-            >
-              {displayContent}
-            </ReactMarkdown>
-          </div>
+          {shouldCollapse && !expanded ? (
+            <div className="relative">
+              <p className="text-sm whitespace-pre-wrap break-words line-clamp-6">{content}</p>
+              <div className="absolute bottom-0 right-0 pl-4 bg-gradient-to-l from-muted via-muted to-transparent text-muted-foreground">…</div>
+            </div>
+          ) : (
+            <div className="prose prose-invert prose-sm max-w-none">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  code({ className, children, ...props }) {
+                    return (
+                      <code className="bg-background/50 rounded px-1 py-0.5 font-mono text-xs" {...props}>
+                        {children}
+                      </code>
+                    )
+                  },
+                  img({ src, alt, ...props }) {
+                    if (!src) return null
+                    return <img src={src} alt={alt ?? ''} {...props} />
+                  }
+                }}
+              >
+                {content}
+              </ReactMarkdown>
+            </div>
+          )}
         </div>
         {shouldCollapse && (
           <div className="flex items-center gap-2">
