@@ -64,7 +64,9 @@ def write_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
 
     Args:
         sandbox: Optional ``DockerSandbox`` instance.  When set, the path is
-            translated to its container equivalent.
+            translated to its container equivalent and a fileset is required —
+            sandbox mode without a fileset is an unsafe configuration that is
+            rejected to prevent unbounded host writes.
         fileset: Optional ``FileSet`` instance.  When set, write paths are
             checked against the declared set.
 
@@ -73,9 +75,14 @@ def write_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
     """
     path = Path(args["path"])
     if sandbox is not None:
-        container_path = sandbox.translate_path(path)
-    else:
-        container_path = path
+        # Sandbox active: all host writes MUST be gated by a fileset.
+        # Without a fileset there is no declared boundary, so reject the write.
+        if fileset is None:
+            return (
+                f"Write to {path} rejected: sandbox is active but no fileset has been "
+                f"declared.  Call declare_fileset first to specify which paths may be written."
+            )
+        container_path = sandbox.translate_path(path)  # noqa: F841 — recorded for audit
     if fileset is not None:
         if not fileset.is_writable(str(path)):
             return f"Write to {path} is outside declared fileset. Use declare_fileset to widen."
@@ -92,7 +99,9 @@ def create_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
 
     Args:
         sandbox: Optional ``DockerSandbox`` instance.  When set, the path is
-            translated to its container equivalent.
+            translated to its container equivalent and a fileset is required —
+            sandbox mode without a fileset is an unsafe configuration that is
+            rejected to prevent unbounded host writes.
         fileset: Optional ``FileSet`` instance.  When set, write paths are
             checked against the declared set.
 
@@ -101,9 +110,13 @@ def create_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
     """
     path = Path(args["path"])
     if sandbox is not None:
-        container_path = sandbox.translate_path(path)
-    else:
-        container_path = path
+        # Sandbox active: all host writes MUST be gated by a fileset.
+        if fileset is None:
+            return (
+                f"Create {path} rejected: sandbox is active but no fileset has been "
+                f"declared.  Call declare_fileset first to specify which paths may be written."
+            )
+        container_path = sandbox.translate_path(path)  # noqa: F841 — recorded for audit
     if fileset is not None:
         if not fileset.is_writable(str(path)):
             return f"Write to {path} is outside declared fileset. Use declare_fileset to widen."
