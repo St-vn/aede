@@ -55,3 +55,6 @@ credentials.json
 /skills/remediation/
 /docs/kaizen/2026-06-12-remediation-skill-bootstrap.md
 /scripts/reddit_wedge_count.py
+
+# e2e test screenshots — scratch captures, not fixtures
+tests/e2e_*.png
