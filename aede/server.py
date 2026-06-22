@@ -378,6 +378,56 @@ async def health():
 
 _ws_handler_id = 0
 
+
+# ── WebSocket message handlers ──────────────────────────────────────────────
+# Extracted from websocket_turn's message loop to keep its complexity bounded
+# (the loop was CC=42). Each handles one non-"user_message" frame type.
+
+async def _handle_gate_response(data: dict, gate: "SessionGate", websocket: WebSocket) -> None:
+    """Resolve a pending approval-gate future with the user's decision."""
+    gate_id = data.get("gate_id")
+    fut = gate.futures.get(gate_id)
+    if fut is not None and not fut.done():
+        fut.set_result((data.get("decision"), data.get("redirect_msg", "")))
+    else:
+        await websocket.send_json({"type": "error", "message": f"Unknown gate_id: {gate_id}"})
+
+
+def _handle_stop(session_states: dict, session_id: str, hid: int) -> None:
+    """Cancel the session's in-flight turn task, if any (the only frame that
+    cancels a turn — disconnects do not)."""
+    state = session_states.get(session_id)
+    if state and state.turn_task and not state.turn_task.done():
+        print(f"[WS#{hid}] stop requested — cancelling turn", flush=True)
+        state.turn_task.cancel()
+    else:
+        print(f"[WS#{hid}] stop requested — no active turn to cancel", flush=True)
+
+
+async def _handle_ask_user_response(data: dict, gate: "SessionGate", websocket: WebSocket) -> None:
+    """Resolve a pending ask_user question future with the user's answers."""
+    question_id = data.get("question_id")
+    fut = gate.futures.get(f"ask:{question_id}")
+    if fut is not None and not fut.done():
+        fut.set_result((data.get("answers", {}), ""))
+    else:
+        await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+
+
+async def _handle_ask_user_chat(data: dict, gate: "SessionGate", websocket: WebSocket) -> None:
+    """Resolve a pending question future with a chat sentinel so the agent
+    receives the comment as a tool result, responds, then re-asks."""
+    question_id = data.get("question_id")
+    fut = gate.futures.get(f"ask:{question_id}")
+    if fut is not None and not fut.done():
+        fut.set_result((
+            {"__chat__": data.get("comment", ""), "__question__": data.get("question", "")},
+            "",
+        ))
+    else:
+        await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+
+
 @app.websocket("/ws/sessions/{session_id}")
 async def websocket_turn(websocket: WebSocket, session_id: str):
     """Handle interactive agent turns for a specific session over WebSocket."""
@@ -684,48 +734,16 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 print(f"[WS#{hid}] Done setting up turn, returning to message loop", flush=True)
 
             elif msg_type == "gate_response":
-                gate_id = data.get("gate_id")
-                decision = data.get("decision")
-                redirect_msg = data.get("redirect_msg", "")
-
-                fut = gate.futures.get(gate_id)
-                if fut is not None and not fut.done():
-                    fut.set_result((decision, redirect_msg))
-                else:
-                    await websocket.send_json({"type": "error", "message": f"Unknown gate_id: {gate_id}"})
+                await _handle_gate_response(data, gate, websocket)
 
             elif msg_type == "stop":
-                state = session_states.get(session_id)
-                if state and state.turn_task and not state.turn_task.done():
-                    print(f"[WS#{hid}] stop requested — cancelling turn", flush=True)
-                    state.turn_task.cancel()
-                else:
-                    print(f"[WS#{hid}] stop requested — no active turn to cancel", flush=True)
+                _handle_stop(session_states, session_id, hid)
 
             elif msg_type == "ask_user_response":
-                question_id = data.get("question_id")
-                answers = data.get("answers", {})
-                key = f"ask:{question_id}"
-                fut = gate.futures.get(key)
-                if fut is not None and not fut.done():
-                    fut.set_result((answers, ""))
-                else:
-                    await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+                await _handle_ask_user_response(data, gate, websocket)
 
             elif msg_type == "ask_user_chat":
-                # User clicked "Chat about this" on a pending question.
-                # Resolve the pending future with a sentinel dict so the agent
-                # receives the comment as a tool result and can respond
-                # conversationally, then re-ask the question(s).
-                question_id = data.get("question_id")
-                question_text = data.get("question", "")
-                comment = data.get("comment", "")
-                key = f"ask:{question_id}"
-                fut = gate.futures.get(key)
-                if fut is not None and not fut.done():
-                    fut.set_result(({"__chat__": comment, "__question__": question_text}, ""))
-                else:
-                    await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+                await _handle_ask_user_chat(data, gate, websocket)
 
     except WebSocketDisconnect:
         print(f"[WS#{hid}] WebSocket disconnected", flush=True)
