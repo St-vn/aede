@@ -8,6 +8,7 @@ export interface Session {
   parent_id: string | null
   created_at: string
   project_dir?: string | null
+  gate_mode?: string | null
 }
 
 export interface Message {
@@ -16,10 +17,39 @@ export interface Message {
   content: string
   created_at: string
   is_branch_point?: boolean
+  thinking?: string
+  thinking_segments?: Array<{ text: string; seq: number }>
+  turn_duration_ms?: number | null
 }
 
-export const useSessions = () =>
-  useQuery({ queryKey: ['sessions'], queryFn: () => apiFetch<Session[]>('/api/sessions') })
+export interface GlobalSessionsPage {
+  sessions: Session[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+}
+
+export interface SessionsResponse {
+  projects: Record<string, Session[]>
+  global: GlobalSessionsPage
+}
+
+interface UseSessionsParams {
+  globalLimit?: number
+  globalOffset?: number
+}
+
+export const useSessions = (params?: UseSessionsParams) => {
+  const sp = new URLSearchParams()
+  if (params?.globalLimit) sp.set('global_limit', String(params.globalLimit))
+  if (params?.globalOffset) sp.set('global_offset', String(params.globalOffset))
+  const qs = sp.toString()
+  return useQuery({
+    queryKey: ['sessions', params],
+    queryFn: () => apiFetch<SessionsResponse>(`/api/sessions${qs ? '?' + qs : ''}`),
+  })
+}
 
 export const useSessionMessages = (sessionId: string | null) =>
   useQuery({
@@ -60,5 +90,49 @@ export const useRenameSession = () => {
         body: JSON.stringify({ title }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
+  })
+}
+
+export function useRewind() {
+  return {
+    rewind: async (
+      sessionId: string,
+      messageId: string,
+      opts: { mode: 'truncate' | 'fork'; revertCode: boolean }
+    ) => {
+      if (opts.mode === 'truncate') {
+        return apiFetch(`/api/sessions/${sessionId}/truncate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message_id: messageId,
+            revert_code: opts.revertCode,
+          }),
+        })
+      }
+      return apiFetch(`/api/sessions/${sessionId}/rewind`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_id: messageId }),
+      })
+    },
+  }
+}
+
+export const useUpdateSessionMode = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, gateMode }: { sessionId: string; gateMode: string }) =>
+      apiFetch<Session>(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gate_mode: gateMode }),
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['sessions'] })
+      qc.setQueryData(['session', vars.sessionId], (old: Session | undefined) =>
+        old ? { ...old, gate_mode: vars.gateMode } : old
+      )
+    },
   })
 }

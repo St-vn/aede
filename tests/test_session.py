@@ -43,6 +43,26 @@ def test_session_create_and_get(tmp_home):
     assert loaded.status == "active"
 
 
+def test_session_create_with_gate_mode(tmp_home):
+    db = DB(tmp_home / "aede.db")
+    s = Session.create(
+        db=db,
+        model="claude-sonnet-4-20250514",
+        parent_id=None,
+        gate_mode="execution",
+    )
+    loaded = Session.load(db=db, session_id=s.id)
+    assert loaded.gate_mode == "execution"
+
+
+def test_session_set_gate_mode(tmp_home):
+    db = DB(tmp_home / "aede.db")
+    s = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)
+    s.set_gate_mode(db, "plan")
+    loaded = Session.load(db=db, session_id=s.id)
+    assert loaded.gate_mode == "plan"
+
+
 def test_session_branch(tmp_home):
     db = DB(tmp_home / "aede.db")
     parent = Session.create(db=db, model="claude-sonnet-4-20250514", parent_id=None)

@@ -20,17 +20,23 @@ def client(db, tmp_path):
 def test_get_sessions_empty(client):
     response = client.get("/api/sessions")
     assert response.status_code == 200
-    assert response.json() == []
+    data = response.json()
+    # New shape: {"projects": {...}, "global": {"sessions": [...], ...}}
+    assert data["projects"] == {}
+    assert data["global"]["sessions"] == []
+    assert data["global"]["total"] == 0
 
 def test_get_sessions_with_data(client, db):
     s1 = Session.create(db, "model1", parent_id=None, title="Title 1")
     s2 = Session.create(db, "model2", parent_id=None)
-    
+
     response = client.get("/api/sessions")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
-    assert any(s["id"] == s1.id and s["title"] == "Title 1" for s in data)
+    # No project_dir → both land under the paginated global bucket.
+    global_sessions = data["global"]["sessions"]
+    assert len(global_sessions) == 2
+    assert any(s["id"] == s1.id and s["title"] == "Title 1" for s in global_sessions)
 
 def test_get_session_by_id(client, db):
     s1 = Session.create(db, "model1", parent_id=None)
@@ -61,4 +67,13 @@ def test_patch_session_title(client, db):
     # Verify DB state updated
     loaded = Session.load(db, s1.id)
     assert loaded.title == "New Title"
+
+def test_patch_session_gate_mode(client, db):
+    s1 = Session.create(db, "model1", parent_id=None)
+    response = client.patch(f"/api/sessions/{s1.id}", json={"gate_mode": "execution"})
+    assert response.status_code == 200
+    assert response.json()["gate_mode"] == "execution"
+
+    loaded = Session.load(db, s1.id)
+    assert loaded.gate_mode == "execution"
 

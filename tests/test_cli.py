@@ -64,6 +64,7 @@ def test_config_show_mcp_server_count():
     cfg.tool_output_max_tokens = 500
     cfg.shell = "powershell"
     cfg.batch_approval_max = 5
+    cfg.gate_mode = "normal"
     cfg.auto_approve = []
     cfg.sources = {"model": "default"}
     cfg.mcp_servers = {"s1": MagicMock(), "s2": MagicMock()}

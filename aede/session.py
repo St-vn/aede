@@ -40,23 +40,27 @@ class Session:
     def __init__(self, data: dict[str, Any]) -> None:
         self.id: str = data["id"]
         self.parent_id: str | None = data.get("parent_id")
+        self.branch_message_id: str | None = data.get("branch_message_id")
         self.title: str | None = data.get("title")
         self.model: str = data["model"]
         self.status: str = data["status"]
         self.created_at: int = data["created_at"]
         self.updated_at: int = data["updated_at"]
         self.project_dir: str | None = data.get("project_dir")
+        self.gate_mode: str | None = data.get("gate_mode")
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "parent_id": self.parent_id,
+            "branch_message_id": self.branch_message_id,
             "title": self.title,
             "model": self.model,
             "status": self.status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "project_dir": self.project_dir,
+            "gate_mode": self.gate_mode,
         }
 
     @classmethod
@@ -67,10 +71,18 @@ class Session:
         parent_id: str | None,
         title: str | None = None,
         project_dir: str | None = None,
+        gate_mode: str | None = None,
     ) -> "Session":
         """Insert a new session row and return the loaded ``Session`` object."""
         sid = generate_session_id()
-        db.insert_session(id=sid, parent_id=parent_id, title=title or "", model=model, project_dir=project_dir)
+        db.insert_session(
+            id=sid,
+            parent_id=parent_id,
+            title=title or "",
+            model=model,
+            project_dir=project_dir,
+            gate_mode=gate_mode,
+        )
         return cls.load(db=db, session_id=sid)
 
     def set_project_dir(self, db: Any, project_dir: str) -> None:
@@ -118,3 +130,52 @@ class Session:
         """Mark the session as active in the DB and update local state."""
         db.update_session_status(self.id, "active")
         self.status = "active"
+
+    @classmethod
+    def fork_from_message(cls, db: Any, parent_id: str, message_id: str) -> "Session":
+        """Create a new session as a branch of *parent_id*, rooted at *message_id*.
+
+        The new session inherits the parent's model, sets ``parent_id`` and
+        ``branch_message_id``, and loads its message history from the parent
+        chain truncated to the branch point.
+        """
+        parent = cls.load(db, parent_id)
+        s = cls.create(db, parent.model, parent_id=parent_id)
+        db.con.execute(
+            "UPDATE sessions SET branch_message_id = ? WHERE id = ?",
+            (message_id, s.id),
+        )
+        db.con.commit()
+        return cls.load(db, s.id)
+
+    @classmethod
+    def truncate_after_message(cls, db: Any, session_id: str, message_id: str) -> "Session":
+        """Delete *message_id* and every message after it in *session_id*,
+        then return the same session.
+
+        Unlike :meth:`fork_from_message`, the session id is preserved — this
+        is the in-place rewind used to erase a tail of conversation from the
+        current branch, including the message that was selected as the
+        rewind point.
+        """
+        session = cls.load(db, session_id)
+        row = db.con.execute(
+            "SELECT created_at FROM messages WHERE id = ? AND session_id = ?",
+            (message_id, session_id),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Message not found: {message_id}")
+        db.delete_messages_after(session_id, int(row["created_at"]), boundary_id=message_id)
+        db.delete_message(message_id)
+        now = int(time.time() * 1000)
+        db.con.execute(
+            "UPDATE sessions SET updated_at = ? WHERE id = ?",
+            (now, session_id),
+        )
+        db.con.commit()
+        return session
+
+    def set_gate_mode(self, db: Any, gate_mode: str | None) -> None:
+        """Update the session's permission mode and refresh local state."""
+        db.update_session_gate_mode(self.id, gate_mode)
+        self.gate_mode = gate_mode

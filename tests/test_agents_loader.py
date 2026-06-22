@@ -33,7 +33,7 @@ Body.
     return path
 
 
-def test_agents_load_validate_skill_tool(tmp_path):
+def test_agents_load_validate_skill_tool(tmp_path, capsys):
     """Agent declaring nonexistent skill or invalid tool raises AgentLoadError."""
     from aede.skills.loader import load_skills
     from aede.agents.loader import load_agents
@@ -53,24 +53,28 @@ def test_agents_load_validate_skill_tool(tmp_path):
     _write_agent(project_dir, "bad_skill_agent", "References unknown skill",
                  extra="skills: [nonexistent_skill]")
 
-    skill_registry = load_skills(global_dir=global_dir, project_dir=project_dir)
+    skill_registry = load_skills(global_dir=global_dir, project_dir=project_dir,
+                                 include_claude_fallback=False)
     assert "web_search_skill" in skill_registry
 
-    # Should raise for bad_skill_agent referencing nonexistent skill
-    with pytest.raises(AgentLoadError, match="nonexistent_skill"):
-        load_agents(
-            global_dir=global_dir,
-            project_dir=project_dir,
-            skill_registry=skill_registry,
-            all_tool_names=["read_file", "write_file", "web_search", "powershell"],
-        )
+    # An agent referencing a nonexistent skill is skipped (with a warning), not
+    # loaded — one bad imported agent must not crash the whole registry.
+    registry = load_agents(
+        global_dir=global_dir,
+        project_dir=project_dir,
+        skill_registry=skill_registry,
+        all_tool_names=["read_file", "write_file", "web_search", "powershell"],
+    )
+    assert "good_agent" in registry
+    assert "bad_skill_agent" not in registry
+    warning = capsys.readouterr().err
+    assert "bad_skill_agent" in warning and "nonexistent_skill" in warning
 
 
-def test_agents_load_validate_tools_invalid(tmp_path):
-    """Agent declaring an invalid tool name raises AgentLoadError."""
+def test_agents_load_validate_tools_invalid(tmp_path, capsys):
+    """Agent declaring an invalid tool name is skipped with a warning."""
     from aede.skills.loader import load_skills
     from aede.agents.loader import load_agents
-    from aede.agents.schema import AgentLoadError
 
     global_dir = tmp_path / "global"
     project_dir = tmp_path / "project"
@@ -80,15 +84,18 @@ def test_agents_load_validate_tools_invalid(tmp_path):
     _write_agent(project_dir, "bad_tool_agent", "uses bad tool",
                  extra="tools: [nonexistent_tool_xyz]")
 
-    skill_registry = load_skills(global_dir=global_dir, project_dir=project_dir)
+    skill_registry = load_skills(global_dir=global_dir, project_dir=project_dir,
+                                 include_claude_fallback=False)
 
-    with pytest.raises(AgentLoadError, match="nonexistent_tool_xyz"):
-        load_agents(
-            global_dir=global_dir,
-            project_dir=project_dir,
-            skill_registry=skill_registry,
-            all_tool_names=["read_file", "write_file"],
-        )
+    registry = load_agents(
+        global_dir=global_dir,
+        project_dir=project_dir,
+        skill_registry=skill_registry,
+        all_tool_names=["read_file", "write_file"],
+    )
+    assert "bad_tool_agent" not in registry
+    warning = capsys.readouterr().err
+    assert "bad_tool_agent" in warning and "nonexistent_tool_xyz" in warning
 
 
 def test_agents_load_valid(tmp_path):
@@ -105,7 +112,8 @@ def test_agents_load_valid(tmp_path):
     _write_agent(project_dir, "writer", "Writing agent",
                  extra="skills: []")
 
-    skill_registry = load_skills(global_dir=global_dir, project_dir=project_dir)
+    skill_registry = load_skills(global_dir=global_dir, project_dir=project_dir,
+                                 include_claude_fallback=False)
     agent_registry = load_agents(
         global_dir=global_dir,
         project_dir=project_dir,
@@ -132,7 +140,8 @@ def test_agents_load_shadow(tmp_path):
     _write_agent(project_dir, "shared", "Project version")
     _write_agent(project_dir, "unique", "Only project")
 
-    skill_registry = load_skills(global_dir=global_dir, project_dir=project_dir)
+    skill_registry = load_skills(global_dir=global_dir, project_dir=project_dir,
+                                 include_claude_fallback=False)
     agent_registry = load_agents(
         global_dir=global_dir,
         project_dir=project_dir,

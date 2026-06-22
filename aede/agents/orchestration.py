@@ -68,23 +68,6 @@ async def run_subagent(
 
     sub_cfg = build_sub_cfg(orchestrator_cfg, agent_def)
 
-    if not isinstance(sub_cfg, AedeConfig):
-        sub_cfg = AedeConfig(
-            data={
-                "model": sub_cfg.model,
-                "shell": sub_cfg.shell,
-                "wsl_distro": sub_cfg.wsl_distro,
-                "tool_output_max_tokens": sub_cfg.tool_output_max_tokens,
-                "context_window": sub_cfg.context_window,
-                "compaction_threshold": sub_cfg.compaction_threshold,
-                "batch_approval_max": getattr(sub_cfg, "batch_approval_max", 20),
-                "auto_approve": getattr(sub_cfg, "auto_approve", []),
-                "model_prices": getattr(sub_cfg, "model_prices", {}),
-                "api_base_url": getattr(sub_cfg, "api_base_url", None),
-            },
-            home=getattr(orchestrator_cfg, "home", Path.home() / ".aede"),
-        )
-
     sub_router = ToolRouter.from_allowlist(
         names=agent_def.tools,
         disallowed_tools=agent_def.disallowed_tools,

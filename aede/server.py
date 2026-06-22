@@ -1,17 +1,62 @@
-"""
+﻿"""
 FastAPI backend server for aede.
 
 Provides REST and WebSocket endpoints for the browser-based UI, including
 session management, message history, token usage, and tool-approval gates.
 """
 import asyncio
+import os
 from pathlib import Path
 from typing import Any
 import sys
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body
+
+# Ensure stdout/stderr are UTF-8 on Windows (prevents charmap crashes on Unicode tool output)
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+
+def _open_in_default_app(path: str) -> None:
+    """Open *path* in the OS default application, cross-platform.
+
+    ``os.startfile`` exists only on Windows; on Linux/macOS it raises
+    ``AttributeError``.  This dispatches to the platform opener so the
+    open-file endpoints work when aede runs on a non-Windows host (e.g. CI,
+    a Linux server).
+    """
+    import subprocess
+
+    if sys.platform == "win32":
+        os.startfile(path)  # type: ignore[attr-defined]  # Windows-only
+    elif sys.platform == "darwin":
+        subprocess.run(["open", path], check=False)
+    else:
+        subprocess.run(["xdg-open", path], check=False)
+
+
+from contextlib import asynccontextmanager
+from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="aede backend")
+
+@asynccontextmanager
+async def _lifespan(app: "FastAPI"):
+    await _warmup_acp_on_startup(app)
+    # Abort any tool_calls stuck as 'running' from a prior crash or restart.
+    db = getattr(app.state, "db", None)
+    if db is not None:
+        cleaned = db.con.execute(
+            "UPDATE tool_calls SET status='aborted', result='Server restarted.' "
+            "WHERE status='running'"
+        )
+        db.con.commit()
+        if cleaned.rowcount:
+            print(f"[startup] Aborted {cleaned.rowcount} stale running tool_calls", flush=True)
+    yield
+
+
+app = FastAPI(title="aede backend", lifespan=_lifespan)
 
 # ... (middleware same as before)
 app.add_middleware(
@@ -23,12 +68,92 @@ app.add_middleware(
 )
 
 
-class WebSocketGateBackend:
-    """Tool-approval backend that sends requests to the Web UI over WebSocket."""
+async def _warmup_acp_on_startup(app: "FastAPI") -> None:
+    """Pre-warm ACP agents on uvicorn's event loop.
 
-    def __init__(self, websocket: WebSocket, futures: dict[str, asyncio.Future]):
-        self._websocket = websocket
-        self._futures = futures
+    Warmup MUST run here, not before ``uvicorn.run``: connecting an agent
+    spawns a subprocess whose stdio transport and reader tasks bind to the
+    *current* event loop.  If warmup runs on a throwaway ``asyncio.run`` loop
+    that is then closed, the cached AgentSessions reference dead transports and
+    the next ``/api/acp/connect`` short-circuits to a stale session, raising and
+    returning HTTP 500.  Running inside the startup event guarantees the same
+    loop uvicorn serves requests on.
+    """
+    if not getattr(app.state, "acp_warmup_enabled", False):
+        return
+    mgr = getattr(app.state, "acp_manager", None)
+    if mgr is None:
+        return
+    console = getattr(app.state, "console", None)
+    from aede.acp.registry import _BASE_AGENTS
+
+    names = [name for name, _, _ in _BASE_AGENTS]
+    results = await asyncio.gather(
+        *(mgr.connect(name) for name in names), return_exceptions=True
+    )
+    for name, result in zip(names, results):
+        if isinstance(result, Exception):
+            import logging
+            logging.getLogger(__name__).debug(
+                "ACP warmup failed for %s: %s", name, result)
+        elif console is not None:
+            console.print(f"[dim]ACP warmup: {name} connected[/dim]")
+
+
+class SessionState:
+    """Per-session state tracked across WebSocket reconnects.
+
+    Stores the active turn task, gate state, and current turn ID so that
+    a reconnecting socket can adopt an in-progress turn.
+    """
+
+    def __init__(self) -> None:
+        self.gate: SessionGate = SessionGate()
+        self.turn_task: asyncio.Task | None = None
+        self.current_turn_id: str | None = None
+        self.agent: Any = None
+
+
+class SessionGate:
+    """Per-session gate state, shared across successive WebSocket connections.
+
+    The turn task lives independently of any single socket.  When the UI's
+    socket drops mid-gate (e.g. React StrictMode teardown) and a new socket
+    reconnects for the same session, the new handler adopts this state, rebinds
+    the live socket, and re-sends any still-pending gate requests so the user
+    can answer them.  This prevents a pending gate from being orphaned (which
+    previously cancelled the turn and silently dropped the edit).
+    """
+
+    def __init__(self) -> None:
+        self.websocket: WebSocket | None = None
+        self.futures: dict[str, asyncio.Future] = {}
+        # gate_id -> the original gate_request payload, for re-send on reconnect.
+        self.pending_requests: dict[str, dict] = {}
+
+    def bind(self, websocket: WebSocket) -> None:
+        self.websocket = websocket
+
+    async def resend_pending(self) -> None:
+        """Re-send every unanswered gate_request to the freshly bound socket."""
+        if self.websocket is None:
+            return
+        for payload in list(self.pending_requests.values()):
+            try:
+                await self.websocket.send_json(payload)
+            except Exception:
+                pass
+
+
+class WebSocketGateBackend:
+    """Tool-approval backend that drives gate requests through a SessionGate.
+
+    Requests are sent over whatever socket is currently bound to the session,
+    so a turn started on one connection can be answered on a later one.
+    """
+
+    def __init__(self, gate: "SessionGate"):
+        self._gate = gate
 
     async def request(
         self,
@@ -36,45 +161,213 @@ class WebSocketGateBackend:
         tool_name: str,
         args: dict[str, Any],
         batch_count: int,
+        mode: Any = None,
+        reason: str | None = None,
     ) -> tuple[Any, str]:
-        from aede.gate import GateDecision
+        from aede.gate import GateDecision, gate_options_payload
         fut = asyncio.get_running_loop().create_future()
-        self._futures[gate_id] = fut
-        await self._websocket.send_json({
+        self._gate.futures[gate_id] = fut
+        payload = {
             "type": "gate_request",
             "gate_id": gate_id,
-            "tool_name": tool_name,
-            "args": args,
-            "batch_count": batch_count,
-        })
+            **gate_options_payload(
+                tool_name=tool_name,
+                args=args,
+                mode=mode,
+                reason=reason,
+                batch_count=batch_count,
+            ),
+        }
+        self._gate.pending_requests[gate_id] = payload
         try:
-            # UI should respond with {"type": "gate_response", "gate_id": "...", "decision": "ALLOW_ONCE", "redirect_msg": ""}
+            if self._gate.websocket is not None:
+                await self._gate.websocket.send_json(payload)
             decision_str, redirect_msg = await fut
-            return GateDecision[decision_str], redirect_msg
+            return GateDecision(decision_str), redirect_msg
         finally:
-            self._futures.pop(gate_id, None)
+            self._gate.futures.pop(gate_id, None)
+            self._gate.pending_requests.pop(gate_id, None)
+
+
+class WebSocketAskUserBackend:
+    """Backend for agent-initiated questions via WebSocket.
+
+    Sends ``ask_user_request`` events over the session's WebSocket and waits
+    for the user's answer via ``ask_user_response`` messages.
+    """
+
+    def __init__(self, gate: "SessionGate"):
+        self._gate = gate
+
+    async def ask(
+        self,
+        question_id: str,
+        questions: list[dict],
+    ) -> dict:
+        fut = asyncio.get_running_loop().create_future()
+        key = f"ask:{question_id}"
+        self._gate.futures[key] = fut
+        payload: dict[str, Any] = {
+            "type": "ask_user_request",
+            "question_id": question_id,
+            "questions": questions,
+        }
+        self._gate.pending_requests[key] = payload
+        try:
+            if self._gate.websocket is not None:
+                await self._gate.websocket.send_json(payload)
+            answers, _ = await fut
+            return answers
+        finally:
+            self._gate.futures.pop(key, None)
+            self._gate.pending_requests.pop(key, None)
 
 
 class WebSocketConsole:
-    """Mock-like console that redirects prints to the Web UI over WebSocket."""
+    """Console that redirects prints to the Web UI over WebSocket.
+
+    Streaming tokens (end="") are sent as ``text_delta`` events so the UI
+    renders them incrementally.  Full lines (default end="\\n") and other
+    formatting are sent as ``console_message`` events.
+    """
 
     def __init__(self, websocket: WebSocket):
         self._websocket = websocket
 
-    def print(self, *args, **kwargs):
-        """Sends the message as a JSON object to the UI."""
-        # Join all args as strings (simple version of rich.console.print)
-        text = " ".join(str(a) for a in args)
+    def _send(self, obj: dict) -> None:
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # print is sync, so we must fire-and-forget the async send
-                loop.create_task(self._websocket.send_json({
-                    "type": "console_message",
-                    "content": text
-                }))
+                # print is sync, so we fire-and-forget the async send
+                asyncio.ensure_future(self._websocket.send_json(obj))
         except Exception:
             pass
+
+    def print(self, *args, **kwargs):
+        text = " ".join(str(a) for a in args)
+        end = kwargs.get("end", "\n")
+        if not text and end == "\n":
+            return
+        if end == "":
+            self._send({"type": "text_delta", "text": text})
+        else:
+            self._send({"type": "console_message", "content": text})
+
+    def stream_tool_output(self, call_id: str, text: str):
+        self._send({"type": "tool_output_delta", "call_id": call_id, "text": text})
+
+    def error(self, message: str):
+        self._send({"type": "error", "message": message})
+
+
+# ── Daemon status endpoint ────────────────────────────────────
+
+
+daemon_router = APIRouter(prefix="/api/daemon")
+
+_daemon_instance: "Daemon | None" = None
+
+
+def _get_daemon():
+    from aede.config import load_config
+    from aede.daemon import Daemon
+    global _daemon_instance
+    if _daemon_instance is None:
+        cfg = load_config()
+        _daemon_instance = Daemon(data_dir=cfg.data_dir)
+    return _daemon_instance
+
+
+@daemon_router.get("/status")
+async def daemon_status():
+    d = _get_daemon()
+    running = d.is_running()
+    pid = None
+    port = None
+    if running and d.pid_path.exists():
+        pid = int(d.pid_path.read_text().strip())
+    if d.port_path.exists():
+        port = int(d.port_path.read_text().strip())
+    return {"running": running, "pid": pid, "port": port}
+
+
+@daemon_router.post("/start")
+async def daemon_start() -> dict:
+    d = _get_daemon()
+    if d.is_running():
+        return {"status": "ok", "message": "already running"}
+    await d.start()
+    return {"status": "ok", "pid": d._pid}
+
+
+@daemon_router.post("/stop")
+async def daemon_stop() -> dict:
+    d = _get_daemon()
+    if not d.is_running():
+        return {"status": "ok", "message": "not running"}
+    await d.stop()
+    return {"status": "ok"}
+
+
+@daemon_router.get("/timers")
+async def list_timers() -> dict:
+    d = _get_daemon()
+    if not d.is_running():
+        return {"timers": []}
+    from aede.daemon import send_command
+    resp = await send_command({"cmd": "timer_list"}, data_dir=d.data_dir)
+    return {"timers": resp.get("timers", [])}
+
+
+@daemon_router.post("/timers")
+async def add_timer(body: dict) -> dict:
+    d = _get_daemon()
+    if not d.is_running():
+        raise HTTPException(status_code=503, detail="daemon is not running")
+    cmd = {"cmd": "timer_add", "delay_s": body["delay_s"], "action": body["action"], "label": body.get("label", "")}
+    from aede.daemon import send_command
+    resp = await send_command(cmd, data_dir=d.data_dir)
+    return resp
+
+
+@daemon_router.delete("/timers/{timer_id}")
+async def delete_timer(timer_id: str) -> dict:
+    d = _get_daemon()
+    from aede.daemon import send_command
+    resp = await send_command({"cmd": "timer_delete", "id": timer_id}, data_dir=d.data_dir)
+    return resp
+
+
+@daemon_router.get("/cron")
+async def list_cron() -> dict:
+    d = _get_daemon()
+    if not d.is_running():
+        return {"jobs": []}
+    from aede.daemon import send_command
+    resp = await send_command({"cmd": "cron_list"}, data_dir=d.data_dir)
+    return {"jobs": resp.get("jobs", [])}
+
+
+@daemon_router.post("/cron")
+async def add_cron(body: dict) -> dict:
+    d = _get_daemon()
+    if not d.is_running():
+        raise HTTPException(status_code=503, detail="daemon is not running")
+    cmd = {"cmd": "cron_add", "schedule": body["schedule"], "action": body["action"], "label": body.get("label", "")}
+    from aede.daemon import send_command
+    resp = await send_command(cmd, data_dir=d.data_dir)
+    return resp
+
+
+@daemon_router.delete("/cron/{job_id}")
+async def delete_cron(job_id: str) -> dict:
+    d = _get_daemon()
+    from aede.daemon import send_command
+    resp = await send_command({"cmd": "cron_delete", "id": job_id}, data_dir=d.data_dir)
+    return resp
+
+
+app.include_router(daemon_router)
 
 
 @app.get("/health")
@@ -83,22 +376,52 @@ async def health():
     return {"status": "ok"}
 
 
+_ws_handler_id = 0
+
 @app.websocket("/ws/sessions/{session_id}")
 async def websocket_turn(websocket: WebSocket, session_id: str):
     """Handle interactive agent turns for a specific session over WebSocket."""
+    global _ws_handler_id
+    _ws_handler_id += 1
+    hid = _ws_handler_id
+    print(f"[WS#{hid}] accept: session={session_id}", flush=True)
     await websocket.accept()
+    print(f"[WS#{hid}] accepted: session={session_id}", flush=True)
     
     db = app.state.db
     cfg = app.state.cfg
-    
-    gate_futures: dict[str, asyncio.Future] = {}
-    gate_backend = WebSocketGateBackend(websocket, gate_futures)
+
+    # Session-level gate state, shared across reconnects. A turn started on an
+    # earlier socket keeps its pending gates here; this (possibly new) handler
+    # binds the live socket and re-sends any unanswered gate requests so the
+    # user can still answer them.
+    session_states: dict[str, SessionState] = getattr(app.state, "session_states", None)
+    if session_states is None:
+        session_states = {}
+        app.state.session_states = session_states
+    state = session_states.setdefault(session_id, SessionState())
+    gate: SessionGate = state.gate
+    gate.bind(websocket)
+    gate_backend = WebSocketGateBackend(gate)
     ws_console = WebSocketConsole(websocket)
+    # If a prior socket left gates pending, surface them to this fresh socket.
+    await gate.resend_pending()
+
+    async def send_live(obj: dict) -> None:
+        """Send to the socket currently bound to the session, not a captured
+        one.  Lets a turn that outlived a reconnect stream to the new socket."""
+        target = gate.websocket or websocket
+        try:
+            await target.send_json(obj)
+        except Exception:
+            pass
 
     try:
         while True:
+            print(f"[WS#{hid}] waiting for message... session={session_id}", flush=True)
             data = await websocket.receive_json()
             msg_type = data.get("type")
+            print(f"[WS#{hid}] RECEIVED type={msg_type} session={session_id}", flush=True)
 
             if msg_type == "user_message":
                 content = data.get("content")
@@ -106,17 +429,26 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     await websocket.send_json({"type": "error", "message": "Missing session_id or content"})
                     continue
 
+                # Per-turn model override from the UI (do NOT mutate shared cfg)
+                _original_model = cfg.model
+                turn_model = data.get("model")
+                if turn_model:
+                    print(f"[WS#{hid}] per-turn model override: {cfg.model} → {turn_model}", flush=True)
+                    cfg.model = turn_model
+
                 # Bootstrap AgentLoop for this turn
                 from aede.session import Session
                 from aede.agent import AgentLoop
                 from aede.tools.router import ToolRouter
-                from aede.gate import PermissionStore
+                from aede.gate import PermissionStore, PermissionMode
                 from aede.tokens import TokenTracker
                 from aede.rollout import Rollout
 
                 try:
                     session = Session.load(db, session_id)
+                    print(f"[WS#{hid}] Session loaded: {session.id}", flush=True)
                 except KeyError:
+                    print(f"[WS#{hid}] Session NOT FOUND: {session_id}", flush=True)
                     await websocket.send_json({"type": "error", "message": f"Session {session_id} not found"})
                     continue
 
@@ -125,8 +457,37 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     from aede.session import make_title
                     session.set_title(db, make_title(content))
 
+                _thinking_started = False
+                # Accumulate thinking segments for ACP persistence.
+                # For ACP, thinking flows: on_update → _stream_thinking (here) → WS.
+                # We capture (text, seq) pairs so we can write them to DB after the turn.
+                _pending_thinking_segments: list[dict] = []
+
+                async def _stream_thinking(text: str, seq: int = 0):
+                    nonlocal _thinking_started
+                    if not _thinking_started:
+                        _thinking_started = True
+                        await send_live({"type": "thinking_start"})
+                    _pending_thinking_segments.append({"text": text, "seq": seq})
+                    await send_live({"type": "thinking_delta", "text": text, "seq": seq})
+
                 gate_store = PermissionStore()
                 gate_store.load_from_config(cfg.auto_approve)
+                # Resolve the permission mode for this turn. Precedence:
+                #   1. mode sent in the user_message payload (authoritative; the
+                #      UI sends the live selection, avoiding a PATCH-vs-send race)
+                #   2. the persisted per-session mode (PATCH /api/sessions)
+                #   3. the process-global cfg.gate_mode (shared fallback)
+                # cfg.gate_mode is shared across all WS connections, so relying
+                # on it alone would leak one session's mode into another.
+                _turn_mode = data.get("gate_mode") or session.gate_mode or cfg.gate_mode
+                gate_store.mode = PermissionMode.from_str(_turn_mode)
+                # Persist a payload-supplied mode so /resume and later turns keep it.
+                if data.get("gate_mode") and data["gate_mode"] != session.gate_mode:
+                    try:
+                        session.set_gate_mode(db, data["gate_mode"])
+                    except Exception:
+                        pass
 
                 router = ToolRouter(
                     shell=cfg.shell,
@@ -141,6 +502,48 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 tracker = TokenTracker(session_id=session.id, db=db)
                 rollout = Rollout(cfg.data_dir / "sessions", session.id)
 
+                print(f"[WS#{hid}] Creating AgentLoop...", flush=True)
+
+                async def _stream_text(text: str):
+                    await send_live({"type": "text_delta", "text": text})
+
+                async def _stream_tool_call(call_id: str, name: str, args: dict, seq: int = 0):
+                    try:
+                        # Persist to DB (ACP tools run in-subprocess, reported via on_update)
+                        if agent._current_assist_id:
+                            import json as _json
+                            _model = cfg.model
+                            _base = _model.split('/')[0] if '/' in _model else _model
+                            from aede.provider import ACP_MODEL_IDS
+                            _provider = f"{_base}-acp" if _model in ACP_MODEL_IDS else 'aede'
+                            db.upsert_tool_call(
+                                id=call_id,
+                                message_id=agent._current_assist_id,
+                                tool_name=name,
+                                args=_json.dumps(args),
+                                status="running",
+                                provider=_provider,
+                            )
+                        await send_live({"type": "tool_call", "id": call_id, "name": name, "args": args, "seq": seq})
+                    except Exception:
+                        pass
+
+                async def _stream_tool_result(call_id: str, status: str, output: str, duration_ms: int):
+                    try:
+                        # Persist to DB
+                        if agent._current_assist_id:
+                            db.update_tool_call(
+                                id=call_id,
+                                result=output,
+                                status=status,
+                                duration_ms=duration_ms,
+                            )
+                        await send_live({"type": "tool_result", "id": call_id, "status": status, "output": output, "duration_ms": duration_ms})
+                    except Exception:
+                        pass
+
+                ask_user_backend = WebSocketAskUserBackend(gate)
+
                 agent = AgentLoop(
                     cfg=cfg,
                     session=session,
@@ -152,15 +555,32 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     console=ws_console,
                     project_dir=Path.cwd(),
                     gate_backend=gate_backend,
+                    ask_user_backend=ask_user_backend,
+                    acp_manager=getattr(app.state, "acp_manager", None),
+                    stream_text=_stream_text,
+                    stream_thinking=_stream_thinking,
+                    stream_tool_call=_stream_tool_call,
+                    stream_tool_result=_stream_tool_result,
                 )
+                state.agent = agent
 
-                # Load prior messages for context
+                # Load prior messages for context.
+                #
+                # Tool-only assistant turns are persisted with empty content
+                # (the tool_use blocks live in the tool_calls table and are not
+                # reattached here). Replaying {"role":"assistant","content":""}
+                # makes OpenAI-style providers (DeepSeek via opencode-go) reject
+                # the request with "content or tool_calls must be set". Drop
+                # assistant rows whose content is blank so resumed sessions with
+                # heavy tool use stay sendable.
                 rows = db.get_messages(session.id)
                 prior_messages = [
                     {"role": r["role"], "content": r["content"]}
                     for r in rows
+                    if not (r["role"] == "assistant" and not (r["content"] or "").strip())
                 ]
                 agent.initialize(is_resume=True, prior_messages=prior_messages)
+                print(f"[WS#{hid}] AgentLoop initialized", flush=True)
 
                 # Resolve @[filename] mentions from the session's project dir
                 ws_workspace = Path(session.project_dir).expanduser().resolve() if session.project_dir else None
@@ -168,31 +588,171 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 if resolved_content != content:
                     await websocket.send_json({"type": "console_message", "content": "Resolved @ file references"})
 
+                # Send thinking_start immediately for thinking-capable models
+                if getattr(cfg, "thinking_budget", 0) > 0:
+                    try:
+                        await websocket.send_json({"type": "thinking_start"})
+                    except Exception:
+                        pass
+
                 # Run the turn in the background so we can still receive gate responses
-                turn_task = asyncio.create_task(agent.run_turn(resolved_content))
+                print(f"[WS#{hid}] Starting agent.run_turn...", flush=True)
+                from aede.db import _now_ms as _turn_now_ms
+                turn_start_ms = _turn_now_ms()
+                state.turn_task = asyncio.create_task(agent.run_turn(resolved_content))
+                turn_task = state.turn_task
+                print(f"[WS#{hid}] agent.run_turn task created", flush=True)
                 
                 def on_turn_done(fut):
+                    nonlocal hid, turn_start_ms
+                    print(f"[WS#{hid}] on_turn_done CALLED", flush=True)
+                    # Restore original model after turn
+                    cfg.model = _original_model
+                    # A cancelled turn (e.g. WS disconnect/reconnect while waiting
+                    # on a gate response) raises CancelledError — a BaseException,
+                    # NOT caught by `except Exception`.  Swallow it explicitly so
+                    # the done-callback never propagates an unhandled exception.
+                    if fut.cancelled():
+                        print(f"[WS#{hid}] run_turn cancelled — reporting completion", flush=True)
+                        asyncio.create_task(send_live({"type": "turn_completed", "turn_duration_ms": 0, "cancelled": True}))
+                        return
                     try:
                         fut.result()
-                        asyncio.create_task(websocket.send_json({"type": "turn_completed"}))
+                        print(f"[WS#{hid}] run_turn completed successfully", flush=True)
+                        # Persist ACP thinking segments. Segments are grouped by
+                        # seq so the UI can reconstruct the interleaved timeline
+                        # (think → tool → think → answer) after a page reload.
+                        # We write one row per unique seq value (merging all text
+                        # chunks with the same seq into a single segment).
+                        if _pending_thinking_segments and agent._current_assist_id:
+                            mid = agent._current_assist_id
+                            # Merge chunks with the same seq into one row.
+                            merged: dict[int, str] = {}
+                            for seg in _pending_thinking_segments:
+                                s = seg["seq"]
+                                merged[s] = merged.get(s, "") + seg["text"]
+                            for seq_val in sorted(merged):
+                                try:
+                                    db.insert_thinking_segment(
+                                        message_id=mid,
+                                        text=merged[seq_val],
+                                        seq=seq_val,
+                                    )
+                                except Exception as e:
+                                    print(f"[WS#{hid}] thinking_segment insert error: {e}", flush=True)
+                        # Calculate and persist wall-clock turn duration
+                        turn_duration_ms = _turn_now_ms() - turn_start_ms
+                        if agent._current_assist_id and turn_duration_ms > 0:
+                            try:
+                                db.set_message_duration(agent._current_assist_id, turn_duration_ms)
+                            except Exception as e:
+                                print(f"[WS#{hid}] turn_duration persist error: {e}", flush=True)
+                        asyncio.create_task(send_live({"type": "turn_completed", "turn_duration_ms": turn_duration_ms}))
+                        # Emit context usage info
+                        try:
+                            from aede.agent import count_context_tokens, breakdown_to_dict
+                            breakdown = count_context_tokens(agent._messages)
+                            ctx = breakdown_to_dict(breakdown)
+                            asyncio.create_task(send_live({
+                                "type": "context_usage",
+                                "used": ctx["total_tokens"],
+                                "total": cfg.context_window,
+                                "buckets": ctx["buckets"],
+                                "compactions": [],
+                            }))
+                        except Exception as e:
+                            print(f"[WS#{hid}] context_usage error: {e}", flush=True)
+                        # Emit learnings count
+                        try:
+                            from aede.memory.store import LearningsStore
+                            store = LearningsStore(data_dir=cfg.data_dir, db=db)
+                            all_l = store.list_all()
+                            asyncio.create_task(send_live({
+                                "type": "learnings_injected",
+                                "count": len(all_l),
+                            }))
+                        except Exception as e:
+                            print(f"[WS#{hid}] learnings error: {e}", flush=True)
                     except Exception as e:
-                        asyncio.create_task(websocket.send_json({"type": "error", "message": str(e)}))
+                        cfg.model = _original_model
+                        print(f"[WS#{hid}] run_turn FAILED: {e}", flush=True)
+                        import traceback
+                        traceback.print_exc()
+                        asyncio.create_task(send_live({"type": "error", "message": str(e)}))
 
                 turn_task.add_done_callback(on_turn_done)
+                print(f"[WS#{hid}] Done setting up turn, returning to message loop", flush=True)
 
             elif msg_type == "gate_response":
                 gate_id = data.get("gate_id")
                 decision = data.get("decision")
                 redirect_msg = data.get("redirect_msg", "")
-                
-                if gate_id in gate_futures:
-                    gate_futures[gate_id].set_result((decision, redirect_msg))
+
+                fut = gate.futures.get(gate_id)
+                if fut is not None and not fut.done():
+                    fut.set_result((decision, redirect_msg))
                 else:
                     await websocket.send_json({"type": "error", "message": f"Unknown gate_id: {gate_id}"})
 
+            elif msg_type == "stop":
+                state = session_states.get(session_id)
+                if state and state.turn_task and not state.turn_task.done():
+                    print(f"[WS#{hid}] stop requested — cancelling turn", flush=True)
+                    state.turn_task.cancel()
+                else:
+                    print(f"[WS#{hid}] stop requested — no active turn to cancel", flush=True)
+
+            elif msg_type == "ask_user_response":
+                question_id = data.get("question_id")
+                answers = data.get("answers", {})
+                key = f"ask:{question_id}"
+                fut = gate.futures.get(key)
+                if fut is not None and not fut.done():
+                    fut.set_result((answers, ""))
+                else:
+                    await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+
+            elif msg_type == "ask_user_chat":
+                # User clicked "Chat about this" on a pending question.
+                # Resolve the pending future with a sentinel dict so the agent
+                # receives the comment as a tool result and can respond
+                # conversationally, then re-ask the question(s).
+                question_id = data.get("question_id")
+                question_text = data.get("question", "")
+                comment = data.get("comment", "")
+                key = f"ask:{question_id}"
+                fut = gate.futures.get(key)
+                if fut is not None and not fut.done():
+                    fut.set_result(({"__chat__": comment, "__question__": question_text}, ""))
+                else:
+                    await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+
     except WebSocketDisconnect:
-        pass
+        print(f"[WS#{hid}] WebSocket disconnected", flush=True)
+        # Turn durability (Tier 1): a disconnect — browser close or session
+        # switch — never cancels the in-flight turn. The turn task lives in the
+        # process-global ``session_states`` map, independent of any socket, so
+        # it runs to completion and ``on_turn_done`` persists the final assistant
+        # message to the DB. A reconnecting (or returning) browser re-reads the
+        # turn via ``db.get_messages`` on session load.
+        #
+        # Note: live deltas emitted while no socket is bound are dropped
+        # (``send_live`` swallows the send error) — the reconnect sees the final
+        # persisted result, not a replay of the stream. Buffering deltas for
+        # replay is Tier 1.5 (out of scope); an orphan-turn TTL sweep for turns
+        # whose browser never returns is a deferred follow-up. See
+        # docs-internal/roadmap/phase2-gap-backlog.md P0.10.
+        #
+        # Only the explicit ``stop`` message (handled above) cancels a turn.
+        turn_state = state
+        if gate.websocket is websocket:
+            gate.websocket = None  # current socket is gone; await reconnect
+        if turn_state.turn_task is not None and not turn_state.turn_task.done():
+            print(f"[WS#{hid}] disconnect — leaving turn alive (durable; finishes detached)", flush=True)
     except Exception as e:
+        print(f"[WS#{hid}] UNHANDLED EXCEPTION: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:
@@ -218,8 +778,59 @@ async def create_session(request: Request, payload: dict):
 
 @app.get("/api/sessions")
 async def list_sessions(request: Request):
+    """List sessions structured by project vs global.
+
+    Returns ALL sessions grouped by project_dir (unlimited per project) plus
+    paginated global (no-project_dir) sessions.  This ensures project sessions
+    never disappear or compete for slots with global sessions.
+
+    Query parameters:
+        global_limit  (int, default 50)  - page size for global sessions
+        global_offset (int, default 0)   - page offset for global sessions
+
+    Response:
+    ```json
+    {
+      "projects": { "<project_dir>": [Session, ...], ... },
+      "global": {
+        "sessions": [Session, ...],
+        "total": int,
+        "limit": int,
+        "offset": int,
+        "has_more": bool
+      }
+    }
+    ```
+    """
+    from collections import defaultdict
     db = request.app.state.db
-    return db.list_sessions()
+
+    global_limit = int(request.query_params.get("global_limit", 50))
+    global_offset = int(request.query_params.get("global_offset", 0))
+
+    # All project sessions (unlimited), grouped by project_dir
+    project_rows = db.con.execute(
+        "SELECT * FROM sessions WHERE project_dir IS NOT NULL ORDER BY updated_at DESC"
+    ).fetchall()
+    projects: dict[str, list] = defaultdict(list)
+    for row in project_rows:
+        projects[row["project_dir"]].append(row)
+
+    # Global sessions (paginated)
+    global_sessions, global_total = db.list_global_sessions(
+        limit=global_limit, offset=global_offset
+    )
+
+    return {
+        "projects": dict(projects),
+        "global": {
+            "sessions": global_sessions,
+            "total": global_total,
+            "limit": global_limit,
+            "offset": global_offset,
+            "has_more": (global_offset + global_limit) < global_total,
+        },
+    }
 
 
 # ── Project endpoints ──────────────────────────────────────────────
@@ -310,6 +921,7 @@ async def get_session(request: Request, session_id: str):
 @app.patch("/api/sessions/{session_id}")
 async def update_session(request: Request, session_id: str, payload: dict):
     db = request.app.state.db
+    cfg = request.app.state.cfg
     from aede.session import Session
     try:
         session = Session.load(db, session_id)
@@ -317,6 +929,9 @@ async def update_session(request: Request, session_id: str, payload: dict):
             session.set_title(db, payload["title"])
         if "project_dir" in payload:
             session.set_project_dir(db, payload["project_dir"])
+        if "gate_mode" in payload:
+            session.set_gate_mode(db, payload["gate_mode"])
+            cfg.gate_mode = payload["gate_mode"]
         return Session.load(db, session_id).to_dict()
     except KeyError:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -349,8 +964,130 @@ async def delete_session(request: Request, session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/sessions/{session_id}/rewind")
+async def rewind_session(request: Request, session_id: str, payload: dict):
+    """Fork the session at a given user message, optionally reverting code changes.
+
+    Body:
+        ``message_id`` (str, required) — the user message ID to fork at.
+        ``revert_code`` (bool, default False) — whether to revert code changes
+            made after this message by replay tool calls in reverse.
+
+    Returns the new forked session.
+    """
+    db = request.app.state.db
+    cfg = request.app.state.cfg
+    from aede.session import Session
+
+    message_id = payload.get("message_id")
+    if not message_id:
+        raise HTTPException(status_code=400, detail="message_id is required")
+
+    try:
+        parent = Session.load(db, session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    new_session = Session.fork_from_message(db, session_id, message_id)
+
+    revert_code_flag = payload.get("revert_code", False)
+    if revert_code_flag:
+        project_dir = Path(parent.project_dir) if parent.project_dir else Path.cwd()
+        tool_calls = []
+        msg_ids = [m["id"] for m in db.get_messages(session_id) if m["id"] != message_id]
+        if msg_ids:
+            tc_map = db.get_tool_calls_for_message_ids(msg_ids)
+            for mid in msg_ids:
+                for tc in tc_map.get(mid, []):
+                    tool_calls.append({"name": tc["tool_name"], "args": tc.get("args", {})})
+        if tool_calls:
+            from aede.tools.rewind import revert_code as _revert_code
+            try:
+                _revert_code(project_dir, tool_calls)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Code revert failed: {e}")
+
+    return new_session.to_dict()
+
+
+@app.post("/api/sessions/{session_id}/truncate")
+async def truncate_session(request: Request, session_id: str, payload: dict):
+    """Truncate the current session at a given user message, optionally
+    reverting code changes.
+
+    Unlike :func:`rewind_session`, this preserves the session id — the tail
+    of conversation after *message_id* is erased in place rather than forked
+    into a new session.
+
+    Body:
+        ``message_id`` (str, required) — the user message ID to truncate at.
+        ``revert_code`` (bool, default False) — whether to run the three-tier
+            code-revert utility against the tool_calls of the removed
+            messages.
+
+    Returns the same session dict (not a new one).
+    """
+    db = request.app.state.db
+    from aede.session import Session
+
+    message_id = payload.get("message_id")
+    if not message_id:
+        raise HTTPException(status_code=400, detail="message_id is required")
+
+    try:
+        session = Session.load(db, session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    revert_code_flag = bool(payload.get("revert_code", False))
+
+    if revert_code_flag:
+        anchor_row = db.con.execute(
+            "SELECT created_at, rowid FROM messages WHERE id = ? AND session_id = ?",
+            (message_id, session_id),
+        ).fetchone()
+        if anchor_row is None:
+            raise HTTPException(status_code=404, detail="Message not found")
+        anchor_ts = int(anchor_row["created_at"])
+        anchor_rowid = anchor_row["rowid"]
+        tool_calls = []
+        tail_rows = db.con.execute(
+            """
+            SELECT id FROM messages
+            WHERE session_id = ?
+              AND (created_at > ? OR (created_at = ? AND rowid > ?))
+            """,
+            (session_id, anchor_ts, anchor_ts, anchor_rowid),
+        ).fetchall()
+        msg_ids = [r["id"] for r in tail_rows]
+        if msg_ids:
+            tc_map = db.get_tool_calls_for_message_ids(msg_ids)
+            for mid in msg_ids:
+                for tc in tc_map.get(mid, []):
+                    tool_calls.append({"name": tc["tool_name"], "args": tc.get("args", {})})
+        if tool_calls:
+            project_dir = Path(session.project_dir) if session.project_dir else Path.cwd()
+            from aede.tools.rewind import revert_code as _revert_code
+            try:
+                _revert_code(project_dir, tool_calls)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Code revert failed: {e}")
+
+    try:
+        session = Session.truncate_after_message(db, session_id, message_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return session.to_dict()
+
+
 def _walk_parent_messages(db, session_id: str) -> list[dict]:
-    """Recursively collect messages from all ancestor sessions, root-first."""
+    """Recursively collect messages from all ancestor sessions, root-first.
+
+    When the session at *session_id* has a ``branch_message_id`` set, the
+    parent messages are truncated at that message ID (the branch point
+    message itself is included so the UI shows where the fork occurred).
+    """
     from aede.session import Session
     try:
         session = Session.load(db, session_id)
@@ -361,6 +1098,14 @@ def _walk_parent_messages(db, session_id: str) -> list[dict]:
     ancestor_msgs = _walk_parent_messages(db, session.parent_id)
     own = list(db.get_messages(session.parent_id))
     ancestor_msgs.extend(own)
+    if session.branch_message_id:
+        idx = None
+        for i, m in enumerate(ancestor_msgs):
+            if m["id"] == session.branch_message_id:
+                idx = i
+                break
+        if idx is not None:
+            ancestor_msgs = ancestor_msgs[: idx + 1]
     return ancestor_msgs
 
 
@@ -374,12 +1119,40 @@ async def get_messages(request: Request, session_id: str):
     except KeyError:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # Abort any tool_calls still stuck as 'running' from a previous
+    # interrupted turn — page reloads or server restarts can leave these
+    # behind and they would otherwise render as perpetual spinners.
+    db.abort_running_tool_calls(session_id)
+
     parent_msgs = _walk_parent_messages(db, session_id)
     if parent_msgs:
         parent_msgs[-1]["is_branch_point"] = True
     own = list(db.get_messages(session_id))
     parent_msgs.extend(own)
-    return parent_msgs
+
+    # Attach tool calls to their parent messages
+    all_msgs = parent_msgs
+    msg_ids = [m["id"] for m in all_msgs]
+    if msg_ids:
+        tc_map = db.get_tool_calls_for_message_ids(msg_ids)
+        # Normalize DB column names to frontend ToolCall interface
+        for tc_list in tc_map.values():
+            for tc in tc_list:
+                tc["name"] = tc.pop("tool_name")
+                tc["output"] = tc.pop("result", None)
+                tc["durationMs"] = tc.pop("duration_ms", None)
+        for m in all_msgs:
+            m["tool_calls"] = tc_map.get(m["id"], [])
+        # Attach thinking segments (ACP path; empty list for native providers)
+        seg_map = db.get_thinking_segments_for_message_ids(msg_ids)
+        for m in all_msgs:
+            m["thinking_segments"] = seg_map.get(m["id"], [])
+    else:
+        for m in all_msgs:
+            m["tool_calls"] = []
+            m["thinking_segments"] = []
+
+    return all_msgs
 
 
 @app.get("/config")
@@ -419,6 +1192,902 @@ async def get_token_usage(request: Request, session_id: str | None = None):
         "total_output_tokens": row["output_tokens"] or 0,
         "total_cached_tokens": row["cached_tokens"] or 0,
     }
+
+
+# ── Config endpoints ──────────────────────────────────────────
+
+
+@app.get("/api/config")
+async def get_config(request: Request):
+    """Return the current merged config as a dict."""
+    cfg = request.app.state.cfg
+    import dataclasses
+    d = {}
+    for key in ("model", "context_window", "compaction_threshold", "tool_output_max_tokens",
+                 "shell", "wsl_distro", "batch_approval_max", "auto_approve",
+                 "api_base_url", "grounding_enabled", "critic_enabled", "critic_model",
+                 "critic_api_base_url", "ollama_base_url", "ollama_embed_model",
+                 "ollama_timeout_s", "learnings_top_k", "learnings_max_tokens",
+                 "reasoning_effort", "thinking_budget", "gate_mode",
+                 "voice_input_enabled", "voice_wake_word_enabled",
+                 "voice_asr_model", "voice_wake_model"):
+        val = getattr(cfg, key, None)
+        if val is not None:
+            d[key] = val
+    d["model_prices"] = cfg.model_prices
+    d["plugins"] = cfg.plugins
+    d["sandbox"] = dataclasses.asdict(cfg.sandbox) if cfg.sandbox else {}
+    for key in ("otel_endpoint", "otel_service_name", "fde_enabled", "fde_endpoint"):
+        val = getattr(cfg, key, None)
+        if val is not None:
+            d[key] = val
+    d["mcp_servers"] = cfg.mcp_servers
+    return d
+
+
+@app.get("/api/config/sources")
+async def get_config_sources(request: Request):
+    """Return the config sources dict showing origin of each key."""
+    cfg = request.app.state.cfg
+    return cfg.sources
+
+
+@app.post("/api/config/open")
+async def open_config_file(request: Request, payload: dict = {}):
+    """Open the config file in the default OS editor."""
+    cfg = request.app.state.cfg
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+
+    if scope == "global":
+        file_path = cfg.home / "config.yml"
+    elif scope == "project":
+        pdir = Path(project_dir) if project_dir else Path.cwd()
+        file_path = pdir / "aede.yml"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid scope")
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Config file not found")
+
+    _open_in_default_app(str(file_path))
+    return {"status": "ok"}
+
+
+@app.get("/api/mcp/servers")
+async def list_mcp_servers(request: Request):
+    """Return configured MCP servers with real status."""
+    cfg = request.app.state.cfg
+    bridge = getattr(request.app.state, "mcp_bridge", None)
+    servers = {}
+    if cfg.mcp_servers:
+        for name, srv in cfg.mcp_servers.items():
+            running = bridge is not None and hasattr(bridge, "_sessions") and name in bridge._sessions
+            tools = []
+            if bridge is not None and hasattr(bridge, "_tool_schemas"):
+                tools = list(bridge._tool_schemas.get(name, []))
+            servers[name] = {
+                "command": srv.command,
+                "args": srv.args,
+                "env": srv.env,
+                "trusted": srv.trusted,
+                "url": srv.url,
+                "enabled": srv.enabled,
+                "disabled_tools": srv.disabled_tools,
+                "status": "running" if running else "stopped",
+                "tools": tools,
+            }
+    return servers
+
+
+@app.post("/api/mcp/servers/restart")
+async def restart_mcp_servers(request: Request):
+    """Restart all MCP servers."""
+    _restart_mcp_bridge(request)
+    cfg = request.app.state.cfg
+    mcp_servers = getattr(cfg, "mcp_servers", {})
+    return {"status": "ok", "servers": list(mcp_servers.keys()) if mcp_servers else []}
+
+
+@app.post("/api/mcp/servers")
+async def create_mcp_server(request: Request, payload: dict):
+    """Add or update an MCP server in config.yml and restart the bridge."""
+    name = payload.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    cfg = request.app.state.cfg
+    home = cfg.home
+    # Read current config
+    import yaml
+    cfg_path = home / "config.yml"
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    mcp_data = data.setdefault("mcp_servers", {})
+    mcp_data[name] = {
+        "command": payload.get("command", ""),
+        "args": payload.get("args", []),
+        "env": payload.get("env") or None,
+        "url": payload.get("url", ""),
+        "trusted": payload.get("trusted", False),
+        "enabled": payload.get("enabled", True),
+        "disabled_tools": payload.get("disabled_tools", []),
+    }
+    cfg_path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
+    _restart_mcp_bridge(request)
+    return {"status": "ok", "name": name}
+
+
+@app.put("/api/mcp/servers/{name}")
+async def update_mcp_server(name: str, request: Request, payload: dict):
+    """Update an existing MCP server's fields (enabled, disabled_tools, etc.) and restart."""
+    import yaml
+    cfg = request.app.state.cfg
+    cfg_path = cfg.home / "config.yml"
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    mcp_data = data.setdefault("mcp_servers", {})
+    if name not in mcp_data:
+        raise HTTPException(status_code=404, detail=f"MCP server {name!r} not found")
+    entry = mcp_data[name]
+    if "enabled" in payload:
+        entry["enabled"] = payload["enabled"]
+    if "disabled_tools" in payload:
+        entry["disabled_tools"] = payload["disabled_tools"]
+    cfg_path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
+    _restart_mcp_bridge(request)
+    return {"status": "ok", "name": name}
+
+
+@app.delete("/api/mcp/servers/{name}")
+async def delete_mcp_server(name: str, request: Request):
+    """Remove an MCP server from config.yml and restart the bridge."""
+    import yaml
+    cfg = request.app.state.cfg
+    cfg_path = cfg.home / "config.yml"
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    mcp_data = data.setdefault("mcp_servers", {})
+    if name not in mcp_data:
+        raise HTTPException(status_code=404, detail=f"MCP server {name!r} not found")
+    del mcp_data[name]
+    cfg_path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
+    _restart_mcp_bridge(request)
+    return {"status": "ok", "name": name}
+
+
+def _restart_mcp_bridge(request: Request) -> None:
+    """Helper: reload config, shut down existing bridge, restart with current config."""
+    from aede.config import load_config
+    request.app.state.cfg = load_config()
+    cfg = request.app.state.cfg
+    bridge = getattr(request.app.state, "mcp_bridge", None)
+    if bridge is not None:
+        try:
+            bridge.shutdown_all()
+        except Exception:
+            pass
+    mcp_servers = getattr(cfg, "mcp_servers", {})
+    if mcp_servers:
+        try:
+            from aede.mcp.client import MCPBridge
+            new_bridge = MCPBridge(servers=mcp_servers)
+            new_bridge.spawn_all()
+            request.app.state.mcp_bridge = new_bridge
+        except Exception:
+            request.app.state.mcp_bridge = None
+    else:
+        request.app.state.mcp_bridge = None
+
+
+@app.put("/api/config")
+async def update_config(request: Request, payload: dict):
+    """Update a config value. Payload: {key, value, scope, project_dir?}"""
+    key = payload.get("key")
+    value = payload.get("value")
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+
+    if not key:
+        raise HTTPException(status_code=400, detail="key is required")
+
+    if scope == "project" and not project_dir:
+        raise HTTPException(status_code=400, detail="project_dir required for project scope")
+    from aede.config import write_config_value, load_config
+    write_config_value(scope=scope, key=key, value=value, project_dir=Path(project_dir) if project_dir else None)
+    request.app.state.cfg = load_config()
+
+    return {"status": "ok", "key": key, "scope": scope}
+
+
+# ── Credential endpoints ──────────────────────────────────────
+
+
+@app.get("/api/credentials")
+async def list_credentials(request: Request):
+    """Return all credential names and providers (without values).
+
+    Reads from ``~/.aede/credentials.json`` via ``aede.credentials``.
+    """
+    cfg = request.app.state.cfg
+    from aede.credentials import list_credentials as _list
+    return _list(cfg.home)
+
+
+ACP_COMMANDS = {
+    "codex": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/gpt-5.5": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/gpt-5.3-codex": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/o3": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "codex/o4-mini": ("npx", ["-y", "@agentclientprotocol/codex-acp"]),
+    "claude-code": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/fable-5": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/opus-4-8": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    # "claude-code/opus-4-7": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/sonnet-4-6": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "claude-code/haiku-4-5": ("npx", ["-y", "@agentclientprotocol/claude-agent-acp"]),
+    "gemini": ("gemini", ["--acp"]),
+    "agy": ("agy", ["--acp"]),
+    "agy/gemini-3-5-flash": ("agy", ["--acp"]),
+    "agy/gemini-3-1-pro": ("agy", ["--acp"]),
+    "agy/claude-sonnet-4-6": ("agy", ["--acp"]),
+    "agy/claude-opus-4-6": ("agy", ["--acp"]),
+    "cline": ("cline", ["--acp"]),
+    "cursor": ("cursor-agent", ["--acp"]),
+    "goose": ("goose", ["acp"]),
+    "goose/anthropic-claude-sonnet-4-6": ("goose", ["acp"]),
+    "goose/openai-gpt-4o": ("goose", ["acp"]),
+
+}
+
+
+@app.post("/api/credentials")
+async def create_credential(request: Request, payload: dict):
+    """Create or update a credential in the vault file and current env."""
+    cfg = request.app.state.cfg
+    from aede.credentials import set_credential as _set
+    name = payload.get("name")
+    value = payload.get("value")
+    provider = payload.get("provider")
+    if not name or not value:
+        raise HTTPException(status_code=400, detail="name and value are required")
+    import os
+    _set(cfg.home, name, value, provider)
+    os.environ[name] = value
+
+    acp_connected = False
+    if provider:
+        mgr = getattr(request.app.state, "acp_manager", None)
+        if mgr:
+            cmd_info = ACP_COMMANDS.get(provider)
+            if cmd_info:
+                command, args = cmd_info
+                from aede.commands import get_acp_model_override
+                model_override = get_acp_model_override(provider)
+                from aede.acp.registry import AgentConfig, AgentTransport
+                try:
+                    mgr._registry.get(provider)
+                except KeyError:
+                    try:
+                        mgr._registry.add(AgentConfig(
+                            name=provider,
+                            transport=AgentTransport.LOCAL,
+                            command=command,
+                            args=args,
+                            model_override=model_override,
+                        ))
+                    except ValueError:
+                        pass
+                try:
+                    await mgr.connect(provider)
+                    acp_connected = True
+                except Exception:
+                    pass
+
+    return {"status": "ok", "name": name, "acp_connected": acp_connected}
+
+
+@app.delete("/api/credentials/{name}")
+async def delete_credential(request: Request, name: str):
+    """Delete a credential from the vault file and current env."""
+    cfg = request.app.state.cfg
+    from aede.credentials import delete_credential as _del, list_credentials as _list
+    creds = {c["name"]: c.get("provider") for c in _list(cfg.home)}
+    provider = creds.get(name)
+    _del(cfg.home, name)
+    import os
+    os.environ.pop(name, None)
+
+    if provider:
+        mgr = getattr(request.app.state, "acp_manager", None)
+        if mgr and provider in ACP_COMMANDS:
+            await mgr.disconnect(provider)
+            try:
+                mgr._registry.remove(provider)
+            except (KeyError, ValueError):
+                pass
+
+    return {"status": "ok"}
+
+
+# ── Learnings endpoints ───────────────────────────────────────
+
+
+def _get_learnings_store(request: Request):
+    """Lazy-init LearningsStore from request state."""
+    if not hasattr(request.app.state, 'learnings_store') or request.app.state.learnings_store is None:
+        from aede.memory.store import LearningsStore
+        request.app.state.learnings_store = LearningsStore(
+            data_dir=request.app.state.cfg.data_dir,
+            db=request.app.state.db,
+        )
+    return request.app.state.learnings_store
+
+
+@app.get("/api/learnings")
+async def list_learnings(request: Request):
+    """Return all learnings from the store."""
+    store = _get_learnings_store(request)
+    return store.list_all()
+
+
+@app.post("/api/learnings")
+async def create_learning(request: Request, payload: dict):
+    """Create a new learning."""
+    store = _get_learnings_store(request)
+    record = store.write_learning(
+        type=payload.get("type", "config-correction"),
+        content=payload.get("content", ""),
+        source=payload.get("source", "user"),
+        source_session_id=payload.get("source_session_id", ""),
+        trusted=payload.get("trusted", True),
+    )
+    return record
+
+
+@app.delete("/api/learnings/{learning_id}")
+async def delete_learning(request: Request, learning_id: str):
+    """Delete a learning."""
+    store = _get_learnings_store(request)
+    success = store.delete(learning_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Learning not found")
+    return {"status": "ok"}
+
+
+# ── Agents / Skills endpoints ─────────────────────────────────
+
+_PHASE1_TOOLS = ["powershell", "read_file", "write_file", "create_file",
+                 "list_dir", "search_files", "fetch_url", "web_search",
+                 "session_search", "write_learning", "subagent"]
+
+
+def _get_agent_registry(request: Request) -> dict:
+    if not hasattr(request.app.state, 'agent_registry') or request.app.state.agent_registry is None:
+        from aede.agents.loader import load_agents
+        from aede.skills.loader import load_skills
+        home = request.app.state.cfg.home
+        skill_registry = _get_skill_registry(request)
+        request.app.state.agent_registry = load_agents(
+            global_dir=home,
+            project_dir=home,
+            skill_registry=skill_registry,
+            all_tool_names=_PHASE1_TOOLS,
+        )
+    return request.app.state.agent_registry
+
+
+def _get_skill_registry(request: Request) -> dict:
+    if not hasattr(request.app.state, 'skill_registry') or request.app.state.skill_registry is None:
+        from aede.skills.loader import load_skills
+        home = request.app.state.cfg.home
+        request.app.state.skill_registry = load_skills(global_dir=home, project_dir=home)
+    return request.app.state.skill_registry
+
+
+_AGENT_UPLOAD_EXTS = (".md", ".agent")
+
+
+def _resolve_agent_path(home: Path, name: str, scope: str = "global", project_dir: str | None = None) -> Path:
+    if scope == "project" and project_dir:
+        return Path(project_dir) / "agents" / f"{name}.md"
+    return home / "agents" / f"{name}.md"
+
+
+def _resolve_skill_path(home: Path, name: str, scope: str = "global", project_dir: str | None = None) -> Path:
+    if scope == "project" and project_dir:
+        return Path(project_dir) / "skills" / f"{name}.md"
+    return home / "skills" / f"{name}.md"
+
+
+def _find_skill_path(request: Request, name: str, scope: str = "global", project_dir: str | None = None) -> Path:
+    """Resolve a skill's file path using the registry (source of truth) first.
+
+    Falls back to :func:`_resolve_skill_path` for skills that don't exist in
+    the registry yet (e.g. brand-new skills created between cache invalidations).
+    """
+    sd = _get_skill_registry(request).get(name)
+    if sd is not None and sd.source_path is not None:
+        return sd.source_path
+    home = request.app.state.cfg.home
+    return _resolve_skill_path(home, name, scope, project_dir)
+
+
+@app.post("/api/agents/upload")
+async def upload_agent(request: Request, file: UploadFile = File(...)):
+    """Upload an agent .md or .agent file and save it to the agents directory."""
+    if not file.filename or not any(file.filename.lower().endswith(e) for e in _AGENT_UPLOAD_EXTS):
+        raise HTTPException(status_code=400, detail="Only .md and .agent files are accepted")
+    content = (await file.read()).decode("utf-8")
+    if not content.startswith("---"):
+        raise HTTPException(status_code=400, detail="File must start with YAML frontmatter (---)")
+    from aede.agents.schema import AgentDef, AgentLoadError
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8")
+    try:
+        tmp.write(content)
+        tmp.close()
+        ad = AgentDef.from_file(Path(tmp.name))
+    except AgentLoadError as e:
+        Path(tmp.name).unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    home = request.app.state.cfg.home
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    dest = _resolve_agent_path(home, ad.name, scope, project_dir)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        Path(tmp.name).unlink(missing_ok=True)
+        raise HTTPException(status_code=409, detail=f"Agent {ad.name!r} already exists")
+    Path(tmp.name).rename(dest)
+    request.app.state.agent_registry = None
+    return {"status": "ok", "name": ad.name}
+
+
+@app.get("/api/agents")
+async def list_agents(request: Request):
+    """Return list of available agents."""
+    registry = _get_agent_registry(request)
+    home = request.app.state.cfg.home
+    agents = []
+    for name, ad in registry.items():
+        fp = ad.source_path or home / "agents" / f"{name}.md"
+        scope = "global" if str(fp).startswith(str(home)) else "project"
+        agents.append({
+            "name": name,
+            "description": ad.description,
+            "model": ad.model,
+            "skills": ad.skills,
+            "tools": ad.tools,
+            "disallowed_tools": ad.disallowed_tools,
+            "max_turns": ad.max_turns,
+            "system_prompt": ad.system_prompt,
+            "body": ad.body,
+            "file_path": str(fp),
+            "scope": scope,
+        })
+    return agents
+
+
+@app.post("/api/agents")
+async def create_agent(request: Request, payload: dict):
+    """Create a new agent definition file."""
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    home = request.app.state.cfg.home
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+    filepath = _resolve_agent_path(home, name, scope, project_dir)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if filepath.exists():
+        raise HTTPException(status_code=409, detail=f"Agent {name!r} already exists")
+    _write_agent_file(filepath, payload)
+    request.app.state.agent_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.put("/api/agents/{name}")
+async def update_agent(request: Request, name: str, payload: dict):
+    """Update an existing agent definition file."""
+    home = request.app.state.cfg.home
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+    filepath = _resolve_agent_path(home, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Agent {name!r} not found")
+    _write_agent_file(filepath, payload)
+    request.app.state.agent_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.delete("/api/agents/{name}")
+async def delete_agent(request: Request, name: str):
+    """Delete an agent definition file."""
+    home = request.app.state.cfg.home
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    filepath = _resolve_agent_path(home, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Agent {name!r} not found")
+    filepath.unlink()
+    request.app.state.agent_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.post("/api/agents/{name}/open")
+async def open_agent_file(name: str, request: Request):
+    """Open an agent definition file in the default OS editor."""
+    home = request.app.state.cfg.home
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    filepath = _resolve_agent_path(home, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Agent {name!r} not found")
+    _open_in_default_app(str(filepath))
+    return {"status": "ok"}
+
+
+def _write_agent_file(filepath: Path, payload: dict) -> None:
+    import yaml
+    frontmatter = {}
+    for key in ("name", "description", "model", "skills", "tools", "disallowedTools",
+                "disallowed_tools", "maxTurns", "max_turns", "systemPrompt", "system_prompt"):
+        if key in payload and payload[key] is not None:
+            val = payload[key]
+            # Normalize keys to the canonical YAML format
+            norm = {"disallowed_tools": "disallowedTools",
+                    "max_turns": "maxTurns",
+                    "system_prompt": "systemPrompt"}.get(key, key)
+            if val != "" and val != [] and val != {}:
+                frontmatter[norm] = val
+    body = payload.get("body", "")
+    yaml_str = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True).rstrip()
+    content = f"---\n{yaml_str}\n---\n"
+    if body:
+        content += f"\n{body}\n"
+    filepath.write_text(content, encoding="utf-8")
+
+
+_SKILL_UPLOAD_EXTS = (".md", ".skill")
+
+
+@app.post("/api/skills/upload")
+async def upload_skill(request: Request, file: UploadFile = File(...)):
+    """Upload a skill .md or .skill file and save it to the skills directory."""
+    if not file.filename or not any(file.filename.lower().endswith(e) for e in _SKILL_UPLOAD_EXTS):
+        raise HTTPException(status_code=400, detail="Only .md and .skill files are accepted")
+    content = (await file.read()).decode("utf-8")
+    if not content.startswith("---"):
+        raise HTTPException(status_code=400, detail="File must start with YAML frontmatter (---)")
+    from aede.skills.schema import SkillDef, SkillLoadError
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8")
+    try:
+        tmp.write(content)
+        tmp.close()
+        sd = SkillDef.from_file(Path(tmp.name))
+    except SkillLoadError as e:
+        Path(tmp.name).unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    home = request.app.state.cfg.home
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    dest = _resolve_skill_path(home, sd.name, scope, project_dir)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        Path(tmp.name).unlink(missing_ok=True)
+        raise HTTPException(status_code=409, detail=f"Skill {sd.name!r} already exists")
+    Path(tmp.name).rename(dest)
+    request.app.state.skill_registry = None
+    return {"status": "ok", "name": sd.name}
+
+
+@app.get("/api/skills")
+async def list_skills(request: Request):
+    """Return list of available skills."""
+    registry = _get_skill_registry(request)
+    home = request.app.state.cfg.home
+    skills = []
+    for sd in registry.values():
+        fp = sd.source_path or home / "skills" / f"{sd.name}.md"
+        scope = "global" if str(fp).startswith(str(home)) else "project"
+        skills.append({
+            "name": sd.name,
+            "description": sd.description,
+            "trigger_phrases": sd.trigger_phrases,
+            "allowed_tools": sd.allowed_tools,
+            "model": sd.model,
+            "body": sd.body,
+            "file_path": str(fp),
+            "scope": scope,
+        })
+    return skills
+
+
+@app.post("/api/skills")
+async def create_skill(request: Request, payload: dict):
+    """Create a new skill definition file."""
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    home = request.app.state.cfg.home
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+    filepath = _resolve_skill_path(home, name, scope, project_dir)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if filepath.exists():
+        raise HTTPException(status_code=409, detail=f"Skill {name!r} already exists")
+    _write_skill_file(filepath, payload)
+    request.app.state.skill_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.put("/api/skills/{name}")
+async def update_skill(request: Request, name: str, payload: dict):
+    """Update an existing skill definition file."""
+    scope = payload.get("scope", "global")
+    project_dir = payload.get("project_dir")
+    filepath = _find_skill_path(request, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
+    _write_skill_file(filepath, payload)
+    request.app.state.skill_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.delete("/api/skills/{name}")
+async def delete_skill(request: Request, name: str):
+    """Delete a skill definition file."""
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    filepath = _find_skill_path(request, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
+    filepath.unlink()
+    request.app.state.skill_registry = None
+    return {"status": "ok", "name": name}
+
+
+@app.post("/api/skills/{name}/open")
+async def open_skill_file(name: str, request: Request):
+    """Open a skill definition file in the default OS editor."""
+    scope = request.query_params.get("scope", "global")
+    project_dir = request.query_params.get("project_dir")
+    filepath = _find_skill_path(request, name, scope, project_dir)
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
+    _open_in_default_app(str(filepath))
+    return {"status": "ok"}
+
+
+@app.get("/api/tools")
+async def list_tools():
+    """Return list of available tools (name and description only)."""
+    from aede.tools.router import _TOOL_SCHEMAS
+    return [{"name": t["name"], "description": t["description"]} for t in _TOOL_SCHEMAS.values()]
+
+
+def _write_skill_file(filepath: Path, payload: dict) -> None:
+    import yaml
+    frontmatter = {}
+    for key in ("name", "description", "trigger_phrases", "allowed_tools", "model"):
+        if key in payload and payload[key] is not None:
+            val = payload[key]
+            if val != "" and val != [] and val != {}:
+                frontmatter[key] = val
+    body = payload.get("body", "")
+    yaml_str = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True).rstrip()
+    content = f"---\n{yaml_str}\n---\n"
+    if body:
+        content += f"\n{body}\n"
+    filepath.write_text(content, encoding="utf-8")
+
+
+# ── ACP (Agent Client Protocol) endpoints ────────────────────
+
+
+@app.post("/api/acp/register")
+async def acp_register(request: Request, payload: dict):
+    """Register or update an ACP agent config. Body: {name, command, args?, credentials_ref?}"""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        raise HTTPException(status_code=500, detail="ACP manager not initialized")
+    name = payload.get("name")
+    command = payload.get("command")
+    if not name or not command:
+        raise HTTPException(status_code=400, detail="name and command are required")
+    from aede.acp.registry import AgentConfig, AgentTransport
+    config = AgentConfig(
+        name=name,
+        transport=AgentTransport.LOCAL,
+        command=command,
+        args=payload.get("args", []),
+        credentials_ref=payload.get("credentials_ref"),
+    )
+    mgr._registry.upsert(config)
+    return {"status": "registered", "name": name}
+
+
+@app.delete("/api/acp/{name}")
+async def acp_delete(request: Request, name: str):
+    """Unregister and disconnect an ACP agent."""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        raise HTTPException(status_code=500, detail="ACP manager not initialized")
+    await mgr.disconnect(name)
+    try:
+        mgr._registry.remove(name)
+    except KeyError:
+        pass
+    return {"status": "deleted", "name": name}
+
+
+@app.get("/api/acp/configs")
+async def acp_configs(request: Request):
+    """Return list of registered ACP agent configs."""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        return {"configs": []}
+    configs = []
+    for c in mgr._registry.list_all():
+        configs.append({
+            "name": c.name,
+            "command": c.command,
+            "args": c.args,
+            "credentials_ref": c.credentials_ref,
+        })
+    return {"configs": configs}
+
+
+@app.post("/api/acp/connect")
+async def acp_connect(request: Request, payload: dict):
+    """Connect to an ACP agent. Body: {name}"""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        raise HTTPException(status_code=500, detail="ACP manager not initialized")
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    try:
+        session_id = await mgr.connect(name)
+        return {"status": "connected", "name": name, "session_id": session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/acp/disconnect")
+async def acp_disconnect(request: Request, payload: dict):
+    """Disconnect from an ACP agent. Body: {name}"""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        raise HTTPException(status_code=500, detail="ACP manager not initialized")
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    await mgr.disconnect(name)
+    return {"status": "disconnected", "name": name}
+
+
+@app.post("/api/acp/warmup")
+async def acp_warmup(request: Request, payload: dict):
+    """Fire-and-forget warmup of an ACP agent subprocess.
+    
+    The UI calls this when the user selects an ACP model in the dropdown,
+    so the subprocess is already booted by the time they type their first
+    message.  Idempotent — returns immediately if already connected.
+    """
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        return {"status": "skipped", "reason": "no_manager"}
+    name = payload.get("name")
+    if not name:
+        return {"status": "skipped", "reason": "no_name"}
+    if name in mgr.list_connected():
+        return {"status": "already_connected", "name": name}
+    asyncio.create_task(mgr.connect(name))
+    return {"status": "warming_up", "name": name}
+
+
+@app.get("/api/acp/status")
+async def acp_status(request: Request):
+    """Return current ACP connection status."""
+    mgr = getattr(request.app.state, "acp_manager", None)
+    if not mgr:
+        return {"connected": False, "active": None, "sessions": []}
+    active = mgr.active_session()
+    return {
+        "connected": active is not None,
+        "active": active.name if active else None,
+        "sessions": mgr.list_connected(),
+    }
+
+
+# ── Model endpoints ──────────────────────────────────────────
+
+
+@app.get("/api/models")
+async def list_models(request: Request):
+    """Return the configured model list (presets + user additions)."""
+    from aede.models import load_models
+    return load_models(request.app.state.cfg.home)
+
+
+@app.post("/api/models")
+async def add_model(request: Request, payload: dict):
+    """Add a custom model. Body: {id, label, provider}"""
+    from aede.models import load_models, save_models
+    model_id = payload.get("id")
+    label = payload.get("label")
+    provider = payload.get("provider")
+    if not model_id or not label or not provider:
+        raise HTTPException(status_code=400, detail="id, label, and provider are required")
+    models = load_models(request.app.state.cfg.home)
+    models.append({"id": model_id, "label": label, "provider": provider})
+    save_models(request.app.state.cfg.home, models)
+    return {"status": "ok"}
+
+
+@app.delete("/api/models/{model_id:path}")
+async def delete_model(request: Request, model_id: str):
+    """Remove a model from the list."""
+    from aede.models import load_models, save_models
+    models = [m for m in load_models(request.app.state.cfg.home) if m["id"] != model_id]
+    save_models(request.app.state.cfg.home, models)
+    return {"status": "ok"}
+
+
+@app.put("/api/models")
+async def replace_models(request: Request, payload: list):
+    """Bulk-replace the model list (for drag reorder or full sync)."""
+    from aede.models import save_models
+    save_models(request.app.state.cfg.home, payload)
+    return {"status": "ok"}
+
+
+@app.post("/api/models/reset")
+async def reset_models(request: Request):
+    """Reset the model list to factory presets."""
+    from aede.models import reset_models as _reset
+    _reset(request.app.state.cfg.home)
+    return {"status": "ok"}
+
+
+# ── Session token detail ──────────────────────────────────────
+
+
+@app.get("/api/sessions/{session_id}/tokens")
+async def get_session_token_detail(request: Request, session_id: str):
+    """Return per-turn token usage for a session."""
+    db = request.app.state.db
+    cfg = request.app.state.cfg
+    records = db.get_token_usage_detail(session_id)
+    prices = cfg.model_prices
+    from aede.tokens import estimate_cost
+    total_input = sum(r["input_tokens"] for r in records)
+    total_output = sum(r["output_tokens"] for r in records)
+    total_cached = sum(r["cached_tokens"] for r in records)
+    cost = estimate_cost(cfg.model, total_input, total_output, total_cached, prices)
+    return {
+        "turns": records,
+        "totals": {
+            "input_tokens": total_input,
+            "output_tokens": total_output,
+            "cached_tokens": total_cached,
+        },
+        "estimated_cost_usd": cost,
+        "model": cfg.model,
+    }
+
+
+@app.post("/api/compact")
+async def compact_session(request: Request, payload: dict):
+    """Trigger context compaction for a session."""
+    session_id = payload.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+    session_states: dict = getattr(request.app.state, "session_states", {})
+    state: SessionState | None = session_states.get(session_id)
+    if state and getattr(state, 'agent', None) and hasattr(state.agent, 'compact'):
+        result = await state.agent.compact()
+        return {"status": "ok", "method": result.get("method", "none")}
+    return {"status": "ok", "method": "no_active_session"}
 
 
 def _resolve_project_root(path: Path | None = None) -> Path | None:
@@ -647,4 +2316,294 @@ async def get_workspace_files(request: Request, session_id: str | None = None, p
                 except ValueError:
                     continue
         return sorted(files)
+
+
+# ── Soul endpoints ────────────────────────────────────────────
+
+def get_config_for_request(request: Request):
+    return request.app.state.cfg
+
+
+@app.get("/api/soul")
+async def get_soul(request: Request, scope: str | None = None,
+                   project_dir: str | None = None):
+    """Return soul data.
+
+    With no ``scope``: the merged *effective* soul (global+project) for the
+    active config — used by the voice hook. With an explicit ``scope``: only
+    that scope's own SOUL.md file, so the editor shows exactly what a save at
+    that scope will overwrite.
+    """
+    from aede.instructions import SoulDef
+    cfg = get_config_for_request(request)
+
+    if scope is not None:
+        from aede.instructions import _parse_frontmatter
+        target, _ = _resolve_soul_path(cfg, scope, project_dir)
+        text = target.read_text(encoding="utf-8") if target.exists() else ""
+        fm, body = _parse_frontmatter(text)
+        return {
+            "name": fm.get("name"),
+            "phonetic": fm.get("phonetic"),
+            "wake_word": fm.get("wake_word"),
+            "wake_word_phonetic": fm.get("wake_word_phonetic"),
+            "persona": body.strip(),
+            "aliases": fm.get("aliases", []),
+            "voice": fm.get("voice", {}),
+            "source_files": [str(target)] if target.exists() else [],
+        }
+
+    s: SoulDef = cfg.soul
+    return {
+        "name": s.name,
+        "phonetic": s.phonetic,
+        "wake_word": s.wake_word,
+        "wake_word_phonetic": s.wake_word_phonetic,
+        "persona": s.persona,
+        "aliases": s.aliases,
+        "voice": {
+            "engine": s.voice.engine,
+            "voice_id": s.voice.voice_id,
+            "rate": s.voice.rate,
+            "pitch": s.voice.pitch,
+        },
+        "source_files": s.source_files,
+    }
+
+
+def _resolve_soul_path(cfg, scope: str, project_dir: str | None):
+    """Resolve the SOUL.md file for the given scope.
+
+    Global → ``~/.aede/SOUL.md``. Project → ``<project>/SOUL.md`` where
+    ``project`` is the explicit ``project_dir`` (preferred, matching the
+    ScopeSelector contract) or the active ``cfg.project_dir`` as a fallback.
+    """
+    if scope not in ("global", "project"):
+        scope = "project" if (project_dir or cfg.project_dir) else "global"
+    if scope == "project":
+        base = Path(project_dir) if project_dir else cfg.project_dir
+        if not base:
+            raise HTTPException(status_code=400, detail="project scope requires project_dir")
+        return base / "SOUL.md", scope
+    return cfg.home / "SOUL.md", scope
+
+
+@app.patch("/api/soul")
+async def patch_soul(data: dict, request: Request):
+    """Update SOUL.md at the requested scope.
+
+    Body fields:
+      - ``scope``: "global" (~/.aede/SOUL.md) or "project" (project_dir/SOUL.md).
+        Defaults to "project" when a project_dir is set, else "global".
+      - ``project_dir``: target project for project scope (else cfg.project_dir).
+      - ``persona``: freeform Markdown body (the identity text). Empty string clears it.
+      - any frontmatter key (name, phonetic, wake_word, aliases, ...): merged into
+        existing frontmatter. ``None`` values are ignored.
+    """
+    import yaml
+    from aede.instructions import _parse_frontmatter
+
+    cfg = get_config_for_request(request)
+    target, scope = _resolve_soul_path(cfg, data.get("scope"), data.get("project_dir"))
+
+    text = target.read_text(encoding="utf-8") if target.exists() else ""
+    existing, body = _parse_frontmatter(text)
+
+    # persona is the body, handled separately from frontmatter keys.
+    if "persona" in data:
+        body = data["persona"] or ""
+    fm_updates = {k: v for k, v in data.items()
+                  if k not in ("scope", "persona") and v is not None}
+    existing.update(fm_updates)
+
+    parts: list[str] = []
+    if existing:
+        # safe_dump round-trips lists/nested values correctly (the old f-string
+        # serializer flattened ``aliases`` into ``[..]`` text and corrupted it).
+        fm_text = yaml.safe_dump(existing, default_flow_style=False, sort_keys=False).strip()
+        parts.append("---\n" + fm_text + "\n---")
+    if body.strip():
+        parts.append(body.strip())
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(parts) + "\n", encoding="utf-8")
+
+    fm, new_body = _parse_frontmatter(target.read_text(encoding="utf-8"))
+    return {
+        "name": fm.get("name"),
+        "phonetic": fm.get("phonetic"),
+        "wake_word": fm.get("wake_word"),
+        "aliases": fm.get("aliases", []),
+        "persona": new_body.strip(),
+        "scope": scope,
+    }
+
+
+@app.post("/api/soul/open")
+async def open_soul_file(request: Request, payload: dict = {}):
+    """Open the SOUL.md for the given scope in the OS default editor.
+
+    Creates the file (with an empty frontmatter stub) if it does not exist yet,
+    so the editor always has something to open.
+    """
+    cfg = get_config_for_request(request)
+    target, _ = _resolve_soul_path(cfg, payload.get("scope"), payload.get("project_dir"))
+    if not target.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("---\n---\n", encoding="utf-8")
+    _open_in_default_app(str(target))
+    return {"status": "ok", "path": str(target)}
+
+
+# ── Project instructions (AGENTS.md / CLAUDE.md) ──────────────
+
+
+def _resolve_instructions_path(cfg, scope: str, project_dir: str | None, *, for_write: bool):
+    """Resolve the instructions file for the given scope.
+
+    Global scope → ``~/.aede/AGENTS.md``.
+    Project scope → ``<project>/AGENTS.md`` preferred; if only ``CLAUDE.md``
+    exists, that file is used (matching the read-side fallback in
+    ``aede.instructions.INSTRUCTION_FILENAMES`` so edits hit the file actually
+    loaded). For writes to a project with neither file present, AGENTS.md is
+    chosen (aede's preferred filename).
+    """
+    from aede.instructions import INSTRUCTION_FILENAMES
+    if scope == "global":
+        return cfg.home / "AGENTS.md", "AGENTS.md"
+    if scope != "project":
+        raise HTTPException(status_code=400, detail="scope must be 'global' or 'project'")
+    base = Path(project_dir) if project_dir else cfg.project_dir
+    if not base:
+        raise HTTPException(status_code=400, detail="project scope requires project_dir")
+    for name in INSTRUCTION_FILENAMES:
+        candidate = base / name
+        if candidate.exists():
+            return candidate, name
+    # No file yet → default to the preferred filename (AGENTS.md).
+    return base / INSTRUCTION_FILENAMES[0], INSTRUCTION_FILENAMES[0]
+
+
+@app.get("/api/project-instructions")
+async def get_project_instructions(request: Request, scope: str = "project",
+                                   project_dir: str | None = None):
+    cfg = get_config_for_request(request)
+    path, filename = _resolve_instructions_path(cfg, scope, project_dir, for_write=False)
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    return {"path": str(path), "filename": filename, "content": content, "scope": scope}
+
+
+@app.put("/api/project-instructions")
+async def put_project_instructions(data: dict, request: Request):
+    cfg = get_config_for_request(request)
+    scope = data.get("scope", "project")
+    content = data.get("content", "")
+    path, filename = _resolve_instructions_path(
+        cfg, scope, data.get("project_dir"), for_write=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return {"path": str(path), "filename": filename, "scope": scope}
+
+
+@app.post("/api/project-instructions/open")
+async def open_project_instructions(request: Request, payload: dict = {}):
+    """Open the resolved instructions file in the OS default editor.
+
+    Creates an empty file if none exists yet (AGENTS.md for new projects).
+    """
+    cfg = get_config_for_request(request)
+    path, _ = _resolve_instructions_path(
+        cfg, payload.get("scope", "project"), payload.get("project_dir"), for_write=True)
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    _open_in_default_app(str(path))
+    return {"status": "ok", "path": str(path)}
+
+
+# ── Voice Input endpoints ─────────────────────────────────────
+
+
+_VALID_SOURCES = frozenset({"browser", "ios_shortcut"})
+
+
+@app.post("/api/voice/trigger")
+async def voice_trigger(request: Request, payload: dict):
+    """Log a wake-word trigger event for the session.
+
+    Accepts ``source`` in {"browser", "ios_shortcut"}.  Writes a
+    ``kind: "event"`` record to the session trace via
+    ``TraceLogger.write_event(...)``.  Fail-soft on write errors.
+    """
+    session_id = (payload.get("session_id") or "").strip()
+    wake_word = (payload.get("wake_word") or "").strip()
+    matched_text = (payload.get("matched_text") or "").strip()
+    source = (payload.get("source") or "browser").strip()
+
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+    if not wake_word:
+        raise HTTPException(status_code=400, detail="wake_word is required")
+
+    # NFR-7: Reject path traversal in session_id
+    for char in ("/", "\\", "..", "\0"):
+        if char in session_id:
+            raise HTTPException(status_code=400, detail="Invalid session_id")
+
+    # NFR-6: Validate source
+    if source not in _VALID_SOURCES:
+        raise HTTPException(status_code=422, detail=f"source must be one of {sorted(_VALID_SOURCES)}")
+
+    # Write the trigger event to the session trace
+    try:
+        from aede.trace.logger import TraceLogger
+        traces_dir = request.app.state.cfg.data_dir / "traces"
+        logger = TraceLogger(traces_dir)
+        logger.write_event(
+            session_id=session_id,
+            event_type="wake_word_trigger",
+            payload={
+                "wake_word": wake_word,
+                "matched_text": matched_text,
+                "source": source,
+            },
+        )
+    except Exception:
+        # Fail-soft: never break the voice path on a logging failure
+        pass
+
+    return {"status": "ok"}
+
+
+@app.post("/api/voice/transcribe")
+@app.post("/api/voice/transcribe/")  # tolerate trailingSlash configs (no 307 on POST)
+async def voice_transcribe(
+    audio: UploadFile = File(...),
+    model: str = Form("whisper-large-v3-turbo"),
+    language: str | None = Form(None),
+):
+    """Transcribe audio via fallback chain of ASR providers.
+
+    Attempts each provider in the fallback chain for the given model.
+    Returns the first successful transcription. If no provider succeeds or
+    the chain is empty, returns {fallback: "webspeech"} to signal
+    client-side Web Speech fallback. Errors are collected and returned.
+    """
+    from aede import asr
+
+    chain = asr.build_fallback_chain(model)
+    if not chain:
+        return {"fallback": "webspeech"}
+    data = await audio.read()
+    mime = audio.content_type or "audio/webm"
+    errors: list[str] = []
+    for provider, name, provider_model_id in chain:
+        try:
+            t = await provider.transcribe(
+                audio=data, mime=mime, model=provider_model_id, language=language
+            )
+            if t.text.strip():
+                return {"text": t.text, "model": t.model, "provider": t.provider}
+        except Exception as exc:  # noqa: BLE001 — error returned, not hidden
+            errors.append(f"{name}: {exc}")
+    return {"fallback": "webspeech", "errors": errors}
 

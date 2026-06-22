@@ -28,9 +28,15 @@ export function SessionSearch({ sessions, onSelect, onDelete, onResumeBranch, ac
         />
       </div>
       <div className="space-y-0.5 px-2">
-        {filtered.map(s => (
-          <SessionRow key={s.id} session={s} isActive={s.id === activeId} onSelect={onSelect} onDelete={onDelete} onResumeBranch={onResumeBranch} />
-        ))}
+        {filtered.length === 0 ? (
+          <p className="px-2 py-4 text-xs text-muted-foreground text-center">
+            {query ? `No sessions match "${query}"` : 'No sessions'}
+          </p>
+        ) : (
+          filtered.map(s => (
+            <SessionRow key={s.id} session={s} isActive={s.id === activeId} onSelect={onSelect} onDelete={onDelete} onResumeBranch={onResumeBranch} />
+          ))
+        )}
       </div>
     </div>
   )

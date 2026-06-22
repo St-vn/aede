@@ -1,30 +1,63 @@
+"""
+Ollama embedding client for aede.
+
+Provides OllamaClient.embed_text(text) -> list[float] via the local Ollama
+HTTP API.  Raises OllamaUnavailable on connection or timeout errors so callers
+can degrade gracefully without crashing.
+"""
 from __future__ import annotations
-from typing import Any
 
 
 class OllamaUnavailable(Exception):
-    """Raised when the Ollama server is unreachable."""
+    """Raised when the Ollama embedding service cannot be reached."""
 
 
 class OllamaClient:
-    """HTTP client for Ollama embeddings API (lazy httpx import)."""
+    """Thin HTTP client for Ollama's /api/embeddings endpoint.
 
-    def __init__(self, base_url: str = "http://localhost:11434", model: str = "nomic-embed-text", timeout_s: float = 5.0) -> None:
+    Args:
+        base_url: Ollama server base URL (default: http://localhost:11434).
+        model: Embedding model name (default: nomic-embed-text, 768 dims).
+        timeout_s: HTTP request timeout in seconds (default: 5).
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        model: str = "nomic-embed-text",
+        timeout_s: int = 5,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout_s = timeout_s
 
-    async def embed_text(self, text: str) -> list[float]:
-        """Embed a single text string and return a 768-dim float vector."""
-        import httpx
+    def embed_text(self, text: str) -> list[float]:
+        """Return the embedding vector for *text*.
+
+        Makes a POST to ``{base_url}/api/embeddings`` with the configured model.
+
+        Args:
+            text: The string to embed.
+
+        Returns:
+            A list of floats (768 dims for nomic-embed-text).
+
+        Raises:
+            OllamaUnavailable: If Ollama is unreachable or times out.
+        """
+        import httpx  # lazy — heavy import
+
+        url = f"{self._base_url}/api/embeddings"
+        payload = {"model": self._model, "prompt": text}
+
         try:
-            async with httpx.AsyncClient(timeout=self._timeout_s) as client:
-                resp = await client.post(
-                    f"{self._base_url}/api/embeddings",
-                    json={"model": self._model, "prompt": text},
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                return list(data["embedding"])
-        except (httpx.ConnectError, httpx.TimeoutException, ConnectionError) as e:
-            raise OllamaUnavailable(f"Ollama unavailable: {e}") from e
+            with httpx.Client(timeout=self._timeout_s) as client:
+                response = client.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.ConnectError as exc:
+            raise OllamaUnavailable(f"Cannot connect to Ollama at {self._base_url}: {exc}") from exc
+        except httpx.TimeoutException as exc:
+            raise OllamaUnavailable(f"Ollama request timed out ({self._timeout_s}s): {exc}") from exc
+
+        return [float(v) for v in data["embedding"]]

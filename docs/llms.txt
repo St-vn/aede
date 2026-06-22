@@ -1,0 +1,44 @@
+# aede — LLMs.txt
+> Personal CLI agent harness wrapping LLMs (Anthropic primary, OpenAI-compatible secondary).
+
+## Docs
+- [index](index.md)
+- [installation](getting-started/installation.md)
+- [quickstart](getting-started/quickstart.md)
+- [web-ui-quickstart](getting-started/web-ui-quickstart.md)
+- [cli](user-guide/cli.md)
+- [configuration](user-guide/configuration.md)
+- [sessions](user-guide/sessions.md)
+- [tokens](user-guide/tokens.md)
+- [security](user-guide/security.md)
+- [tools](features/tools.md)
+- [subagents](features/subagents.md)
+- [memory](features/memory.md)
+- [skills](features/skills.md)
+- [mcp](features/mcp.md)
+- [acp](features/acp.md)
+- [critic](features/critic.md)
+- [web-ui](features/web-ui.md)
+- [server](features/server.md)
+- [voice](features/voice.md)
+- [soul](features/soul.md)
+- [architecture-overview](architecture/overview.md)
+- [architecture-agent-loop](architecture/agent-loop.md)
+- [architecture-providers](architecture/providers.md)
+- [architecture-database](architecture/database.md)
+- [slash-commands](reference/slash-commands.md)
+- [config-keys](reference/config-keys.md)
+- [tools-reference](reference/tools-reference.md)
+- [migration](getting-started/migration/index.md)
+- [migration-claude-code](getting-started/migration/from-claude-code.md)
+- [migration-opencode](getting-started/migration/from-opencode.md)
+- [migration-antigravity](getting-started/migration/from-antigravity.md)
+- [migration-codex](getting-started/migration/from-codex.md)
+- [migration-cursor](getting-started/migration/from-cursor.md)
+- [migration-windsurf](getting-started/migration/from-windsurf.md)
+
+## Quick start
+```bash
+uv run aede
+```
+Python 3.12+. API key: `ANTHROPIC_API_KEY`.

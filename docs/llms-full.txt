@@ -1,0 +1,2328 @@
+﻿# aede — Full Documentation
+
+This file is auto-generated from docs/*.md. Do not edit directly.
+
+
+---
+Source: architecture\agent-loop.md
+---
+
+---
+type: doc
+tags: [docs, architecture]
+date_updated: 2026-06-10
+---
+
+# Agent Loop
+
+The agent loop is the core runtime that orchestrates multi-turn conversations between the user and the LLM.
+
+## Turn Flow
+
+Each turn follows this sequence:
+
+1. **User input** â€” appended to conversation history, persisted to DB + rollout
+2. **Auto-compaction check** â€” if token usage exceeds the threshold, compact before proceeding
+3. **Inner loop** â€” while the model requests tools:
+   - Stream LLM response (text and tool calls)
+   - Record token usage
+   - Persist assistant message
+   - For each tool call:
+     - Validate tool name (reject unknown without retry)
+     - Run hard-deny safety hooks
+     - Run code critic (if enabled + gated file write with code)
+     - Gate approval (allow/deny/redirect/batch)
+     - Validate parameters with Pydantic (one retry on failure)
+     - Execute tool synchronously
+     - Collect result, detect stuck state (3 consecutive failures â†’ break)
+   - Append tool results and repeat
+4. **GEPA trace** â€” write turn trace record
+
+## System Prompt
+
+The system prompt has two parts:
+
+- **Stable** â€” role definition, tool descriptions, rules. This is identical across sessions and eligible for prompt caching (Anthropic KV-cache with `cache_control: ephemeral`).
+- **Dynamic** â€” per-session configuration, session notes, compaction summary, grounding instruction, skills, and learnings. Built fresh each turn.
+
+## Error Handling
+
+- **Transient API errors** (429/500/502/503) â€” retry up to 3 times with exponential backoff (0.5s, 1s, 2s)
+- **Non-transient errors** â€” surfaced immediately to the user
+- **HTML body detection** â€” prevents rendering error pages as if they were API responses
+
+## Stuck Detection
+
+The loop detects when it's stuck:
+
+- Same tool call fails 3 times consecutively â†’ prints warning and returns
+- Parameter validation fails twice on the same call â†’ marks stuck and returns early
+
+## Context Compaction
+
+When the conversation approaches the context limit (default 200k tokens at 85% threshold), compaction runs automatically:
+
+1. **Memory flush** â€” LLM writes session notes before compaction
+2. **String pass** â€” stubs old tool outputs with `[tool output â€” ~N tokens â€” compacted]` placeholders
+3. **Re-check** â€” if below threshold after string pass, stop
+4. **LLM summary** â€” preserves head (3) and tail (15) messages, collapses the middle via structured handoff
+5. **Stamp** â€” marks compacted messages with `compacted_at` timestamp (hide-don't-delete)
+
+Compaction can also be triggered manually with `/compact`.
+
+
+---
+Source: architecture\database.md
+---
+
+---
+type: doc
+tags: [docs, architecture]
+date_updated: 2026-06-10
+---
+
+# Database
+
+aede uses SQLite for persistence with WAL journal mode and FTS5 full-text search.
+
+## Location
+
+The database is at `~/.aede/data/aede.db`. WAL mode provides better concurrent read performance.
+
+## Key Tables
+
+### sessions
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT (PK) | ULID session identifier |
+| `parent_id` | TEXT | Links to parent session for branching |
+| `title` | TEXT | Auto-derived from first message |
+| `created_at` | INTEGER | Unix millisecond timestamp |
+| `updated_at` | INTEGER | Last activity timestamp |
+| `model` | TEXT | Model used for this session |
+| `status` | TEXT | `active` or `archived` |
+| `project_dir` | TEXT | Optional project association |
+
+### messages
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT (PK) | ULID |
+| `session_id` | TEXT (FK) | Parent session |
+| `role` | TEXT | `user` or `assistant` |
+| `content` | TEXT | Message body |
+| `created_at` | INTEGER | Unix ms |
+| `token_count` | INTEGER | Optional token count |
+| `compacted_at` | INTEGER | Set when compaction hides this message |
+
+### tool_calls
+
+Tracks every tool execution: name, arguments (JSON), result, status (`success`/`error`), and duration in milliseconds.
+
+### token_usage
+
+Per-turn token accounting with separate rows for `agent` vs `critic` roles. Tracks input, output, and cached tokens.
+
+### learnings
+
+Persistent memory store with embedding BLOBs for vector search, lifecycle fields (`trusted`, `lower_trust`, `verifier_outcome`), and source tracking.
+
+### projects
+
+Persistent workspace directories with independent lifecycle (survives session deletion).
+
+## FTS5 Full-Text Search
+
+Two FTS5 virtual tables provide full-text search:
+
+- `messages_fts` â€” search past conversation messages
+- `learnings_fts` â€” search stored learnings
+
+Sync triggers on `AFTER INSERT`, `AFTER DELETE`, and `AFTER UPDATE` keep the FTS indexes in sync.
+
+## Rollout Logs
+
+In addition to SQLite, each session gets an append-only JSONL audit trail at `~/.aede/data/sessions/YYYY/MM/DD/rollout-<id>.jsonl`. This provides crash-safe, replayable session history that survives database corruption. Events include session start/end, user messages, assistant messages, tool calls, tool results, compaction events, and subagent start/end.
+
+
+---
+Source: architecture\overview.md
+---
+
+---
+type: doc
+tags: [docs, architecture]
+date_updated: 2026-06-10
+---
+
+# Architecture Overview
+
+## High-Level Architecture
+
+aede is organized as a layered system. From the outside in:
+
+```
+User â”€â”€â–º CLI / WebSocket â”€â”€â–º AgentLoop â”€â”€â–º Provider â”€â”€â–º LLM API
+                                â”‚
+                          â”Œâ”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”
+                          â”‚    Tools    â”‚
+                          â”‚ â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â” â”‚
+                          â”‚ â”‚ Router â”‚ â”‚
+                          â”‚ â””â”€â”€â”€â”¬â”€â”€â”€â”€â”˜ â”‚
+                          â”‚  â”Œâ”€â”€â”´â”€â”€â”€â”  â”‚
+                          â”‚  â”‚ MCP  â”‚  â”‚
+                          â”‚  â””â”€â”€â”€â”€â”€â”€â”˜  â”‚
+                          â””â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”˜
+                                â”‚
+                     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                     â”‚    Gate + Hooks     â”‚
+                     â”‚  (approval + deny)  â”‚
+                     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+```
+
+## Component Relationships
+
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| `cli.py` | Entry point | REPL loop, parsing args, bootstrap |
+| `agent.py` | Core | Multi-turn conversation orchestration |
+| `provider.py` | LLM abstraction | Provider selection (Anthropic / OpenAI) |
+| `tools/router.py` | Tool system | Registry, dispatch, validation |
+| `gate.py` | Security | Approval prompts, permission storage |
+| `hooks.py` | Security | Hard-deny pattern matching |
+| `config.py` | Config | YAML merge (defaults > global > project) |
+| `db.py` | Persistence | SQLite with WAL + FTS5 |
+| `session.py` | State | Session lifecycle (ULID, branching) |
+| `server.py` | HTTP | FastAPI + WebSocket backend |
+| `tokens.py` | Tracking | Per-turn token accounting + cost |
+
+## Package Structure
+
+```
+aede/
+â”œâ”€â”€ cli.py              # Entry point, REPL
+â”œâ”€â”€ agent.py            # Core agent loop
+â”œâ”€â”€ provider.py         # LLM provider abstraction
+â”œâ”€â”€ config.py           # Configuration system
+â”œâ”€â”€ db.py               # SQLite persistence
+â”œâ”€â”€ session.py          # Session management
+â”œâ”€â”€ commands.py         # Slash commands
+â”œâ”€â”€ gate.py             # Approval gate
+â”œâ”€â”€ hooks.py            # Safety hooks
+â”œâ”€â”€ tokens.py           # Token tracking
+â”œâ”€â”€ critic.py           # Code reviewer
+â”œâ”€â”€ credentials.py      # Credential vault
+â”œâ”€â”€ server.py           # FastAPI server
+â”œâ”€â”€ rollout.py          # JSONL audit trail
+â”œâ”€â”€ compaction.py       # Context compaction
+â”œâ”€â”€ models.py           # Model presets
+â”œâ”€â”€ project.py          # Project management
+â”œâ”€â”€ tools/              # Tool implementations
+â”œâ”€â”€ skills/             # Skills system
+â”œâ”€â”€ agents/             # Subagent system
+â”œâ”€â”€ memory/             # Memory system
+â”œâ”€â”€ mcp/                # MCP client
+â”œâ”€â”€ acp/                # ACP client
+â”œâ”€â”€ trace/              # GEPA trace logger
+â””â”€â”€ import_/            # Import converters
+```
+
+## Data Flow
+
+1. **User input** arrives via CLI prompt or WebSocket message
+2. **AgentLoop** builds the system prompt (stable prefix + dynamic configuration, skills, and learnings)
+3. **Provider** sends the conversation to the LLM and streams the response
+4. If the LLM requests a tool, **AgentLoop** validates the name, runs safety hooks, gates approval, validates parameters, and executes
+5. Tool results are appended to the conversation and sent back to the LLM
+6. The loop repeats until the LLM produces a final text response
+7. Turn data is persisted to SQLite, JSONL rollout, and GEPA trace
+
+
+---
+Source: architecture\providers.md
+---
+
+---
+type: doc
+tags: [docs, architecture]
+date_updated: 2026-06-10
+---
+
+# LLM Providers
+
+aede abstracts LLM access behind a provider interface, supporting multiple backends.
+
+## Provider Selection
+
+The `get_provider()` function selects the appropriate provider based on configuration:
+
+- **DeepSeek models** (`deepseek-*`) â†’ `OpenAIProvider` with `DEEPSEEK_API_KEY`
+- **`api_base_url` set** + non-Anthropic model â†’ `OpenAIProvider` with the configured base URL
+- **All others** â†’ `AnthropicProvider` with `ANTHROPIC_API_KEY`
+
+ACP agents (e.g., `claude-code`, `codex`, `goose`) are intercepted before provider selection and routed to the ACP manager instead.
+
+## AnthropicProvider
+
+Uses the `anthropic.AsyncAnthropic` SDK with:
+
+- Streaming via `client.messages.stream()`
+- Two-block system prompt with `cache_control: ephemeral` on the stable prefix
+- Cache injection on the last message for KV-cache reuse
+- Thinking mode support with configurable `reasoning_effort` and `thinking_budget`
+
+## OpenAIProvider
+
+Uses the `openai.AsyncOpenAI` SDK with:
+
+- Message format conversion from Anthropic to OpenAI schema
+- Tool schema conversion
+- Reasoning effort mapping for DeepSeek, Gemini, and OpenAI models
+- Fragmented tool_call delta accumulation across streaming chunks
+
+## Provider Protocol
+
+All providers implement a common protocol:
+
+```python
+async def stream_turn(
+    model, system, tools, messages, max_tokens,
+    console, reasoning_effort, thinking_budget
+) -> NormalizedResponse
+```
+
+This allows the AgentLoop to be provider-agnostic. The `NormalizedResponse` returns text, tool calls, and token counts in a standard format.
+
+
+---
+Source: developer\conventions.md
+---
+
+---
+type: doc
+tags: [docs, developer]
+date_updated: 2026-06-10
+---
+
+# Code Conventions
+
+## File Paths
+
+All file paths use `pathlib.Path` â€” never string concatenation. This ensures cross-platform correctness and cleaner path manipulation.
+
+## Lazy Imports
+
+Heavy dependencies (`anthropic`, `pydantic`, `rich`) are imported inside functions, not at module level. This keeps startup time fast and prevents import errors when optional features are not used.
+
+```python
+# Good
+def get_critic_provider(cfg):
+    from aede.provider import get_provider
+    return get_provider(cfg)
+
+# Avoid
+from aede.provider import get_provider  # at module top level
+```
+
+## Tool Errors
+
+Tool errors are always returned to the model as `ToolResult(status="error")` â€” never hidden or swallowed. The model decides whether to retry or report failure.
+
+## No Retry on Hallucinated Tool Names
+
+If the model requests a tool that doesn't exist, the error is returned immediately without retry. An unknown name cannot become valid by retrying.
+
+## Param Validation
+
+Tool parameters are validated via Pydantic JSON schema matching. On failure, the agent gets one retry with the error injected into context.
+
+## API Retries
+
+Transient API errors (429, 500, 502, 503) are retried up to 3 times with exponential backoff (0.5s, 1s, 2s). Non-transient errors are surfaced immediately.
+
+## Response Format
+
+When the agent produces markdown code blocks, they follow these guidelines:
+
+- Code blocks specify a language identifier
+- Tool output is synthesized and summarized, not quoted verbatim
+- HTML page content is extracted for relevant facts, not pasted back
+
+
+---
+Source: developer\tests.md
+---
+
+---
+type: doc
+tags: [docs, developer]
+date_updated: 2026-06-10
+---
+
+# Tests
+
+## Running Tests
+
+```bash
+uv run pytest              # run all tests
+uv run pytest -xvs         # verbose, stop on first failure
+uv run pytest tests/test_file.py  # run a specific test file
+```
+
+## Test Configuration
+
+Tests are configured in `pyproject.toml` with `asyncio_mode = "auto"`, so async test functions are detected automatically. The fixture `tmp_home` in `tests/conftest.py` redirects `~/.aede` to a temporary directory via the `AEDE_HOME` environment variable.
+
+## Test Structure
+
+The test suite covers:
+
+| Area | Files |
+|------|-------|
+| CLI | Argument parsing, header, title, shutdown |
+| Agent loop | System prompt, tool dispatch, gate integration |
+| Providers | Provider selection, message/tool conversion, streaming |
+| Database | SQLite CRUD (all tables), FTS5 search |
+| Sessions | Create, load, archive, resume, title generation |
+| Commands | Slash-command parsing, config editing, setkey |
+| Gate | Approval decisions, PermissionStore, prompt |
+| Hooks | Hard-deny pattern matching |
+| Tools | File operations, shell, search, web |
+| Router | Tool filtering, allowlisting |
+| Config | Loading, merging, writing, bootstrap |
+| Rollout | JSONL audit trail |
+| Tokens | Tracker, cost estimation, price cache |
+| Compaction | String pass, LLM summary, memory flush |
+| Critic | Evaluation, finding parsing |
+| Credentials | Vault read/write/delete |
+| Memory | Embeddings, retrieval (FTS + cosine + hybrid), store, injection, verifier |
+| Skills | Schema parsing, directory scanning |
+| Agents | Schema parsing, directory scanning + validation |
+| MCP | Bridge, router, config |
+| ACP | Async message-pump, streaming, cancel, manager, session, registry, auth |
+| Server | FastAPI endpoints |
+| Import | Claude Code, OpenCode, skills, MCP |
+| Project model | CRUD |
+| UI | 10 vitest files for React components |
+
+
+---
+Source: features\acp.md
+---
+
+---
+type: doc
+tags: [docs, features]
+date_updated: 2026-06-10
+---
+
+# Agent Client Protocol (ACP)
+
+ACP allows aede to connect to external agent processes as backends, using their own models, subscriptions, and tool sets. Instead of calling an LLM API directly, aede delegates turns to another agent process.
+
+## How It Works
+
+When the configured model is an ACP agent (e.g., `claude-code`, `codex`, `goose`, `gemini`, `agy`, `cline`, `cursor`, `opencode`), aede routes conversation turns to that agent via JSON-RPC over a subprocess's stdio.
+
+The ACP client uses an async message-pump design:
+
+1. Spawns the agent subprocess with `asyncio.create_subprocess_exec`
+2. Reads NDJSON lines from stdout in a background task
+3. Sends JSON-RPC requests (e.g., `session/prompt`) and awaits responses
+4. Streams agent response chunks back to the user via `agent_message_chunk` notifications
+
+## Capabilities
+
+- **Session management** â€” create sessions, send prompts, cancel in-progress turns
+- **Streaming** â€” receives incremental text from the agent and forwards it to the UI
+- **Reentrant requests** â€” handles agent-to-client requests during a turn (e.g., file reads, permission requests)
+- **Sub-model routing** â€” use notation like `claude-code/opus-4-8` to specify which model the agent should use
+- **Auth flow** â€” `drive_auth` async generator handles the connection authentication (browser login, API key, or existing session)
+
+## Managing ACP Agents
+
+```
+/acp register <name> <cmd...>  â€” register a new ACP agent
+/acp connect <name>            â€” connect and use this agent as backend
+/acp disconnect                â€” return to normal LLM mode
+/acp list                      â€” show connected agents
+/acp configs                   â€” show registered agent configs
+```
+
+## Configuration
+
+ACP agent definitions are stored in `~/.aede/agents.json`. The 7 base agents are seeded automatically at startup and are ready to connect.
+
+## Future Plans
+
+- Full permission routing through aede's approval gate instead of auto-approve
+- Enhanced streaming with richer event types
+- Long-running agent coordination patterns
+
+
+---
+Source: features\critic.md
+---
+
+---
+type: doc
+tags: [docs, features]
+date_updated: 2026-06-10
+---
+
+# Code Critic
+
+The code critic is an asymmetric LLM pass that reviews proposed code for correctness before it's written to disk. It runs before the approval gate for `write_file` and `create_file` calls that contain code-like content.
+
+## How It Works
+
+When the agent writes code, a separate LLM invocation reviews it with a "ruthless code reviewer" persona. The critic identifies:
+
+| Severity | What it flags |
+|----------|---------------|
+| **HIGH** | Crashes, data loss, wrong output, broken contracts, security holes |
+| **MEDIUM** | Logic bugs that produce wrong results in some cases |
+| **LOW** | Edge cases and potential issues |
+
+The critic does **not** comment on style, formatting, whitespace, or naming conventions â€” only correctness. Findings are displayed to the user, who makes the final decision at the approval gate.
+
+## Configuration
+
+Enable the critic in your config:
+
+```yaml
+critic_enabled: true
+critic_model: claude-sonnet-4-20250514    # optional separate model
+critic_api_base_url: ...                   # optional separate provider
+```
+
+If `critic_model` is not set, the critic uses the same model as the main agent (with a critic persona prompt). If `critic_api_base_url` is set, the critic uses a different provider.
+
+## Design
+
+The critic is non-fatal â€” all exceptions return an empty finding list. It uses a separate token tracking role (`critic`) so you can see how much it costs separately from agent turns.
+
+
+---
+Source: features\mcp.md
+---
+
+---
+type: doc
+tags: [docs, features]
+date_updated: 2026-06-10
+---
+
+# MCP Server Support
+
+aede supports the Model Context Protocol (MCP), allowing you to extend the agent's toolset with any MCP-compatible server.
+
+## Configuration
+
+Add MCP servers to your config (`~/.aede/config.yml` or `./aede.yml`):
+
+```yaml
+mcp_servers:
+  my-server:
+    command: node
+    args: ["path/to/server.js"]
+    env:
+      MY_KEY: "${SECRET_KEY}"
+    trusted: false
+    enabled: true
+    disabled_tools: []
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `command` | required | Executable command |
+| `args` | `[]` | Command arguments |
+| `env` | `{}` | Environment variables (supports `${VAR}` expansion) |
+| `trusted` | `false` | If true, tools skip the approval gate |
+| `enabled` | `true` | If false, server is not started |
+| `disabled_tools` | `[]` | Specific tools to hide |
+
+## How MCP Works
+
+On startup, aede spawns each configured MCP server as a subprocess. The server announces its available tools, which are registered with the prefix `mcp__<server>__<toolname>`. When the agent calls one of these tools, the request is forwarded to the MCP server and the result is returned.
+
+MCP servers run in background daemon threads with their own asyncio event loops.
+
+## Tool Naming
+
+MCP tools use the format `mcp__<server>__<name>` to prevent name collisions between servers.
+
+## Managing MCP
+
+- `/mcp` â€” list connected servers and their tools
+- Servers can be enabled/disabled per-tool through the Web UI settings
+
+## Importing from Claude Code
+
+```bash
+aede --import mcp
+```
+
+This reads `~/.claude/mcp.json`, normalizes server configs, and merges them into your aede config without clobbering existing entries. Stdio transport (command + args + env) transfers cleanly with approximately 90% fidelity.
+
+
+---
+Source: features\memory.md
+---
+
+---
+type: doc
+tags: [docs, features]
+date_updated: 2026-06-10
+---
+
+# Memory
+
+The memory system lets aede persist and retrieve learnings across sessions, so knowledge from one conversation carries forward to future ones.
+
+## Learnings Store
+
+Learnings are stored in `~/.aede/data/learnings.jsonl` (append-only JSONL) and mirrored to the SQLite `learnings` table for querying.
+
+Each learning has:
+
+| Field | Description |
+|-------|-------------|
+| `type` | Category: `anti-pattern`, `failed-approach`, `root-cause`, `config-correction` |
+| `content` | Free-text body of the learning |
+| `source` | Origin: `user`, `auto_learned`, `test_failure`, `tool_error` |
+| `trusted` | Set by verifier after confirmation |
+| `embedding` | Vector embedding for similarity search |
+
+## Retrieval
+
+When starting a new turn, aede retrieves relevant learnings using hybrid search:
+
+1. **Cosine similarity** â€” unpacks stored embeddings and computes similarity
+2. **FTS5 full-text search** â€” SQLite BM25-ranked keyword search
+3. **Rank-based merge** â€” combines both results (default 50/50 weight)
+
+The top learnings are injected into the system prompt under "Lessons from Prior Runs," with provenance notes (e.g., "verified by test" vs "verified by LLM coherence").
+
+## Writing Learnings
+
+Learnings can be written by:
+
+- The agent via the `write_learning` tool (requires approval)
+- Using the CLI directly: `aede memory list` / `show` / `delete` / `edit`
+- Automatic extraction from sessions via `/extract`
+
+## Verifier
+
+The verifier validates learnings before they're trusted:
+
+- **Code verifier** â€” runs `uv run pytest` on code-related learnings; marks `trusted=True` on pass
+- **LLM verifier** â€” runs a separate Anthropic coherence check for non-code learnings; marks `lower_trust=True`
+
+## Configuration
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ollama_base_url` | `http://localhost:11434` | Ollama endpoint for embeddings |
+| `ollama_embed_model` | `nomic-embed-text` | Embedding model |
+| `learnings_top_k` | 5 | Top-k learnings to retrieve |
+| `learnings_max_tokens` | 2000 | Max tokens for learnings suffix |
+
+
+---
+Source: features\server.md
+---
+
+---
+type: doc
+tags: [docs, features]
+date_updated: 2026-06-10
+---
+
+# HTTP Server
+
+aede includes a built-in FastAPI HTTP server that powers the Web UI and can be used for integrations.
+
+## Starting
+
+```bash
+aede --serve --host 127.0.0.1 --port 8000
+```
+
+## Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/ws/sessions/{id}` | WebSocket | Interactive agent turns with streaming |
+| `/api/sessions` | GET | List sessions |
+| `/api/sessions/{id}` | DELETE | Delete a session |
+| `/api/config` | GET/PUT | Get or update effective config |
+| `/api/gate/respond` | POST | Approval gate response from UI |
+| `/api/acp/configs` | GET/POST | ACP agent configuration management |
+| `/api/acp/connect` | POST | Connect an ACP agent |
+| `/api/acp/disconnect` | POST | Disconnect an ACP agent |
+| `/api/mcp/servers` | GET/POST | List or add MCP servers |
+| `/api/mcp/servers/{name}` | PUT/DELETE | Update or remove MCP servers |
+| `/api/mcp/restart` | POST | Restart the MCP bridge |
+
+## WebSocket
+
+The WebSocket endpoint at `/ws/sessions/{id}` provides real-time bidirectional communication:
+
+- Client sends user messages as JSON
+- Server streams token deltas as `text_delta` events
+- Console output is sent as `console_message` events
+- Gate requests are sent as `gate_request` events, and the client responds with `gate_response`
+- On disconnect, any in-progress turn is automatically cancelled
+
+## CORS
+
+The server allows requests from `http://localhost:3000` and `http://127.0.0.1:3000` for development with the Web UI dev server.
+
+
+---
+Source: features\skills.md
+---
+
+---
+type: doc
+tags: [docs, features]
+date_updated: 2026-06-10
+---
+
+# Skills
+
+Skills are reusable instruction templates that get injected into the agent's system prompt. They provide the agent with specialized knowledge and guidelines for particular domains.
+
+## Defining a Skill
+
+Create a `SKILL.md` file in `~/.aede/skills/` (global) or `./skills/` (project):
+
+```yaml
+---
+name: python-testing
+description: Best practices for Python testing
+trigger_phrases: ["test", "pytest", "unittest"]
+allowed_tools: ["read_file", "write_file", "search_files"]
+model: claude-sonnet-4-20250514
+---
+When writing Python tests:
+- Use pytest as the test runner
+- Place tests in the `tests/` directory
+- Use descriptive test function names
+- One assertion per test where possible
+```
+
+Available frontmatter fields:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `name` | required | Skill name |
+| `description` | required | What this skill does |
+| `trigger_phrases` | `[]` | Phrases that suggest this skill should be active |
+| `allowed_tools` | `null` | Tool allowlist when this skill is active |
+| `model` | `null` | Optional model override |
+
+## How Skills Work
+
+Skills are loaded from two locations:
+
+- **Global** â€” `~/.aede/skills/` â€” every `.md` file or `SKILL.md` inside a subdirectory
+- **Project** â€” `./skills/` â€” same format, shadows globally loaded skills with the same name
+
+Loaded skills are injected into the dynamic portion of the system prompt under the "## Agent Skills" section. The agent is instructed to consider them when performing relevant tasks.
+
+## Managing Skills
+
+- `/skills` â€” list loaded skills in the REPL
+- `/import skill <path>` â€” import a skill from Claude Code format
+
+## Importing from Other Harnesses
+
+Skills can be imported from Claude Code. The importer maps `allowed-tools` to `allowed_tools` and `trigger` to `trigger_phrases`, and comments out unsupported fields. Fidelity is approximately 80%.
+
+
+---
+Source: features\subagents.md
+---
+
+---
+type: doc
+tags: [docs, features]
+date_updated: 2026-06-10
+---
+
+# Subagents
+
+Subagents are specialized agents that can be spawned by the main agent to work on tasks independently. They run in isolated agent loops with filtered tools and optional model overrides.
+
+## Defining an Agent
+
+Create an `AGENT.md` file in `~/.aede/agents/` (global) or `./agents/` (project):
+
+```yaml
+---
+name: researcher
+description: Web research specialist
+model: claude-sonnet-4-20250514
+skills: [web-research]
+tools: [web_search, fetch_url]
+disallowedTools: [powershell]
+maxTurns: 5
+systemPrompt: "You are a research assistant. Find and summarize information."
+---
+```
+
+Available frontmatter fields:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `name` | required | Unique agent name |
+| `description` | required | What this agent does |
+| `model` | `inherit` | Model override (uses orchestrator model by default) |
+| `skills` | `[]` | Skills to inject into the subagent |
+| `tools` | `null` (all) | Explicit tool allowlist |
+| `disallowedTools` | `[]` | Tools to exclude |
+| `maxTurns` | 20 | Maximum conversation turns |
+| `systemPrompt` | `""` | Custom system prompt override |
+
+## Using Subagents
+
+The agent can spawn subagents via the `spawn_subagent` tool. The agent decides when to delegate work â€” for example, asking a research agent to look something up while the main agent continues planning.
+
+Subagents get:
+
+- A fresh session linked to the parent session via `parent_id`
+- A filtered ToolRouter based on their `tools` / `disallowedTools`
+- An optional per-agent model override
+- A maximum depth of 1 (subagents cannot spawn further subagents)
+
+The subagent session is archived on completion, and results are returned to the main agent.
+
+## Managing Agents
+
+- `/agents` â€” list loaded agents in the REPL
+- `/import agent <path>` â€” import an agent from Claude Code or OpenCode format
+
+
+---
+Source: features\tools.md
+---
+
+---
+type: doc
+tags: [docs, features]
+date_updated: 2026-06-10
+---
+
+# Tools
+
+aede provides a set of built-in tools that the agent can invoke during a conversation.
+
+## Core Tools
+
+| Tool | Gated | Description |
+|------|-------|-------------|
+| `powershell` | Yes | Execute a PowerShell, CMD, or WSL command |
+| `read_file` | No | Read a UTF-8 file at a given path |
+| `write_file` | Yes | Overwrite an existing file |
+| `create_file` | Yes | Create a new file (fails if it exists) |
+| `list_dir` | No | List directory contents with configurable depth |
+| `search_files` | No | Search for a regex pattern across files (ripgrep) |
+| `fetch_url` | No | HTTP GET a URL, return content as text |
+| `web_search` | No | Search the web via DuckDuckGo |
+
+## Extended Tools
+
+| Tool | Gated | Description |
+|------|-------|-------------|
+| `spawn_subagent` | No | Delegate a task to a loaded subagent |
+| `session_search` | No | FTS5 search over past session messages |
+| `write_learning` | Yes | Persist a learning to the memory store |
+
+## Tool Approval
+
+Gated tools require user approval before execution. The approval prompt shows the tool name and arguments, letting you allow once, allow permanently at various scopes, or deny. See [Security](../user-guide/security.md) for details.
+
+## MCP Tools
+
+Tools from MCP servers are auto-discovered and registered with the prefix `mcp__<server>__<name>`. Their gate status depends on the server's `trusted` flag. See [MCP](mcp.md).
+
+## Output Truncation
+
+Tool outputs are capped at `tool_output_max_tokens * 4` characters. Truncated output includes a note with the estimated token count.
+
+## Error Handling
+
+Errors are returned to the model as results (never hidden). The model decides whether to retry with corrected parameters, ask the user, or report failure. Never retry on hallucinated tool names â€” unknown names cannot become valid by retrying.
+
+
+---
+Source: features\web-ui.md
+---
+
+---
+type: doc
+tags: [docs, features, web-ui]
+date_updated: 2026-06-10
+---
+
+# Web UI
+
+aede includes a browser-based interface built with Next.js, React, and shadcn/ui.
+
+## Starting
+
+```bash
+aede --serve
+```
+
+Open `http://localhost:8000` in your browser.
+
+## Chat Interface
+
+The main view is a chat panel where you type messages and see the agent's streaming responses. Tool calls are displayed inline, and the approval gate appears as a dialog with Allow/Deny/Redirect buttons instead of CLI keypresses.
+
+## Settings Modal
+
+A settings panel with 10 tabs accessed from the chat interface:
+
+| Tab | Description |
+|-----|-------------|
+| **Config** | View and edit YAML configuration |
+| **Models** | Select model, add/edit/delete model presets |
+| **MCP** | Add/remove servers, enable/disable per-tool, set trusted status |
+| **Context** | Token budget and compaction settings |
+| **Memory** | View and manage learnings |
+| **Agents** | Create, edit, delete, and upload agent definitions (global or project scope) |
+| **Skills** | Create, edit, delete, and upload skill definitions (global or project scope) |
+| **Import** | Instructions for importing from other harnesses |
+| **Keybinds** | Keyboard shortcut reference |
+| **Projects** | Project management |
+
+## ACP Connection
+
+Through the Web UI you can manage ACP agents â€” register, connect, and switch between external agent backends.
+
+## Differences from CLI
+
+- Graphical tool approval instead of keypress-based
+- Incremental streaming token rendering in chat
+- Settings editing through forms rather than YAML
+- Slash commands available with autocomplete suggestions
+- Some advanced CLI commands (e.g., `/extract`) are not available in the Web UI
+
+
+---
+Source: getting-started\installation.md
+---
+
+---
+type: doc
+tags: [docs, getting-started]
+date_updated: 2026-06-10
+---
+
+# Installation
+
+## Prerequisites
+
+- **Python 3.12+** â€” aede uses modern Python features and the latest SDKs
+- **uv** â€” the Python package manager. Install from <https://docs.astral.sh/uv/>
+
+## Install
+
+Install from PyPI:
+
+```bash
+uv tool install aedeai
+```
+
+Or run directly without installing:
+
+```bash
+uvx aedeai
+```
+
+For development, clone the repository and use `uv sync`:
+
+```bash
+git clone <repo-url>
+cd aede
+uv sync
+uv run aede
+```
+
+## First Run
+
+On first launch, aede creates its home directory at `~/.aede/` with this structure:
+
+```
+~/.aede/
+â”œâ”€â”€ config.yml          # global user configuration
+â”œâ”€â”€ credentials.json    # credential vault (API keys)
+â”œâ”€â”€ data/
+â”‚   â”œâ”€â”€ aede.db         # SQLite database
+â”‚   â”œâ”€â”€ learnings.jsonl # learnings store
+â”‚   â”œâ”€â”€ sessions/       # per-session rollout logs
+â”‚   â””â”€â”€ traces/         # GEPA trace logs
+â”œâ”€â”€ skills/             # global skills
+â””â”€â”€ agents/             # global agents
+```
+
+## Environment Variables
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `ANTHROPIC_API_KEY` | Yes (Anthropic) | Anthropic API key for Claude models |
+| `OPENROUTER_API_KEY` | OpenRouter | OpenRouter API key |
+| `OPENAI_API_KEY` | OpenAI | OpenAI API key |
+| `DEEPSEEK_API_KEY` | DeepSeek | DeepSeek API key |
+| `AEDE_HOME` | No | Override home directory (default: `~/.aede`) |
+| `EDITOR` | No | Text editor for config editing (default: `notepad.exe` on Windows, `vi` on POSIX) |
+
+
+---
+Source: getting-started\migration\from-antigravity.md
+---
+
+---
+type: doc
+tags: [docs, migration]
+date_updated: 2026-06-10
+---
+
+# Migrating from Antigravity (Gemini CLI)
+
+Antigravity (Gemini CLI) stores agents as plain markdown files with no YAML frontmatter. aede synthesises a name and adds frontmatter during import.
+
+## Supported
+
+| Artifact | Source Location | Import Command |
+|---|---|---|
+| Agents | `~/.gemini/AGENTS.md` and `~/.gemini/GEMINI.md` | `/import agent <path> --source antigravity` |
+| Skills | `~/.gemini/skills/` (dirs with `SKILL.md`) | `/import skill <path> --source antigravity` |
+| MCP | `~/.gemini/config/mcp_config.json` | `/import mcp --source antigravity` |
+
+## Quick Start
+
+```
+/import all --source antigravity
+```
+
+This imports `~/.gemini/AGENTS.md`, `~/.gemini/GEMINI.md`, all skills in `~/.gemini/skills/`, and MCP servers from `~/.gemini/config/mcp_config.json`.
+
+## Importing Agents
+
+Antigravity agent files have no frontmatter â€” they are plain markdown instructions:
+
+```
+/import agent ~/.gemini/AGENTS.md --source antigravity
+```
+
+Name synthesis:
+
+| Source Filename | Synthesised Name |
+|---|---|
+| `~/.gemini/AGENTS.md` | Parent dir name â†’ `gemini` |
+| `~/.gemini/GEMINI.md` | Parent dir name â†’ `gemini` |
+| `my-project/rules.md` | Stem â†’ `rules` |
+
+The import adds fresh frontmatter:
+
+```yaml
+---
+name: <synthesised-name>
+description: Imported from Antigravity
+model: inherit
+---
+```
+
+The entire original file content becomes the agent body.
+
+## Importing Skills
+
+```
+/import skill ~/.gemini/skills/deploy --source antigravity
+```
+
+Skills use the same YAML frontmatter `SKILL.md` format as Claude Code. The source tag is set to "Antigravity" in the import report.
+
+Field renames:
+
+| Antigravity | aede |
+|---|---|
+| `allowed-tools` | `allowed_tools` |
+| `trigger` | `trigger_phrases` |
+
+The `hidden` field is commented out.
+
+## Importing MCP Servers
+
+```
+/import mcp --source antigravity
+```
+
+Reads `~/.gemini/config/mcp_config.json`. The `serverUrl` field is mapped to aede's `url` field. Remote servers (URL-based) need no `command` in aede.
+
+## What Gets Dropped
+
+Nothing from agents (plain markdown, no frontmatter to drop). Skills drop `hidden`. MCP drops no fields specific to Antigravity.
+
+## Limitations
+
+- Agent names are synthesised from the parent directory name â€” not from file content.
+- Multiple agents cannot be defined in a single AGENTS.md file.
+- MCP env vars with `${env:VAR}` syntax are passed through verbatim.
+
+## See Also
+
+- [`/import` command reference](../reference/import-commands)
+- [Migration overview](./index)
+- [Migrating from Claude Code](./from-claude-code)
+
+
+---
+Source: getting-started\migration\from-claude-code.md
+---
+
+---
+type: doc
+tags: [docs, migration]
+date_updated: 2026-06-10
+---
+
+# Migrating from Claude Code
+
+Claude Code is the closest source to aede â€” both use YAML frontmatter `.md` files with the same agent schema. Most fields map 1:1.
+
+## Supported
+
+| Artifact | Source Location | Import Command |
+|---|---|---|
+| Agents | `~/.claude/agents/*.md` | `/import agent <path>` |
+| Skills | `~/.claude/skills/` (dirs with `SKILL.md`) | `/import skill <path>` |
+| MCP | `~/.claude/mcp.json` | `/import mcp --source claude-code` |
+
+## Quick Start
+
+```
+/import all --source claude-code
+```
+
+This imports everything from `~/.claude/agents/`, `~/.claude/skills/`, and `~/.claude/mcp.json` in one pass.
+
+## Importing Agents Individually
+
+Claude Code agent files have YAML frontmatter. aede maps them 1:1:
+
+```
+/import agent ~/.claude/agents/my-researcher.md
+```
+
+Output: `~/.aede/agents/my-researcher.md` with identical frontmatter (minus the dropped fields below).
+
+## Importing Skills
+
+```
+/import skill ~/.claude/skills/kaizen
+```
+
+Skills can be either a directory containing `SKILL.md` or a standalone `.md` file. The import preserves the description, model, and body.
+
+Field renames:
+
+| Claude Code | aede |
+|---|---|
+| `allowed-tools` | `allowed_tools` |
+| `trigger` | `trigger_phrases` |
+
+## Importing MCP Servers
+
+```
+/import mcp --source claude-code
+```
+
+Reads `~/.claude/mcp.json` and merges servers into `~/.aede/config.yml`. When the source `command` is a list (e.g. `["npx", "-y", "server"]`), the first element becomes `command` and the rest become `args`.
+
+## What Gets Dropped
+
+Seven Claude Code agent fields are **commented out** (preserved as YAML comments in the output frontmatter, not lost):
+
+| Dropped Field | Reason |
+|---|---|
+| `permissionMode` | aede doesn't have tool permission levels |
+| `mcpServers` | MCP servers are configured globally in `config.yml`, not per-agent |
+| `memory` | aede uses a different memory architecture |
+| `isolation` | Not supported |
+| `effort` | Not supported |
+| `color` | Not supported |
+| `hooks` | Not supported |
+
+One skill field is commented out:
+
+| Dropped Field | Reason |
+|---|---|
+| `hidden` | No equivalent concept in aede |
+
+## Limitations
+
+- MCP env vars with `${env:VAR}` syntax are passed through verbatim â€” aede does not interpolate them.
+- Prompts before overwriting existing files; `--dest` lets you control the output directory.
+
+## See Also
+
+- [`/import` command reference](../reference/import-commands)
+- [Migration overview](./index)
+
+
+---
+Source: getting-started\migration\from-codex.md
+---
+
+---
+type: doc
+tags: [docs, migration]
+date_updated: 2026-06-10
+---
+
+# Migrating from Codex (OpenAI CLI)
+
+Codex (OpenAI CLI) stores agents as plain markdown with no frontmatter, skills in YAML frontmatter files, and MCP configs in TOML format â€” the only source using TOML.
+
+## Supported
+
+| Artifact | Source Location | Import Command |
+|---|---|---|
+| Agents | `~/.codex/AGENTS.md` | `/import agent <path> --source codex` |
+| Skills | `~/.codex/skills/` (dirs with `SKILL.md`) | `/import skill <path> --source codex` |
+| MCP | `~/.codex/config.toml` | `/import mcp --source codex` |
+
+## Quick Start
+
+```
+/import all --source codex
+```
+
+This imports `~/.codex/AGENTS.md`, all skills in `~/.codex/skills/`, and MCP servers from `~/.codex/config.toml`.
+
+## Importing Agents
+
+Codex AGENTS.md is plain markdown with no YAML frontmatter:
+
+```
+/import agent ~/.codex/AGENTS.md --source codex
+```
+
+Name synthesis: when the filename is `AGENTS.md` (case-insensitive), the name is derived from the parent directory. For example, `~/.codex/AGENTS.md` produces name `codex`.
+
+The import adds fresh frontmatter:
+
+```yaml
+---
+name: codex
+description: Imported from Codex
+model: inherit
+---
+```
+
+## Importing Skills
+
+```
+/import skill ~/.codex/skills/search --source codex
+```
+
+Skills use the standard YAML frontmatter `SKILL.md` format. The source tag is set to "Codex".
+
+Field renames:
+
+| Codex | aede |
+|---|---|
+| `allowed-tools` | `allowed_tools` |
+| `trigger` | `trigger_phrases` |
+
+The `hidden` field is commented out.
+
+## Importing MCP Servers
+
+Codex MCP configs use TOML format, unique among the six supported sources:
+
+```
+/import mcp --source codex
+```
+
+Reads `~/.codex/config.toml` and merges servers under the `[mcp_servers]` table into `~/.aede/config.yml`.
+
+### What Gets Dropped (10 TOML Fields)
+
+Ten Codex-specific TOML fields are silently dropped â€” they have no equivalent in aede:
+
+| Dropped Field | Reason |
+|---|---|
+| `bearer_token_env_var` | No OAuth bearer token flow |
+| `startup_timeout_sec` | Not supported |
+| `startup_timeout_ms` | Not supported |
+| `tool_timeout_sec` | Not supported |
+| `tool_timeout_ms` | Not supported |
+| `cwd` | Working directory is managed by the server |
+| `required` | No concept of required servers |
+| `enabled_tools` | Use `disabled_tools` instead |
+| `scopes` | No OAuth scope system |
+| `oauth_resource` | No OAuth resource system |
+
+### What Maps 1:1
+
+| Codex TOML | aede YAML |
+|---|---|
+| `command` | `command` |
+| `args` | `args` |
+| `env` | `env` |
+| `url` | `url` |
+| `enabled` | `enabled` (defaults to `true`) |
+| `disabled_tools` | `disabled_tools` |
+
+## Dry Run
+
+Preview what would be imported without writing anything:
+
+```
+/import mcp --source codex --dry-run
+```
+
+## Limitations
+
+- Agent name is synthesised from the parent directory, not from file content.
+- TOML inline tables for `env` are handled correctly, including nested `[mcp_servers.x.env]` sections.
+- MCP env values are passed through verbatim with no interpolation.
+
+## See Also
+
+- [`/import` command reference](../reference/import-commands)
+- [Migration overview](./index)
+
+
+---
+Source: getting-started\migration\from-cursor.md
+---
+
+---
+type: doc
+tags: [docs, migration]
+date_updated: 2026-06-10
+---
+
+# Migrating from Cursor
+
+Cursor uses `.mdc` files with YAML frontmatter for rules (agents) and a JSON config for MCP servers. It does not have a skills system.
+
+## Supported
+
+| Artifact | Source Location | Import Command |
+|---|---|---|
+| Agents (Rules) | `~/.cursor/rules/*.mdc` | `/import agent <path> --source cursor` |
+| Skills | â€” | Not supported |
+| MCP | `~/.cursor/mcp.json` | `/import mcp --source cursor` |
+
+## Quick Start
+
+```
+/import all --source cursor
+```
+
+This imports all `.mdc` files from `~/.cursor/rules/` and MCP servers from `~/.cursor/mcp.json`.
+
+## Importing Agents
+
+Cursor `.mdc` files have YAML frontmatter with `description`, `globs`, and `alwaysApply` fields:
+
+```
+/import agent ~/.cursor/rules/python-rules.mdc --source cursor
+```
+
+The name is derived from the file stem (slugified): `python-rules.mdc` â†’ `python-rules`.
+
+Output frontmatter:
+
+```yaml
+---
+name: python-rules
+description: Python best practices
+model: inherit
+# globs:
+#   - '**/*.py'
+# alwaysApply: true
+---
+```
+
+Auto-detection: if `--source` is omitted and the file has `.mdc` extension, aede automatically uses the Cursor importer.
+
+## What Gets Dropped
+
+Two Cursor-specific fields are **commented out** in the output frontmatter:
+
+| Dropped Field | Reason |
+|---|---|
+| `globs` | aede doesn't scope agents to file glob patterns |
+| `alwaysApply` | aede agents are always available when selected |
+
+## Importing MCP Servers
+
+```
+/import mcp --source cursor
+```
+
+Reads `~/.cursor/mcp.json` and merges servers into `~/.aede/config.yml`. The `url` field (used by remote Cursor MCP servers) maps directly to aede's `url`.
+
+## Limitations
+
+- No skills import available.
+- Cursor's `globs` field has no aede equivalent â€” rules apply to all files.
+- `alwaysApply` has no equivalent â€” all aede agents are manually selected.
+
+## See Also
+
+- [`/import` command reference](../reference/import-commands)
+- [Migration overview](./index)
+
+
+---
+Source: getting-started\migration\from-opencode.md
+---
+
+---
+type: doc
+tags: [docs, migration]
+date_updated: 2026-06-10
+---
+
+# Migrating from OpenCode
+
+OpenCode uses the same YAML frontmatter agent format as Claude Code. aede imports OpenCode agents by delegating to the same Claude Code import logic.
+
+## Supported
+
+| Artifact | Source Location | Import Command |
+|---|---|---|
+| Agents | `~/.opencode/agents/*.md` | `/import agent <path> --source opencode` |
+| Skills | â€” | Not supported |
+| MCP | â€” | Not supported |
+
+OpenCode does not have a skills directory or MCP config format.
+
+## Quick Start
+
+```
+/import agent ~/.opencode/agents/my-agent.md --source opencode
+```
+
+There is no `/import all` support for OpenCode since it only supports agents.
+
+## Importing Agents
+
+```
+/import agent ~/.opencode/agents/code-helper.md --source opencode
+```
+
+The agent schema is structurally identical to Claude Code. The same 7 unsupported fields (`permissionMode`, `mcpServers`, `memory`, `isolation`, `effort`, `color`, `hooks`) are commented out in the output.
+
+Auto-detection also works: if you pass a `.md` file with YAML frontmatter and `--source` is omitted, aede tries Claude Code format first, then falls back to OpenCode.
+
+## What Gets Dropped
+
+Same 7 fields as [Claude Code](./from-claude-code#what-gets-dropped): `permissionMode`, `mcpServers`, `memory`, `isolation`, `effort`, `color`, `hooks`.
+
+## Limitations
+
+- No skills or MCP import available.
+- OpenCode's own configuration (`opencode.json`, `opencode.jsonc`) is not imported â€” only agent files are supported.
+
+## See Also
+
+- [`/import` command reference](../reference/import-commands)
+- [Migration overview](./index)
+- [Migrating from Claude Code](./from-claude-code)
+
+
+---
+Source: getting-started\migration\from-windsurf.md
+---
+
+---
+type: doc
+tags: [docs, migration]
+date_updated: 2026-06-10
+---
+
+# Migrating from Windsurf
+
+Windsurf stores agents as plain markdown rules files, skills in YAML frontmatter files, and MCP config in JSON.
+
+## Supported
+
+| Artifact | Source Location | Import Command |
+|---|---|---|
+| Agents (Rules) | `~/.windsurf/rules/*.md` | `/import agent <path> --source windsurf` |
+| Skills | `~/.windsurf/skills/` (flat `.md` files) | `/import skill <path> --source windsurf` |
+| MCP | `~/.codeium/windsurf/mcp_config.json` | `/import mcp --source windsurf` |
+
+Note the MCP config is under `~/.codeium/`, not `~/.windsurf/`.
+
+## Quick Start
+
+```
+/import all --source windsurf
+```
+
+This imports all `.md` rule files from `~/.windsurf/rules/`, all skills from `~/.windsurf/skills/`, and MCP servers from `~/.codeium/windsurf/mcp_config.json`.
+
+## Importing Agents
+
+Windsurf rules are plain markdown files with no YAML frontmatter:
+
+```
+/import agent ~/.windsurf/rules/python-standards.md --source windsurf
+```
+
+Name synthesis: when the filename is not `AGENTS.md` or `GEMINI.md`, the name is derived from the file stem. `python-standards.md` â†’ name `python-standards`.
+
+The import adds fresh frontmatter:
+
+```yaml
+---
+name: python-standards
+description: Imported from Windsurf
+model: inherit
+---
+```
+
+## Importing Skills
+
+Windsurf skills are flat `.md` files with YAML frontmatter:
+
+```
+/import skill ~/.windsurf/skills/search.md --source windsurf
+```
+
+Field renames:
+
+| Windsurf | aede |
+|---|---|
+| `allowed-tools` | `allowed_tools` |
+| `trigger` | `trigger_phrases` |
+
+The `hidden` field is commented out.
+
+## Importing MCP Servers
+
+```
+/import mcp --source windsurf
+```
+
+Reads `~/.codeium/windsurf/mcp_config.json`. The `serverUrl` field is mapped to aede's `url`. Windsurf-style `${env:VAR}` and `${file:path}` interpolation tokens are preserved verbatim.
+
+## What Gets Dropped
+
+Nothing from agents (plain markdown, no frontmatter to drop). Skills drop `hidden`. MCP drops no Windsurf-specific fields.
+
+## Limitations
+
+- Agent names are synthesised from the filename â€” not from file content.
+- MCP config is in a different tree (`~/.codeium/windsurf/`) from rules (`~/.windsurf/rules/`).
+- MCP env vars with `${env:VAR}` and `${file:path}` syntax are passed through verbatim.
+
+## See Also
+
+- [`/import` command reference](../reference/import-commands)
+- [Migration overview](./index)
+
+
+---
+Source: getting-started\migration\index.md
+---
+
+---
+type: doc
+tags: [docs, migration]
+date_updated: 2026-06-10
+---
+
+# Migration Overview
+
+aede can import agents, skills, and MCP server configurations from six popular agent harnesses. Use the `/import` command to bring your existing setup into aede.
+
+## Supported Sources
+
+| Source | Agents | Skills | MCP | Config Format |
+|---|---|---|---|---|
+| [Claude Code](./from-claude-code) | âœ“ | âœ“ | âœ“ | YAML frontmatter + JSON |
+| [OpenCode](./from-opencode) | âœ“ | â€” | â€” | YAML frontmatter |
+| [Antigravity](./from-antigravity) | âœ“ | âœ“ | âœ“ | Plain markdown + JSON |
+| [Codex](./from-codex) | âœ“ | âœ“ | âœ“ | Plain markdown + TOML |
+| [Cursor](./from-cursor) | âœ“ | â€” | âœ“ | `.mdc` frontmatter + JSON |
+| [Windsurf](./from-windsurf) | âœ“ | âœ“ | âœ“ | Plain markdown + JSON |
+
+## Quick Start
+
+Migrate everything in one command:
+
+```
+/import all --source claude-code
+/import all --source antigravity
+/import all --source codex
+/import all --source windsurf
+```
+
+Replace `--source` with any of the six harnesses listed above. The command discovers agents, skills, and MCP servers at their standard locations and imports them without overwriting existing files.
+
+## Import Types
+
+- **`/import agent <path> [--source X] [--dest DIR]`** â€” Import an agent or rules file
+- **`/import skill <path> [--source X] [--dest DIR]`** â€” Import a skill file
+- **`/import mcp [path] [--source X] [--dry-run]`** â€” Import MCP servers from a config file
+- **`/import all [--source X] [--dry-run]`** â€” Import everything from standard locations
+
+## What Gets Imported
+
+**Agents** become aede agent files (`~/.aede/agents/<name>.md`) with YAML frontmatter. Name is preserved from the source when available, or synthesised from the filename/directory.
+
+**Skills** become aede skill files (`~/.aede/skills/<name>.md`) with YAML frontmatter. Field mappings and dropped fields vary by source â€” see the source-specific guide for details.
+
+**MCP servers** are merged into `~/.aede/config.yml` under the `mcp_servers` key. The importer prompts before overwriting an existing server with the same name.
+
+## See Also
+
+- [`/import` command reference](../reference/import-commands)
+
+
+---
+Source: getting-started\quickstart.md
+---
+
+---
+type: doc
+tags: [docs, getting-started]
+date_updated: 2026-06-10
+---
+
+# Quickstart
+
+## Start a Session
+
+Launch the REPL:
+
+```bash
+uv run aede
+```
+
+You'll see a header showing the model and session ID, then a prompt where you can type messages.
+
+Pass a task directly:
+
+```bash
+uv run aede "summarize the files in this project"
+```
+
+## Your First Conversation
+
+The agent has access to tools for file operations, shell commands, search, and web access. Try:
+
+- "List the files in the current directory"
+- "Read the README and tell me what this project does"
+- "Search for all TODO comments in the codebase"
+
+When the agent wants to run a shell command or write a file, you'll see an approval prompt:
+
+```
+Gate: powershell(cmd="mkdir new_project")
+[A]llow once  [S]ession  [P]roject  [G]lobal  [D]eny  [R]edirect
+```
+
+Press the corresponding key to respond.
+
+## Slash Commands
+
+Type `/help` to see all available slash commands. Key ones:
+
+| Command | Purpose |
+|---------|---------|
+| `/help` | List all commands |
+| `/resume [id]` | Resume a previous session |
+| `/sessions` | List recent sessions |
+| `/tokens` | Show token usage and cost |
+| `/config [scope] [key] [value]` | View or set configuration |
+| `/compact` | Manually trigger context compaction |
+| `/clear` | Start a new session |
+| `/exit` | End session cleanly |
+
+## End a Session
+
+- `/exit` â€” archives the session (can be resumed later)
+- `Ctrl+C` â€” saves session as active (resumable)
+- `Ctrl+D` â€” archives the session cleanly
+
+Empty sessions (no messages) are automatically deleted.
+
+
+---
+Source: getting-started\web-ui-quickstart.md
+---
+
+---
+type: doc
+tags: [docs, getting-started, web-ui]
+date_updated: 2026-06-10
+---
+
+# Web UI Quickstart
+
+aede includes a browser-based interface built with Next.js and shadcn/ui.
+
+## Start the Server
+
+```bash
+aede --serve
+```
+
+By default the server binds to `127.0.0.1:8000`. Override with `--host` and `--port`:
+
+```bash
+aede --serve --host 0.0.0.0 --port 8080
+```
+
+## Open the Browser
+
+Navigate to `http://localhost:8000` (or whatever port you specified). The Web UI connects to the backend via WebSocket and provides:
+
+- **Chat interface** â€” type messages, see streaming responses, approve or deny tool calls through a graphical gate
+- **Settings modal** â€” 10 tabs (Config, Models, MCP, Context, Memory, Agents, Skills, Import, Keybinds, Projects) for managing every aspect of aede
+- **Slash commands** â€” autocomplete for built-in commands, skills, agents, and MCP servers
+
+## Differences from CLI
+
+- Tool approval is graphical (buttons instead of keypresses)
+- Streaming tokens render incrementally in the chat view
+- Settings are editable through forms rather than config YAML
+- Some features are only available in the CLI (e.g., `/extract`, editing config via `$EDITOR`)
+
+
+---
+Source: index.md
+---
+
+---
+type: doc
+tags: [docs]
+date_updated: 2026-06-10
+---
+
+# aede
+
+aede is a personal CLI agent harness for LLM-powered workflows. It wraps large language models (Anthropic primary, OpenAI-compatible secondary) into a configurable agent that can edit code, run shell commands, search files, browse the web, delegate to subagents, and persist knowledge across sessions.
+
+## Quick Start
+
+```bash
+uv run aede
+```
+
+Set `ANTHROPIC_API_KEY` in your environment first. See [Installation](getting-started/installation.md).
+
+## Features
+
+- **Agent loop** â€” multi-turn conversation with streaming output, tool execution, and context compaction
+- **Tools** â€” file operations, shell execution, ripgrep search, web search and fetch
+- **Skills** â€” reusable instruction templates injected into the system prompt
+- **Subagents** â€” delegate tasks to specialized agents with isolated tool access and model overrides
+- **Memory** â€” learnings persist across sessions, retrieved via hybrid vector + FTS search
+- **MCP servers** â€” integrate any Model Context Protocol server for extended tool capabilities
+- **ACP** â€” Agent Client Protocol support for connecting to external agent processes
+- **Code critic** â€” asymmetric LLM pass that reviews code for correctness before writes
+- **Web UI** â€” browser-based interface with chat, settings (10 tabs), and ACP connection management
+- **Session management** â€” ULID-based sessions with branching, resume, and full-text search
+- **Token tracking** â€” per-turn usage with cost estimation and cache hit rate
+
+## Documentation
+
+| Section | Description |
+|---------|-------------|
+| [Getting Started](getting-started/installation.md) | Installation, configuration, and first steps |
+| [User Guide](user-guide/cli.md) | CLI usage, configuration, sessions, tokens, security |
+| [Features](features/tools.md) | Tools, subagents, memory, skills, MCP, ACP, critic, web UI, server |
+| [Architecture](architecture/overview.md) | System design, agent loop, providers, database |
+| [Reference](reference/slash-commands.md) | Slash commands, config keys, tool reference |
+| [Developer](developer/tests.md) | Tests and conventions |
+
+
+---
+Source: PUBLISHING.md
+---
+
+---
+type: doc
+tags: [docs, publishing]
+date_updated: 2026-06-10
+---
+
+# Publishing docs to GitHub Pages
+
+## Current setup (zero build step)
+
+This repo uses GitHub Pages with the `/docs` folder on `main` branch as source:
+
+1. **GitHub repo â†’ Settings â†’ Pages**
+2. Source: **Deploy from a branch**
+3. Branch: `main`, folder: `/docs`
+4. URL: `https://<org>.github.io/aede/`
+
+No build step needed â€” markdown renders natively via GitHub's built-in Pages support. Relative links (`[link](features/tools.md)`) work automatically.
+
+## MkDocs (future polish)
+
+When you want a sidebar, search, and dark mode:
+
+```bash
+pip install mkdocs mkdocs-material
+mkdocs new .
+# Edit mkdocs.yml with nav structure
+# Deploy via GitHub Action: mhausenblend/mkdocs-deploy-gh-pages
+```
+
+Add `mkdocs.yml` at repo root, a GitHub Action to `deploy.yml`, and switch Pages source to "GitHub Actions".
+
+## Notes
+
+- `llms.txt` and `llms-full.txt` are for LLM context ingestion â€” they must be regenerated when docs change
+- Internal docs in `docs-internal/` are **not** published (only `docs/` is)
+- `docs/adr/`, `docs/kaizen/`, `docs/plans/`, `docs/sdlc-engineer/` are internal â€” they publish because they live under `docs/`, but aren't linked from the index
+
+
+---
+Source: reference\config-keys.md
+---
+
+---
+type: doc
+tags: [docs, reference]
+date_updated: 2026-06-10
+---
+
+# Config Keys
+
+## General
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `model` | string | `claude-sonnet-4-20250514` | Active model ID |
+| `context_window` | integer | 200000 | Token limit before compaction triggers |
+| `compaction_threshold` | float | 0.85 | Fraction of window that triggers auto-compaction |
+| `tool_output_max_tokens` | integer | 8000 | Max tokens per tool output before truncation |
+| `batch_approval_max` | integer | 20 | Max tools in a batch approval group |
+| `auto_approve` | list | `[]` | Tool names that skip the approval gate |
+
+## Shell
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `shell` | string | `powershell` | Shell backend: `powershell`, `cmd`, or `wsl` |
+| `wsl_distro` | string | `""` | WSL distro name (only used when `shell: wsl`) |
+
+## API Provider
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `api_base_url` | string | `null` | OpenAI-compatible base URL (e.g., `https://openrouter.ai/api/v1`) |
+| `model_prices` | object | `{}` | Price overrides per model (input/output/cache_read per million tokens) |
+
+## Reasoning
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `reasoning_effort` | string | `auto` | `auto`, `none`, `low`, `medium`, `high`, `xhigh`, `max` |
+| `thinking_budget` | integer | 0 | Token budget for thinking (0 = auto, min 1024) |
+
+## Critic
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `critic_enabled` | boolean | `false` | Enable asymmetric critic pass on code writes |
+| `critic_model` | string | `null` | Separate model for critic (null = same as main) |
+| `critic_api_base_url` | string | `null` | Base URL for critic model |
+
+## Grounding
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `grounding_enabled` | boolean | `true` | Inject grounding instruction into system prompt |
+
+## Memory (Embeddings)
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `ollama_base_url` | string | `http://localhost:11434` | Ollama API endpoint |
+| `ollama_embed_model` | string | `nomic-embed-text` | Embedding model name |
+| `ollama_timeout_s` | integer | 5 | Ollama request timeout in seconds |
+| `learnings_top_k` | integer | 5 | Top-k learnings to retrieve per turn |
+| `learnings_max_tokens` | integer | 2000 | Max tokens for learnings suffix in system prompt |
+
+## MCP
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `mcp_servers` | object | `{}` | MCP server configurations (also accepts `mcpServers`) |
+
+
+---
+Source: reference\slash-commands.md
+---
+
+---
+type: doc
+tags: [docs, reference]
+date_updated: 2026-06-10
+---
+
+# Slash Commands
+
+## Session Management
+
+| Command | Description | Syntax |
+|---------|-------------|--------|
+| `/clear` | Start a new session (prompts confirmation) | `/clear` |
+| `/exit` | End the current session (archived) | `/exit` |
+| `/resume [id]` | Resume a session by ID (creates a branch) | `/resume <session-id>` |
+| `/sessions` | List the 20 most recent sessions | `/sessions` |
+| `/delete-session [id]` | Delete a session, its rollout log, and notes | `/delete-session <id>` |
+| `/rm [id]` | Alias for `/delete-session` | `/rm <id>` |
+
+## Information
+
+| Command | Description | Syntax |
+|---------|-------------|--------|
+| `/help` | Print the list of available commands | `/help` |
+| `/keybinds` | Show keyboard shortcuts | `/keybinds` |
+| `/tools` | List available tools and their approval status | `/tools` |
+| `/skills` | List all loaded skills | `/skills` |
+| `/agents` | List all loaded agents | `/agents` |
+| `/mcp` | List MCP servers and their tools | `/mcp` |
+| `/tokens` | Show token usage, cost estimate, and cache hit rate | `/tokens` |
+
+## Configuration
+
+| Command | Description | Syntax |
+|---------|-------------|--------|
+| `/config` | View effective config with source tracking | `/config` |
+| `/config <scope>` | View config at a scope (`global` or `project`) | `/config global` |
+| `/config <scope> <key> <value>` | Set a config value | `/config project model claude-sonnet-4-20250514` |
+| `/config <scope> <key> +<value>` | Add to a list key | `/config project auto_approve +powershell` |
+| `/config <scope> <key> -<value>` | Remove from a list key | `/config project auto_approve -powershell` |
+| `/setkey <NAME> <value>` | Save a credential to the vault | `/setkey OPENAI_API_KEY sk-...` |
+
+## Agent Control
+
+| Command | Description | Syntax |
+|---------|-------------|--------|
+| `/compact` | Manually trigger context compaction | `/compact` |
+| `/extract [id]` | Extract learnings from a session trace | `/extract <session-id>` |
+
+## ACP
+
+| Command | Description | Syntax |
+|---------|-------------|--------|
+| `/acp register <name> <cmd...>` | Register an ACP agent | `/acp register codex npx codex` |
+| `/acp connect <name>` | Connect to an ACP agent | `/acp connect claude-code` |
+| `/acp disconnect` | Disconnect from ACP agent, return to normal mode | `/acp disconnect` |
+| `/acp list` | List connected ACP agents | `/acp list` |
+| `/acp configs` | Show registered ACP agent configs | `/acp configs` |
+
+## Import
+
+| Command | Description | Syntax |
+|---------|-------------|--------|
+| `/import agent <path>` | Import an agent/rules file | `/import agent ~/.claude/agents/my-agent.md` |
+| `/import skill <path>` | Import a skill | `/import skill ~/.claude/skills/my-skill/SKILL.md` |
+| `/import mcp` | Import MCP servers from Claude Code | `/import mcp` |
+| `/import all` | Import everything from Claude Code | `/import all` |
+
+
+---
+Source: reference\tools-reference.md
+---
+
+---
+type: doc
+tags: [docs, reference]
+date_updated: 2026-06-10
+---
+
+# Tool Reference
+
+## powershell
+
+Execute a shell command.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cmd` | string | yes | The command to execute |
+
+Gated. Uses the configured shell backend (`powershell`, `cmd`, or `wsl`).
+
+## read_file
+
+Read the contents of a file.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | yes | Absolute or relative file path |
+
+Returns the file content as UTF-8 text.
+
+## write_file
+
+Overwrite an existing file. Fails if the file does not exist â€” use `create_file` for new files.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | yes | File path |
+| `content` | string | yes | New file content |
+
+Gated.
+
+## create_file
+
+Create a new file. Fails if the file already exists â€” use `write_file` to overwrite.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | yes | File path |
+| `content` | string | yes | File content |
+
+Gated.
+
+## list_dir
+
+List directory contents with file names, sizes, and modification times.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | yes | Directory path |
+| `depth` | integer | no | Recursion depth (default: 1) |
+
+## search_files
+
+Search for a regex pattern across files using ripgrep.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `pattern` | string | yes | Regex pattern to search for |
+| `path` | string | yes | Directory to search in |
+
+Returns matches with file path and line number.
+
+## fetch_url
+
+HTTP GET a URL and return the page content as text. Does not execute JavaScript.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | yes | URL to fetch |
+
+HTML pages return extracted visible text. Use `web_search` first to find URLs.
+
+## web_search
+
+Search the web using DuckDuckGo. No API key required.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | yes | Search query |
+| `count` | integer | no | Number of results (default: 5) |
+
+Returns titles, URLs, and snippets.
+
+## spawn_subagent
+
+Spawn a subagent to work on a task independently.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `agent_name` | string | yes | Name of a loaded agent |
+| `task` | string | yes | Task description for the subagent |
+
+The subagent runs in an isolated loop with its own filtered tools and model.
+
+## session_search
+
+Search past session message history by keyword using FTS5 full-text search.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | yes | Keyword or phrase to search for |
+| `limit` | integer | no | Max results (default: 10) |
+
+Returns matching messages with Â±5 message context window.
+
+## write_learning
+
+Persist a learning to the long-term memory store.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `type` | string | yes | `anti-pattern`, `failed-approach`, `root-cause`, or `config-correction` |
+| `content` | string | yes | Free-text body of the learning |
+| `source` | string | yes | `user`, `auto_learned`, `test_failure`, or `tool_error` |
+| `source_session_id` | string | no | Session that produced this learning |
+
+Gated. The verifier runs automatically after writing.
+
+
+---
+Source: user-guide\cli.md
+---
+
+---
+type: doc
+tags: [docs, user-guide]
+date_updated: 2026-06-10
+---
+
+# CLI
+
+## Invocation Modes
+
+| Command | Mode | Description |
+|---------|------|-------------|
+| `aede` | REPL | Interactive prompt loop, starts a new session |
+| `aede "task"` | REPL + task | Same as above, with the first message pre-filled |
+| `aede --serve` | Server | Starts the FastAPI backend for the Web UI |
+| `aede memory list\|show\|delete\|edit` | Memory CLI | Manage stored learnings without REPL |
+| `aede --import <source> --src <path>` | Import | Import agents, skills, or MCP servers from other harnesses |
+
+## REPL Loop
+
+The interactive loop:
+
+1. Bootstraps config and infrastructure (database, credentials, session)
+2. Loads skills from `~/.aede/skills/` and `./skills/`
+3. Loads agents from `~/.aede/agents/` and `./agents/`
+4. Spawns configured MCP servers
+5. Presents a prompt for your input
+
+Each message you type is sent to the agent, which can reply with text, request tool execution, or both. The loop continues until you use `/exit`, `Ctrl+C`, or `Ctrl+D`.
+
+## Session Branching
+
+`/resume [id]` creates a new branch session with the selected session as its parent. The original session remains intact and independently resumable. The branch inherits the conversation history up to the point of branching, with tool round-trips collapsed.
+
+## Shutdown Behavior
+
+- `/exit` or `Ctrl+D` â€” session status set to `archived` (fully saved, resumable)
+- `Ctrl+C` â€” session status set to `active` (saved, resumable)
+- Sessions with no messages are deleted entirely
+
+
+---
+Source: user-guide\configuration.md
+---
+
+---
+type: doc
+tags: [docs, user-guide]
+date_updated: 2026-06-10
+---
+
+# Configuration
+
+## Three-Layer Merge
+
+Configuration is resolved from three sources, each overriding the previous:
+
+1. **Defaults** â€” built into aede
+2. **Global** â€” `~/.aede/config.yml`
+3. **Project** â€” `./aede.yml` in the current working directory
+
+## Config File Locations
+
+| File | Scope |
+|------|-------|
+| `~/.aede/config.yml` | Global user config (applies everywhere) |
+| `./aede.yml` | Project-local config (overrides global) |
+
+## Environment Variables
+
+Environment variables take precedence over all config file values. See [Installation](../getting-started/installation.md#environment-variables) for the full list.
+
+## Config Editing
+
+View and edit configuration from the REPL:
+
+```
+/config                   # show effective config with source tracking
+/config global model claude-sonnet-4-20250514  # set a value
+/config project auto_approve +powershell        # add to list
+/config project auto_approve -powershell        # remove from list
+```
+
+Use `/config global` or `/config project` without arguments to open the config file in `$EDITOR`.
+
+## Source Tracking
+
+Every config key tracks its origin. Run `/config` with no arguments to see which settings come from defaults, global config, or project config.
+
+See the [Config Keys reference](../reference/config-keys.md) for all available settings.
+
+
+---
+Source: user-guide\security.md
+---
+
+---
+type: doc
+tags: [docs, user-guide]
+date_updated: 2026-06-10
+---
+
+# Security
+
+## Approval Gate
+
+Before executing dangerous operations, aede pauses and shows an approval prompt. Gated tools are:
+
+- `powershell` â€” arbitrary shell execution
+- `write_file` â€” overwriting existing files
+- `create_file` â€” creating new files
+- `write_learning` â€” persisting memory
+
+The gate offers these decisions:
+
+| Decision | Meaning |
+|----------|---------|
+| Allow once | Run this one call |
+| Allow session | Skip gate for this tool for the rest of the session |
+| Allow project | Persist to `aede.yml` (project scope) |
+| Allow global | Persist to `~/.aede/config.yml` |
+| Deny | Reject the call |
+| Redirect | Send a message back to the agent instead |
+
+## Safety Hooks
+
+Before the approval gate even renders, a pre-execution check hard-denies dangerous shell patterns:
+
+- `rm -rf /` and variants
+- `format C:` and variants
+- `mkfs.*` commands
+- `dd` destructive operations
+- `shutdown` / `reboot`
+- Fork bombs
+
+These patterns are checked with case-insensitive matching and cannot be overridden.
+
+## Credentials Vault
+
+API keys and secrets are stored in `~/.aede/credentials.json` with best-effort file permissions (`0o600`). On startup, the vault is loaded into environment variables (real env vars take precedence). Use `/setkey <NAME> <value>` to add credentials from the REPL.
+
+## Permission Model
+
+Permissions are scoped at three levels:
+
+1. **Session** â€” in-memory only, lost on exit
+2. **Project** â€” persisted to `./aede.yml`
+3. **Global** â€” persisted to `~/.aede/config.yml`
+
+Session overrides project, which overrides global. The `auto_approve` config key lists pre-approved tool names.
+
+
+---
+Source: user-guide\sessions.md
+---
+
+---
+type: doc
+tags: [docs, user-guide]
+date_updated: 2026-06-10
+---
+
+# Sessions
+
+Sessions are the fundamental unit of interaction in aede. Each session is identified by a ULID and tracks the full conversation history.
+
+## Starting a Session
+
+Every REPL launch creates a new session automatically. Pass a task inline to pre-fill the first message:
+
+```bash
+aede "refactor the database module"
+```
+
+## Switching Sessions
+
+List recent sessions:
+
+```
+/sessions
+```
+
+Resume a past session (creates a branch):
+
+```
+/resume <session-id>
+```
+
+Branching links the new session to the original via `parent_id`. The original remains intact.
+
+## Session Storage
+
+Sessions are stored in `~/.aede/data/aede.db` with tables for messages, tool calls, and token usage. Each session also gets a human-readable rollout log in `~/.aede/data/sessions/YYYY/MM/DD/rollout-<id>.jsonl` â€” an append-only audit trail that survives database corruption.
+
+## Viewing History
+
+Use `session_search` â€” the agent can search across past sessions using FTS5 full-text search. The tool returns matching messages with context windows.
+
+## Session Lifecycle
+
+- `/exit` â€” archives the session (status: `archived`)
+- `Ctrl+C` â€” leaves the session active and resumable (status: `active`)
+- `/delete-session <id>` â€” removes the session, its rollout log, and notes
+- Empty sessions (no messages) are deleted automatically on exit
+
+
+---
+Source: user-guide\tokens.md
+---
+
+---
+type: doc
+tags: [docs, user-guide]
+date_updated: 2026-06-10
+---
+
+# Token Tracking
+
+aede tracks token usage for every turn and provides cost estimation.
+
+## Viewing Usage
+
+In the REPL, use `/tokens` to see:
+
+- Total input, output, and cached tokens
+- Separate breakdown for agent vs critic turns
+- KV-cache hit rate
+- Estimated USD cost
+
+## Cost Estimation
+
+Costs are calculated using a price table. For Anthropic models, built-in fallback prices are used when OpenRouter pricing data is unavailable. The system handles cached vs uncached input billing separately.
+
+## Token Limits
+
+The context window defaults to 200,000 tokens. When usage reaches 85% of this limit, automatic context compaction triggers (see [Architecture: Agent Loop](../architecture/agent-loop.md)). You can also trigger compaction manually with `/compact`.
+
+Configure these in your config:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `context_window` | 200000 | Token limit before compaction triggers |
+| `compaction_threshold` | 0.85 | Fraction of window that triggers auto-compaction |
+
+

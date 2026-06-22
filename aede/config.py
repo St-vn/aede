@@ -12,7 +12,7 @@ import os
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-sonnet-4-6",
     "data_dir": None,  # resolved at load time to home/data
     "context_window": 200000,
     "compaction_threshold": 0.85,
@@ -20,24 +20,117 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "shell": "powershell",
     "wsl_distro": "",
     "batch_approval_max": 20,
+    "gate_mode": "normal",
     "auto_approve": [],
     "model_prices": {},
     "api_base_url": None,  # None = Anthropic direct; set to OpenAI-compatible base URL (e.g. https://openrouter.ai/api/v1) for non-Anthropic models via OpenAI SDK
+    "reasoning_effort": "auto",  # auto | none | low | medium | high | xhigh | max
+    "thinking_budget": 0,  # 0 = auto/default, otherwise token count (min 1024)
     # Basic Correctness — Phase 2
-    "grounding_enabled": True,   # Append grounding instruction to system prompt suffix
-    "critic_enabled": False,     # Run a critic LLM pass before gated writes (opt-in; costs an extra call)
-    "critic_model": None,        # str | None — None → same-model persona fallback
-    "critic_api_base_url": None, # str | None — None → use main provider routing
-    # Memory System — Phase 2
+    "grounding_enabled": True,
+    "critic_enabled": False,
+    "critic_model": None,
+    "critic_api_base_url": None,
+    # Ollama embedding settings (Phase 2 Memory)
     "ollama_base_url": "http://localhost:11434",
     "ollama_embed_model": "nomic-embed-text",
-    "ollama_timeout_s": 5.0,
+    "ollama_timeout_s": 5,
+    # Learnings retrieval settings (Phase 2 Memory)
     "learnings_top_k": 5,
     "learnings_max_tokens": 2000,
+    # Provider configurations (e.g. opencode-zen, opencode-go)
+    "providers": {},
+    # Compaction model override — None means use active model
+    "compaction_model": None,
+    # MCP server configurations
+    "mcp_servers": {},
+    # P0.9 Voice Input
+    "voice_input_enabled": False,
+    "voice_wake_word_enabled": False,
+    "voice_asr_model": "whisper-large-v3-turbo",
+    "voice_wake_model": "hey_jarvis",
+    # Sandboxing (Phase 2 — P0.2)
+    "sandbox": {},
+    # Plugin/skill toggle configuration
+    "plugins": {},
+    # OTel observability
+    "otel_endpoint": None,  # None = no-op; set to OTLP gRPC endpoint (e.g. http://localhost:4317)
+    "otel_service_name": "aede",
+    # FDE (fair-data-ethics) capture — opt-in
+    "fde_enabled": False,
+    "fde_endpoint": None,
+    # Sandboxing (P0.2) — flat top-level keys
+    "sandbox_enabled": False,
+    "sandbox_image": "aede-sandbox:latest",
+    "sandbox_memory": "512m",
+    "sandbox_cpus": 1.0,
+    "sandbox_network": "off",
+    "sandbox_pids_limit": 256,
+    "sandbox_pull_on_start": True,
+    "sandbox_filter_session_search": False,
 }
 
+MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    # Anthropic
+    "claude-sonnet-4-6": 200_000,
+    "claude-opus-4-6": 200_000,
+    "claude-opus-4-8": 200_000,
+    "claude-fable-5": 200_000,
+    "claude-haiku-4-5": 200_000,
+    # DeepSeek
+    "deepseek-v4-flash-free": 1_000_000,
+    "deepseek-v4-flash": 1_000_000,
+    "deepseek-v4-pro": 1_000_000,
+    "deepseek-chat": 1_000_000,
+    "deepseek-reasoner": 1_000_000,
+    # Gemini (via Google AI / Go)
+    "gemini-2.5-flash": 1_000_000,
+    "gemini-2.5-pro": 1_000_000,
+    # OpenCode Zen / Go models
+    "nemotron-3-ultra-free": 128_000,
+    "big-pickle": 128_000,
+    "mimo-v2.5": 1_000_000,
+    "mimo-v2.5-free": 1_000_000,
+    "mimo-v2.5-pro": 1_000_000,
+    "north-mini-code-free": 128_000,
+    "grok-build-0.1": 128_000,
+    "kimi-k2.5": 128_000,
+    "kimi-k2.6": 128_000,
+    "kimi-k2.7": 1_000_000,
+    "glm-5.2": 1_000_000,
+    "zhipuai/glm-5.2": 1_000_000,
+    "glm-5": 128_000,
+    "glm-5.1": 1_000_000,
+    "minimax-m3": 1_000_000,
+    "minimax-m2.7": 1_000_000,
+    "minimax-m2.5": 1_000_000,
+    "qwen3.7-max": 1_000_000,
+    "qwen3.7-plus": 1_000_000,
+    "qwen3.6-plus": 1_000_000,
+    # OpenAI
+    "o3": 200_000,
+    "o4-mini": 200_000,
+    # Other
+    "claude-code": 200_000,
+    "codex": 200_000,
+}
+
+
+def resolve_context_window(model: str, config_window: int | None = None) -> int:
+    """Resolve the effective context window for a model.
+
+    Priority:
+    1. Explicit config override (non-default, non-None)
+    2. ``MODEL_CONTEXT_WINDOWS`` lookup
+    3. Default 200K
+    """
+    if config_window is not None and config_window != DEFAULT_CONFIG["context_window"]:
+        return config_window
+    return MODEL_CONTEXT_WINDOWS.get(model, DEFAULT_CONFIG["context_window"])
+
+
 DEFAULT_CONFIG_YAML = """\
-model: claude-sonnet-4-20250514
+model: claude-sonnet-4-6
 context_window: 200000
 compaction_threshold: 0.85
 tool_output_max_tokens: 8000
@@ -53,7 +146,7 @@ batch_approval_max: 20
 
 # Optional: override model pricing (per million tokens)
 # model_prices:
-#   claude-sonnet-4-20250514:
+#   claude-sonnet-4-6:
 #     input: 3.00
 #     output: 15.00
 #     cache_read: 0.30
@@ -63,6 +156,10 @@ batch_approval_max: 20
 # critic_enabled: false      # Run a critic LLM pass before gated writes (default false; costs extra call)
 # critic_model:              # Optional separate model for critic; null = same model, critic persona
 # critic_api_base_url:       # Optional base URL for critic model (e.g. https://openrouter.ai/api/v1)
+
+# Reasoning / thinking mode
+# reasoning_effort: auto     # auto | none | low | medium | high | xhigh | max
+# thinking_budget: 0         # 0 = auto/default, otherwise token count (min 1024)
 """
 
 
@@ -84,6 +181,7 @@ def bootstrap(home: Path | None = None) -> None:
     home.mkdir(parents=True, exist_ok=True)
     (home / "data").mkdir(exist_ok=True)
     (home / "data" / "sessions").mkdir(exist_ok=True)
+    (home / "data" / "fde").mkdir(exist_ok=True)
     (home / "skills").mkdir(exist_ok=True)
     (home / "agents").mkdir(exist_ok=True)
     cfg_path = home / "config.yml"
@@ -98,28 +196,50 @@ class AedeConfig:
     code.
     """
 
-    def __init__(self, data: dict[str, Any], home: Path, sources: dict[str, str] | None = None) -> None:
+    def __init__(self, data: dict[str, Any], home: Path, sources: dict[str, str] | None = None, project_dir: Path | None = None) -> None:
         self.model: str = data.get("model", DEFAULT_CONFIG["model"])
-        self.context_window: int = data.get("context_window", DEFAULT_CONFIG["context_window"])
+        config_window = data.get("context_window")
+        self.context_window: int = resolve_context_window(self.model, config_window)
         self.compaction_threshold: float = data.get("compaction_threshold", DEFAULT_CONFIG["compaction_threshold"])
         self.tool_output_max_tokens: int = data.get("tool_output_max_tokens", DEFAULT_CONFIG["tool_output_max_tokens"])
         self.shell: str = data.get("shell", DEFAULT_CONFIG["shell"])
         self.wsl_distro: str = data.get("wsl_distro") or ""
         self.batch_approval_max: int = data.get("batch_approval_max", DEFAULT_CONFIG["batch_approval_max"])
+        self.gate_mode: str = data.get("gate_mode", DEFAULT_CONFIG["gate_mode"])
         self.auto_approve: list[str] = data.get("auto_approve") or []
         self.model_prices: dict[str, Any] = data.get("model_prices") or {}
         self.api_base_url: str | None = data.get("api_base_url") or None
+        # Reasoning / thinking mode
+        self.reasoning_effort: str = data.get("reasoning_effort", "auto")
+        self.thinking_budget: int = data.get("thinking_budget", 0)
         # Basic Correctness — Phase 2
         self.grounding_enabled: bool = data.get("grounding_enabled", True)
         self.critic_enabled: bool = data.get("critic_enabled", False)
         self.critic_model: str | None = data.get("critic_model") or None
         self.critic_api_base_url: str | None = data.get("critic_api_base_url") or None
-        # Memory System — Phase 2
-        self.ollama_base_url: str = data.get("ollama_base_url", "http://localhost:11434")
-        self.ollama_embed_model: str = data.get("ollama_embed_model", "nomic-embed-text")
-        self.ollama_timeout_s: float = float(data.get("ollama_timeout_s", 5.0))
-        self.learnings_top_k: int = int(data.get("learnings_top_k", 5))
-        self.learnings_max_tokens: int = int(data.get("learnings_max_tokens", 2000))
+        # Ollama embedding settings
+        self.ollama_base_url: str = data.get("ollama_base_url", DEFAULT_CONFIG["ollama_base_url"])
+        self.ollama_embed_model: str = data.get("ollama_embed_model", DEFAULT_CONFIG["ollama_embed_model"])
+        self.ollama_timeout_s: int = data.get("ollama_timeout_s", DEFAULT_CONFIG["ollama_timeout_s"])
+        # Learnings retrieval settings
+        self.learnings_top_k: int = data.get("learnings_top_k", DEFAULT_CONFIG["learnings_top_k"])
+        self.learnings_max_tokens: int = data.get("learnings_max_tokens", DEFAULT_CONFIG["learnings_max_tokens"])
+        # Provider configurations (e.g. opencode-zen, opencode-go)
+        self.providers: dict[str, Any] = data.get("providers") or {}
+        # Compaction model override — None means use active model
+        self.compaction_model: str | None = data.get("compaction_model") or None
+        # MCP server configurations
+        raw_mcp = data.get("mcp_servers") or data.get("mcpServers") or {}
+        from aede.mcp.client import _parse_mcp_servers
+        self.mcp_servers = _parse_mcp_servers(raw_mcp)
+        # P0.9 Voice Input
+        self.voice_input_enabled: bool = data.get("voice_input_enabled", DEFAULT_CONFIG["voice_input_enabled"])
+        self.voice_wake_word_enabled: bool = data.get("voice_wake_word_enabled", DEFAULT_CONFIG["voice_wake_word_enabled"])
+        self.voice_asr_model: str = data.get("voice_asr_model", DEFAULT_CONFIG["voice_asr_model"])
+        self.voice_wake_model: str = data.get("voice_wake_model", DEFAULT_CONFIG["voice_wake_model"])
+        # FDE (fair-data-ethics) capture
+        self.fde_enabled: bool = data.get("fde_enabled", False)
+        self.fde_endpoint: str | None = data.get("fde_endpoint") or None
         raw_data_dir = data.get("data_dir")
         if raw_data_dir:
             self.data_dir = Path(raw_data_dir).expanduser()
@@ -127,6 +247,26 @@ class AedeConfig:
             self.data_dir = home / "data"
         self.home = home
         self.sources: dict[str, str] = sources or {}
+        self.project_dir = project_dir
+        from aede.instructions import load_soul_def, SoulDef
+        self.soul: SoulDef = load_soul_def(home=self.home, project_dir=self.project_dir)
+        raw_sandbox = data.get("sandbox") or {}
+        from aede.sandboxing.docker import SandboxConfig
+        self.sandbox: SandboxConfig = SandboxConfig.from_dict(raw_sandbox)
+        # Sandboxing (P0.2) — flat top-level keys
+        self.sandbox_enabled: bool = data.get("sandbox_enabled", False)
+        self.sandbox_image: str = data.get("sandbox_image", "aede-sandbox:latest")
+        self.sandbox_memory: str = data.get("sandbox_memory", "512m")
+        self.sandbox_cpus: float = float(data.get("sandbox_cpus", 1.0))
+        self.sandbox_network: str = data.get("sandbox_network", "off")
+        self.sandbox_pids_limit: int = int(data.get("sandbox_pids_limit", 256))
+        self.sandbox_pull_on_start: bool = data.get("sandbox_pull_on_start", True)
+        self.sandbox_filter_session_search: bool = data.get("sandbox_filter_session_search", False)
+        # Plugin/skill toggle configuration
+        self.plugins: dict = data.get("plugins") or {}
+        # OTel observability
+        self.otel_endpoint: str | None = data.get("otel_endpoint") or None
+        self.otel_service_name: str = data.get("otel_service_name") or "aede"
 
 
 def load_config(
@@ -174,7 +314,7 @@ def load_config(
         else:
             sources[key] = "default"
 
-    return AedeConfig(merged, home, sources=sources)
+    return AedeConfig(merged, home, sources=sources, project_dir=project_dir)
 
 
 def write_config_value(

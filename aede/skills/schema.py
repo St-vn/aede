@@ -16,6 +16,7 @@ class SkillDef:
     allowed_tools: list[str] | None = None
     model: str | None = None
     body: str = ""
+    source_path: Path | None = None
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -60,4 +61,5 @@ class SkillDef:
             allowed_tools=allowed_tools,
             model=model,
             body=body,
+            source_path=path,
         )

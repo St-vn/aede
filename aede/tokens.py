@@ -13,9 +13,14 @@ from pathlib import Path
 from typing import Any
 
 FALLBACK_PRICES: dict[str, dict[str, float]] = {
-    "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
-    "claude-opus-4-20250514":   {"input": 15.00, "output": 75.00, "cache_read": 1.50},
-    "claude-haiku-4-20250514":  {"input": 0.80,  "output": 4.00,  "cache_read": 0.08},
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
+    "claude-opus-4-8":   {"input": 15.00, "output": 75.00, "cache_read": 1.50},
+    "claude-fable-5":    {"input": 15.00, "output": 75.00, "cache_read": 1.50},
+    "gpt-5.5":           {"input": 5.00, "output": 15.00, "cache_read": 0.50},
+    "gemini-3.5-flash":  {"input": 0.075, "output": 0.30, "cache_read": 0.0375},
+    "deepseek-chat":     {"input": 0.14, "output": 0.28, "cache_read": 0.014},
+    "glm-5.2":           {"input": 1.30, "output": 4.30, "cache_read": 0.13},
+    "zhipuai/glm-5.2":   {"input": 1.30, "output": 4.30, "cache_read": 0.13},
 }
 
 CACHE_TTL_SECONDS = 86400  # 24 hours

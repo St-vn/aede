@@ -38,3 +38,15 @@ test('search input has aria-label', () => {
   render(<SessionSearch sessions={sessions} onSelect={vi.fn()} onDelete={vi.fn()} />)
   expect(screen.getByRole('searchbox')).toBeInTheDocument()
 })
+
+test('shows empty state message when sessions list is empty', () => {
+  render(<SessionSearch sessions={[]} onSelect={vi.fn()} onDelete={vi.fn()} />)
+  expect(screen.getByText(/no sessions/i)).toBeInTheDocument()
+})
+
+test('shows search-specific message when query matches nothing', () => {
+  const sessions = [{ id: '1', title: 'hello', model: 'x', parent_id: null, created_at: '2024-01-01' }]
+  render(<SessionSearch sessions={sessions} onSelect={vi.fn()} onDelete={vi.fn()} />)
+  fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'zzz' } })
+  expect(screen.getByText(/no sessions match/i)).toBeInTheDocument()
+})

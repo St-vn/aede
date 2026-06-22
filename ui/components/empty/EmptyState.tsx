@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
-import { FolderOpen, Plus, X, BookOpen, MoreHorizontal, Trash2 } from 'lucide-react'
+import { FolderOpen, Plus, X, MessageCircle, MoreHorizontal, Trash2 } from 'lucide-react'
 import { FolderPicker } from '@/components/workspace/FolderPicker'
 import { RemoveProjectDialog } from '@/components/workspace/RemoveProjectDialog'
 import { useProjects, useAddProject, useRemoveProject, useDeleteProjectFolder, useRemoveProjectRepo } from '@/hooks/useProjects'
@@ -67,7 +67,7 @@ export function EmptyState({ onOpenProject, projectName, activeProjectDir }: Pro
               const isCurrent = p.project_dir === activeProjectDir
               return (
                 <DropdownMenuItem key={p.id} className={`flex items-center gap-1.5 py-1 group ${isCurrent ? 'bg-accent' : ''}`} onClick={() => handleOpenProject(p.project_dir)}>
-                  <BookOpen className="w-4 h-4 shrink-0 text-muted-foreground" />
+                  <MessageCircle className="w-4 h-4 shrink-0 text-muted-foreground" />
                   <div className="flex flex-col min-w-0 flex-1">
                     <span className="text-sm truncate">{p.display_name}</span>
                     <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">{p.project_dir}</span>

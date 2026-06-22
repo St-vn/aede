@@ -1,0 +1,69 @@
+# aede Tool & MCP Configuration Guide
+#
+# Tip: Using native CLI tools directly via the 'powershell' shell tool is 
+# significantly more token-efficient than running them as MCP servers. 
+# Loading heavy MCP JSON schemas (like Playwright or GitHub MCP) on every turn 
+# can quickly exhaust your context window and model tokens.
+
+# ==============================================================================
+# RECOMMENDED DIRECT CLI APPROACH (High-Performance & Token-Saving)
+# ==============================================================================
+#
+# 1. Vercel agent-browser:
+#    Highly optimized browser automation designed for agent use.
+#    Install: npm install -g agent-browser && agent-browser install
+#    Usage: The agent calls it via powershell, e.g.: agent-browser snapshot <url>
+#
+# 2. GitHub CLI (gh) & Git:
+#    Uses your local git config, ssh keys, and active 'gh' authentication.
+#    Usage: The agent calls commands directly, e.g.: gh pr create, git commit
+#
+# 3. Notion CLI (ntn):
+#    Command line client for interacting with Notion.
+#    Install: npm install -g ntn
+#    Usage: The agent calls commands directly, e.g.: ntn query "Meeting Notes"
+#
+# 4. Docling CLI:
+#    Document parser that extracts clean Markdown from PDFs, DOCX, and HTML.
+#    Install: pip install docling
+#    Usage: The agent calls it via powershell, e.g.: docling my-doc.pdf
+
+# ==============================================================================
+# MODEL CONTEXT PROTOCOL (MCP) SERVERS
+# ==============================================================================
+# Copy desired blocks below into your aede.yml or config.yml under mcp_servers:
+# (Note: MCP is preferred here for web service APIs like SearXNG, as it avoids 
+# process-spawning overhead just to perform HTTP fetches).
+#
+# mcp_servers:
+#   <paste server block here>
+
+# SearXNG — self-hosted metasearch engine
+# Run: docker run -d -p 8080:8080 searxng/searxng
+searxng:
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-searxng"]
+  env:
+    SEARXNG_URL: "http://localhost:8080"
+
+# Playwright — browser automation (Use Vercel agent-browser CLI above if preferred)
+# Requires: npm install -g @playwright/mcp
+playwright:
+  command: npx
+  args: ["-y", "@playwright/mcp"]
+
+# GitHub — repo & issue management (Use native 'gh' CLI above if preferred)
+# Requires: GITHUB_TOKEN env var (https://github.com/settings/tokens)
+github:
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-github"]
+  env:
+    GITHUB_TOKEN: "${GITHUB_TOKEN}"
+
+# Notion — workspace, page, and database access (Use native 'ntn' CLI above if preferred)
+# Requires: NOTION_API_TOKEN env var (from https://www.notion.so/my-integrations)
+notion:
+  command: npx
+  args: ["-y", "@notionhq/notion-mcp-server"]
+  env:
+    NOTION_API_TOKEN: "${NOTION_API_TOKEN}"

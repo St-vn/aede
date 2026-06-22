@@ -11,6 +11,18 @@ venv/
 # build / scripts
 *.exe
 
+# node (only present when MCP plugins pull JS deps; never aede's own)
+node_modules/
+
+# Playwright MCP scratch — screenshots, page snapshots, console/network dumps
+# left in the repo root by the browser MCP plugin during sessions. Never source.
+.playwright-mcp/
+
+# Scratch dump — dev screenshots, session transcripts, browser captures, and
+# loose planning notes corralled out of the repo root. Never source; kept on
+# disk for reference but never committed.
+/_scratch/
+
 # env
 .env
 
@@ -28,3 +40,21 @@ credentials.json
 /.claudeignore
 # Private planning docs (PRD/roadmap scratch — internal only)
 /docs/plans/
+# sdlc-engineer artifacts (spec/design/tasks scratch — internal only)
+/docs/sdlc-engineer/
+
+# Internal docs — not for the public repo (developer-facing only)
+/docs-internal/
+
+# ---------------------------------------------------------------
+# ABANDONED — archived 2026-06-14 to %TEMP%\opencode\aede-abandoned-*
+# (remediation = "security for vibe coding" side-quest; market is
+#  oversaturated, niche occupied by big companies. Not coming back.)
+# ---------------------------------------------------------------
+/aede/skills/remediation/
+/skills/remediation/
+/docs/kaizen/2026-06-12-remediation-skill-bootstrap.md
+/scripts/reddit_wedge_count.py
+
+# e2e test screenshots — scratch captures, not fixtures
+tests/e2e_*.png

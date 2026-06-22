@@ -31,7 +31,8 @@ def test_skills_search_path_shadow(tmp_path):
     _write_skill(project_dir, "shared", "Project version (overrides)")
     _write_skill(project_dir, "unique", "Only in project")
 
-    registry = load_skills(global_dir=global_dir, project_dir=project_dir)
+    registry = load_skills(global_dir=global_dir, project_dir=project_dir,
+                           include_claude_fallback=False)
 
     assert "shared" in registry
     assert registry["shared"].description == "Project version (overrides)"
@@ -49,7 +50,8 @@ def test_skills_search_path_global_only(tmp_path):
 
     _write_skill(global_dir, "alpha", "Global alpha")
 
-    registry = load_skills(global_dir=global_dir, project_dir=project_dir)
+    registry = load_skills(global_dir=global_dir, project_dir=project_dir,
+                           include_claude_fallback=False)
     assert "alpha" in registry
     assert registry["alpha"].description == "Global alpha"
 
@@ -63,7 +65,8 @@ def test_skills_search_path_empty(tmp_path):
     global_dir.mkdir(parents=True)
     project_dir.mkdir(parents=True)
 
-    registry = load_skills(global_dir=global_dir, project_dir=project_dir)
+    registry = load_skills(global_dir=global_dir, project_dir=project_dir,
+                           include_claude_fallback=False)
     assert registry == {}
 
 
@@ -75,5 +78,42 @@ def test_skills_search_path_skips_non_md(tmp_path):
     (global_dir / "skills").mkdir(parents=True)
     (global_dir / "skills" / "readme.txt").write_text("not a skill")
 
-    registry = load_skills(global_dir=global_dir, project_dir=tmp_path / "project")
+    registry = load_skills(global_dir=global_dir, project_dir=tmp_path / "project",
+                           include_claude_fallback=False)
     assert registry == {}
+
+
+def test_skills_loader_skips_binary_skill_bundle(tmp_path, capsys):
+    """A zipped/binary *.skill bundle is skipped quietly, no decode warning."""
+    from aede.skills.loader import load_skills
+
+    skills = tmp_path / "global" / "skills"
+    skills.mkdir(parents=True)
+    # ZIP magic bytes — a packaged skill, not markdown.
+    (skills / "packaged.skill").write_bytes(b"PK\x03\x04\x00\x00binarygunk\xff\xfe")
+
+    registry = load_skills(global_dir=tmp_path / "global", project_dir=tmp_path / "project",
+                           include_claude_fallback=False)
+    combined = capsys.readouterr().out + capsys.readouterr().err
+    assert registry == {}
+    assert "packaged" not in combined  # skipped silently, no warning
+
+
+def test_skills_loader_warns_on_bad_skill(tmp_path, capsys):
+    """load_skills should print a warning when a SKILL.md fails to load."""
+    from aede.skills.loader import load_skills
+
+    bad_skill = tmp_path / "global" / "skills" / "broken.md"
+    bad_skill.parent.mkdir(parents=True)
+    bad_skill.write_text("not valid frontmatter")
+
+    registry = load_skills(
+        global_dir=tmp_path / "global",
+        project_dir=tmp_path / "project",
+        include_claude_fallback=False,
+    )
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "broken" in combined, (
+        f"Expected a warning about the bad skill file. Got stderr: {captured.err!r}, stdout: {captured.out!r}"
+    )

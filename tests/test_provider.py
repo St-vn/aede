@@ -78,6 +78,79 @@ class TestGetProvider:
         with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
             get_provider(cfg)
 
+    # -----------------------------------------------------------------------
+    # P01-03, P01-04 — OpenCode Zen and Go providers
+    # -----------------------------------------------------------------------
+
+    def test_opencode_zen_routes_to_openai_compatible(self, monkeypatch):
+        monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-test-key")
+        from aede.provider import get_provider, OpenAIProvider
+        cfg = _make_cfg(model="deepseek-v4-flash-free")
+        cfg.providers = {
+            "opencode-zen": {
+                "api_key_env": "OPENCODE_ZEN_API_KEY",
+                "base_url": "https://opencode.ai/zen/v1",
+            },
+        }
+        provider = get_provider(cfg)
+        assert isinstance(provider, OpenAIProvider)
+        assert provider._base_url == "https://opencode.ai/zen/v1"
+        assert provider._api_key == "zen-test-key"
+
+    def test_opencode_zen_missing_key_raises(self, monkeypatch):
+        monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
+        from aede.provider import get_provider
+        cfg = _make_cfg(model="deepseek-v4-flash-free")
+        cfg.providers = {
+            "opencode-zen": {
+                "api_key_env": "OPENCODE_ZEN_API_KEY",
+                "base_url": "https://opencode.ai/zen/v1",
+            },
+        }
+        with pytest.raises(RuntimeError, match="OPENCODE_ZEN_API_KEY"):
+            get_provider(cfg)
+
+    def test_opencode_go_routes_to_openai_compatible(self, monkeypatch):
+        monkeypatch.setenv("OPENCODE_GO_API_KEY", "go-test-key")
+        from aede.provider import get_provider, OpenAIProvider
+        cfg = _make_cfg(model="deepseek-v4-pro")
+        cfg.providers = {
+            "opencode-go": {
+                "api_key_env": "OPENCODE_GO_API_KEY",
+                "base_url": "https://opencode.ai/zen/go",
+            },
+        }
+        provider = get_provider(cfg)
+        assert isinstance(provider, OpenAIProvider)
+        assert provider._base_url == "https://opencode.ai/zen/go"
+        assert provider._api_key == "go-test-key"
+
+    def test_opencode_go_missing_key_raises(self, monkeypatch):
+        monkeypatch.delenv("OPENCODE_GO_API_KEY", raising=False)
+        from aede.provider import get_provider
+        cfg = _make_cfg(model="deepseek-v4-pro")
+        cfg.providers = {
+            "opencode-go": {
+                "api_key_env": "OPENCODE_GO_API_KEY",
+                "base_url": "https://opencode.ai/zen/go",
+            },
+        }
+        with pytest.raises(RuntimeError, match="OPENCODE_GO_API_KEY"):
+            get_provider(cfg)
+
+    def test_opencode_zen_not_supported_model_goes_to_anthropic(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        from aede.provider import get_provider, AnthropicProvider
+        cfg = _make_cfg(model="claude-sonnet-4-20250514")
+        cfg.providers = {
+            "opencode-zen": {
+                "api_key_env": "OPENCODE_ZEN_API_KEY",
+                "base_url": "https://opencode.ai/zen/v1",
+            },
+        }
+        provider = get_provider(cfg)
+        assert isinstance(provider, AnthropicProvider)
+
 
 # ---------------------------------------------------------------------------
 # Message conversion: Anthropic → OpenAI
@@ -99,6 +172,75 @@ class TestConvertMessagesToOpenAI:
     def test_plain_assistant_string_passthrough(self):
         result = self._convert("sys", [{"role": "assistant", "content": "hi"}])
         assert result[1] == {"role": "assistant", "content": "hi"}
+
+    def test_empty_assistant_string_is_skipped(self):
+        # Tool-only assistant turns are persisted with empty content; replayed
+        # as a bare "" string they must not be emitted (DeepSeek rejects an
+        # assistant message with neither content nor tool_calls).
+        messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": ""},
+            {"role": "user", "content": "still there?"},
+        ]
+        result = self._convert("sys", messages)
+        roles = [m["role"] for m in result]
+        assert roles == ["system", "user", "user"]
+        assert all(not (m["role"] == "assistant" and not m.get("content")) for m in result)
+
+    def test_whitespace_assistant_string_is_skipped(self):
+        messages = [{"role": "assistant", "content": "   \n"}]
+        result = self._convert("sys", messages)
+        assert result == [{"role": "system", "content": "sys"}]
+
+    def test_consecutive_assistant_strings_are_merged(self):
+        # Multi-step turns persist as multiple assistant rows. Replayed, they
+        # become adjacent assistant messages, which DeepSeek/opencode-go reject.
+        messages = [
+            {"role": "user", "content": "go"},
+            {"role": "assistant", "content": "step one"},
+            {"role": "assistant", "content": "step two"},
+            {"role": "user", "content": "next"},
+        ]
+        result = self._convert("sys", messages)
+        roles = [m["role"] for m in result]
+        assert roles == ["system", "user", "assistant", "user"]
+        assert result[2]["content"] == "step one\n\nstep two"
+
+    def test_consecutive_user_strings_are_merged(self):
+        messages = [
+            {"role": "user", "content": "first"},
+            {"role": "user", "content": "second"},
+        ]
+        result = self._convert("sys", messages)
+        assert [m["role"] for m in result] == ["system", "user"]
+        assert result[1]["content"] == "first\n\nsecond"
+
+    def test_resumed_session_shape_has_strict_alternation(self):
+        # Reproduces the failing-session shape: empty (tool-only) assistant
+        # rows interleaved with consecutive filled assistant rows. After
+        # conversion the message roles must strictly alternate user/assistant
+        # with no empty assistant messages — what OpenAI-style providers require.
+        messages = [
+            {"role": "user", "content": "read file"},
+            {"role": "assistant", "content": ""},          # tool-only, dropped
+            {"role": "assistant", "content": "here it is"},
+            {"role": "user", "content": "edit it"},
+            {"role": "assistant", "content": "not found"},
+            {"role": "assistant", "content": "still not found"},  # merged
+            {"role": "user", "content": "list files"},
+            {"role": "assistant", "content": ""},          # tool-only, dropped
+            {"role": "assistant", "content": "10 files"},
+        ]
+        result = self._convert("sys", messages)
+        roles = [m["role"] for m in result]
+        # system then strict U/A alternation
+        assert roles[0] == "system"
+        body = roles[1:]
+        for i in range(1, len(body)):
+            assert body[i] != body[i - 1], (i, body)
+        for m in result:
+            if m["role"] == "assistant":
+                assert m.get("content") or m.get("tool_calls"), m
 
     def test_tool_result_user_block_becomes_role_tool(self):
         messages = [
@@ -192,6 +334,35 @@ class TestConvertMessagesToOpenAI:
         assert result[1]["tool_call_id"] == "call-1"
         assert result[2]["role"] == "tool"
         assert result[2]["tool_call_id"] == "call-2"
+
+    def test_empty_assistant_content_list_does_not_emit_null_content(self):
+        # Reasoning-only / aborted turns leave an empty content block list in
+        # history. OpenAI-style providers (DeepSeek, MiMo via opencode-go)
+        # reject an assistant message with neither content nor tool_calls
+        # ("content or tool_calls must be set"). Must never emit such a message.
+        messages = [{"role": "assistant", "content": []}]
+        result = self._convert("sys", messages)
+        asst_msg = result[1]
+        assert asst_msg["role"] == "assistant"
+        # Valid = content is set (non-null) OR tool_calls present.
+        has_content = asst_msg.get("content") is not None
+        has_tool_calls = bool(asst_msg.get("tool_calls"))
+        assert has_content or has_tool_calls, asst_msg
+
+    def test_assistant_thinking_only_block_does_not_emit_null_content(self):
+        # A thinking/reasoning block carries no text and no tool_use. After the
+        # loop drops it, the message must still be valid for OpenAI providers.
+        messages = [
+            {
+                "role": "assistant",
+                "content": [{"type": "thinking", "thinking": "hmm, let me think"}],
+            }
+        ]
+        result = self._convert("sys", messages)
+        asst_msg = result[1]
+        has_content = asst_msg.get("content") is not None
+        has_tool_calls = bool(asst_msg.get("tool_calls"))
+        assert has_content or has_tool_calls, asst_msg
 
 
 # ---------------------------------------------------------------------------

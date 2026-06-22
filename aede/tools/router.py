@@ -8,13 +8,15 @@ exposes Anthropic-format JSON schemas for each registered tool.
 """
 from __future__ import annotations
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from aede.db import DB
 
 
-GATE_TOOLS = {"powershell", "write_file", "create_file", "write_learning"}
+GATE_TOOLS = {"powershell", "write_file", "create_file", "write_learning", "edit"}
 
 
 class UnknownToolError(Exception):
@@ -52,47 +54,96 @@ class ToolRouter:
         _gate_store: Any = None,
         _agent_registry: dict[str, Any] | None = None,
         _session_id: str | None = None,
+        data_dir: "Path | None" = None,
+        project_dir: "Path | None" = None,
+        _get_bridge: "Callable[[], Any] | None" = None,
+        sandbox: Any = None,
+        fileset: Any = None,
+        sandbox_filter: bool = False,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
         self._max_tokens = tool_output_max_tokens
         self._db = db
+        self._data_dir = data_dir
+        self._project_dir = project_dir
         self._session_auto_approve: set[str] = set()
         self._cfg = _cfg
         self._gate_store = _gate_store
         self._agent_registry = _agent_registry or {}
         self._session_id = _session_id
+        self._sandbox = sandbox
+        self._fileset = fileset
+        self._sandbox_filter = sandbox_filter
         self._registry = self._build_registry()
+        self._mcp_bridge: Any = None
         self._trusted_servers: dict[str, bool] = {}
+        self._get_bridge = _get_bridge
+
+    def _resolve_bridge(self) -> Any:
+        """Return the current MCP bridge, resolving lazily if a getter was provided.
+
+        If ``_get_bridge`` is set (web server flow), it is called on every
+        invocation so that bridge restarts are picked up automatically.
+        Otherwise falls back to the stored ``_mcp_bridge`` reference (CLI flow).
+        """
+        if self._get_bridge is not None:
+            return self._get_bridge()
+        return self._mcp_bridge
 
     def _build_registry(self) -> dict[str, Callable]:
-        from aede.tools.files import read_file, write_file, create_file, list_dir
+        from aede.tools.files import read_file, write_file, create_file, list_dir, edit, glob_files
         from aede.tools.search import search_files
         from aede.tools.web import fetch_url
+
+        _sandbox_filter = self._sandbox_filter
 
         reg: dict[str, Callable] = {
             "read_file": read_file,
             "write_file": write_file,
             "create_file": create_file,
             "list_dir": list_dir,
+            "edit": edit,
+            "glob": glob_files,
             "search_files": search_files,
-            "fetch_url": fetch_url,
+            "fetch_url": partial(fetch_url, sandbox_filter=_sandbox_filter),
         }
 
         from aede.tools.powershell import run_powershell
-        reg["powershell"] = run_powershell
+        reg["powershell"] = partial(run_powershell, sandbox=self._sandbox)
 
         from aede.tools.web import web_search
-        reg["web_search"] = web_search
+        reg["web_search"] = partial(web_search, sandbox_filter=_sandbox_filter)
+
+        from aede.tools.plan_mode import write_plan_artifact, read_plan_artifact, write_progress
+        _pid = self._project_dir
+        _sid = self._session_id
+        reg["write_plan_artifact"] = lambda args: write_plan_artifact(args, project_dir=_pid, session_id=_sid)
+        reg["read_plan_artifact"] = lambda args: read_plan_artifact(args, project_dir=_pid, session_id=_sid)
+        reg["write_progress"] = lambda args: write_progress(args, project_dir=_pid, session_id=_sid)
+
+        from aede.tools.ask import ask_user, ask_user_choices, ask_user_confirm, question
+        reg["ask_user"] = ask_user
+        reg["ask_user_choices"] = ask_user_choices
+        reg["ask_user_confirm"] = ask_user_confirm
+        reg["question"] = question
 
         from aede.tools.search import session_search
         _db = self._db
-        if _db:
-            reg["session_search"] = lambda args: session_search(args, db=_db)
-        else:
-            reg["session_search"] = lambda args: "[session_search: no database available]"
+        _cfg = self._cfg
+        _sandbox_filter_session = False
+        if _cfg is not None:
+            _sandbox_filter_session = getattr(_cfg, 'sandbox_filter_session_search', False)
+        reg["session_search"] = lambda args: session_search(args, db=_db, sandbox_filter_session=_sandbox_filter_session)
 
-        reg["write_learning"] = lambda args: "[write_learning: config must provide store]"
+        from aede.tools.context import select_context
+        _db, _data_dir, _project_dir = self._db, self._data_dir, self._project_dir
+        reg["select_context"] = lambda args: select_context(
+            args, db=_db, data_dir=_data_dir, project_dir=_project_dir,
+        )
+
+        _data_dir = self._data_dir
+        reg["write_learning"] = lambda args: _write_learning_tool(args, data_dir=_data_dir)
 
         if self._cfg is not None and self._gate_store is not None:
             _agent_defs = self._agent_registry
@@ -113,6 +164,7 @@ class ToolRouter:
                     orchestrator_cfg=_o_cfg,
                     orchestrator_gate_store=_o_gate,
                     orchestrator_session_id=_o_sid,
+                    orchestrator_spawn_depth=1,
                 )
                 try:
                     loop = asyncio.get_running_loop()
@@ -130,6 +182,22 @@ class ToolRouter:
             reg["spawn_subagent"] = _spawn
         else:
             reg["spawn_subagent"] = lambda args: "[spawn_subagent: not configured]"
+
+        _fileset = self._fileset
+        _project_dir = self._project_dir
+        _session_id = self._session_id
+        def _declare_fileset_fn(args: dict) -> str:
+            from aede.sandboxing.fileset import declare_fileset as _df
+            new_fs = _df(args["paths"], args["reason"], _fileset)
+            decl = ", ".join(sorted(new_fs.declared))
+            return f"Fileset declared: {len(new_fs.declared)} path(s) — {decl}"
+        reg["declare_fileset"] = _declare_fileset_fn
+
+        def _infer_fileset_fn(args: dict) -> str:
+            from aede.sandboxing.fileset import infer_fileset as _if
+            fs = _if(_project_dir, _session_id)
+            return f"Current fileset (inferred from project root): {', '.join(sorted(fs.declared))}"
+        reg["infer_fileset"] = _infer_fileset_fn
 
         return reg
 
@@ -175,6 +243,24 @@ class ToolRouter:
         full_registry = router._registry
         router._registry = {n: full_registry[n] for n in final_names}
         return router
+
+    def register_mcp_tools(
+        self,
+        discovered: list[tuple[str, str, Any, dict]],
+    ) -> None:
+        for full_name, server_name, cfg, schema in discovered:
+            self._registry[full_name] = self._make_mcp_handler(server_name, full_name)
+            _TOOL_SCHEMAS[full_name] = schema
+            self._trusted_servers[server_name] = getattr(cfg, "trusted", False)
+
+    def _make_mcp_handler(self, server_name: str, full_name: str) -> Any:
+        def handler(args: dict) -> str:
+            bridge = self._resolve_bridge()
+            if bridge is None:
+                return "[error: MCP bridge not initialized]"
+            tool_short = full_name.split("__", 2)[2] if "__" in full_name else full_name
+            return bridge.call_sync(server_name, tool_short, args)
+        return handler
 
     def tool_names(self) -> list[str]:
         """Return the list of registered tool names."""
@@ -230,16 +316,22 @@ class ToolRouter:
         """Return True if the tool must pass through the user approval gate.
 
         Session-level auto-approvals bypass the gate.
+        MCP tools (mcp__ prefix) check the trusted_servers map.
         """
         if name in self._session_auto_approve:
             return False
+        if name.startswith("mcp__"):
+            parts = name.split("__", 2)
+            if len(parts) >= 2:
+                server_name = parts[1]
+                return not self._trusted_servers.get(server_name, False)
         return name in GATE_TOOLS
 
     def set_auto_approved(self, tools: list[str]) -> None:
         """Mark a set of tools as pre-approved for the session (no gate prompt)."""
         self._session_auto_approve.update(tools)
 
-    def execute_sync(self, name: str, args: dict[str, Any]) -> ToolResult:
+    def execute_sync(self, name: str, args: dict[str, Any], stream_callback: Any = None) -> ToolResult:
         """Dispatch a tool call synchronously and return a ``ToolResult``.
 
         Any exception raised by the tool implementation is caught and returned
@@ -252,7 +344,7 @@ class ToolRouter:
         start = time.monotonic()
         try:
             if name == "powershell":
-                result = fn(args, shell=self._shell, wsl_distro=self._wsl_distro)
+                result = fn(args, shell=self._shell, wsl_distro=self._wsl_distro, stream_callback=stream_callback)
             elif name == "web_search":
                 result = fn(args)
             else:
@@ -280,53 +372,41 @@ class ToolRouter:
         return schemas
 
 
-def session_search(db: Any = None, query: str = "", limit: int = 5) -> str:
-    """Search session history via FTS5 and return message context windows."""
-    if db is None:
-        return "[session_search: no database available]"
-    try:
-        rows = db.con.execute(
-            "SELECT m.id, m.session_id, m.role, m.content, m.created_at, s.title "
-            "FROM messages m JOIN sessions s ON m.session_id = s.id "
-            "WHERE m.rowid IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?) "
-            "ORDER BY m.created_at DESC LIMIT ?",
-            (query, limit),
-        ).fetchall()
-    except Exception:
-        rows = db.con.execute(
-            "SELECT m.id, m.session_id, m.role, m.content, m.created_at, s.title "
-            "FROM messages m JOIN sessions s ON m.session_id = s.id "
-            "WHERE m.content LIKE ? ORDER BY m.created_at DESC LIMIT ?",
-            (f"%{query}%", limit),
-        ).fetchall()
-
-    if not rows:
-        return f"No results found for: {query}"
-
-    parts = []
-    for r in rows:
-        parts.append(f"Session: {r['session_id']} ({r['title'] or 'untitled'})")
-        parts.append(f"Role: {r['role']}  |  {r['content'][:200]}")
-        parts.append("")
-    return "\n".join(parts)
+_CODE_LEARNING_TYPES = frozenset({"anti-pattern", "failed-approach"})
 
 
-def write_learning(type: str = "", content: str = "", source: str = "", source_session_id: str = "") -> str:
-    """Write a learning to the learnings store."""
-    try:
-        from aede.memory.store import LearningsStore
-        from aede.config import _aede_home
-        store_path = _aede_home() / "learnings.jsonl"
-        store = LearningsStore(store_path)
-        store.write_learning(
-            type=type,
-            content=content,
-            source=source,
-            source_session_id=source_session_id or "",
+def _write_learning_tool(args: dict[str, Any], data_dir: "Path | None") -> str:
+    """Tool implementation for write_learning with verifier integration."""
+    if data_dir is None:
+        raise RuntimeError(
+            "write_learning: no data_dir configured — ToolRouter was constructed without data_dir"
         )
-        return f"Learning saved: {content[:100]}..."
-    except Exception as e:
-        return f"[write_learning error: {e}]"
+
+    from pathlib import Path as _Path
+    from aede.memory.store import LearningsStore
+    from aede.memory.verifier import Verifier
+
+    store = LearningsStore(_Path(data_dir))
+    record = store.write_learning(
+        type=args["type"],
+        content=args["content"],
+        source=args["source"],
+        source_session_id=args.get("source_session_id", ""),
+    )
+
+    try:
+        learning_type: str = args["type"]
+        verifier = Verifier()
+        if learning_type in _CODE_LEARNING_TYPES:
+            verdict = verifier.run_code_verify(record)
+        else:
+            verdict = verifier.run_llm_verify(record)
+        updated_record = {**record, **verdict}
+        store.update(record["id"], updated_record)
+    except Exception:
+        pass
+
+    return f"Learning written: id={record['id']} type={record['type']!r} source={record['source']!r}"
 
 
 _TOOL_SCHEMAS: dict[str, dict] = {
@@ -343,11 +423,13 @@ _TOOL_SCHEMAS: dict[str, dict] = {
     },
     "read_file": {
         "name": "read_file",
-        "description": "Read the contents of a file at the given path.",
+        "description": "Read the contents of a file at the given path. Supports optional offset (1-indexed line number to start from) and limit (max lines to return). When omitted, returns the first 2000 lines.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Absolute or relative file path."}
+                "path": {"type": "string", "description": "Absolute or relative file path."},
+                "offset": {"type": "integer", "description": "Line number to start reading from (1-indexed)."},
+                "limit": {"type": "integer", "description": "Maximum number of lines to return."},
             },
             "required": ["path"],
         },
@@ -374,6 +456,20 @@ _TOOL_SCHEMAS: dict[str, dict] = {
                 "content": {"type": "string"},
             },
             "required": ["path", "content"],
+        },
+    },
+    "edit": {
+        "name": "edit",
+        "description": "Apply an exact string replacement edit to a file. The old_string must match exactly once in the file (use replace_all=True for multiple occurrences). Prefer this over write_file for modifications — it sends only the changed hunk.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Absolute or relative file path."},
+                "old_string": {"type": "string", "description": "Exact text to replace. Must match exactly once unless replace_all=True."},
+                "new_string": {"type": "string", "description": "Replacement text."},
+                "replace_all": {"type": "boolean", "description": "If true, replace all occurrences of old_string (default: false)."},
+            },
+            "required": ["path", "old_string", "new_string"],
         },
     },
     "list_dir": {
@@ -459,16 +555,247 @@ _TOOL_SCHEMAS: dict[str, dict] = {
     },
     "write_learning": {
         "name": "write_learning",
-        "description": "Persist a learning/insight to the learnings store for future sessions. Gate-required: always requires user approval.",
+        "description": (
+            "Persist a learning (an insight, anti-pattern, root-cause, or config correction) "
+            "to the long-term learnings store.  This is a memory write — it requires user approval."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "type": {"type": "string", "enum": ["anti-pattern", "failed-approach", "root-cause", "config-correction"]},
-                "content": {"type": "string", "description": "The learning content."},
-                "source": {"type": "string", "enum": ["user", "auto_learned", "test_failure", "tool_error"]},
-                "source_session_id": {"type": "string", "description": "Session ID where the learning was discovered."},
+                "type": {
+                    "type": "string",
+                    "description": (
+                        "Category of learning. "
+                        "'anti-pattern', 'failed-approach', 'root-cause', 'config-correction'."
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Free-text body of the learning.",
+                },
+                "source": {
+                    "type": "string",
+                    "description": (
+                        "Origin of the learning. "
+                        "'user', 'auto_learned', 'test_failure', 'tool_error'."
+                    ),
+                },
+                "source_session_id": {
+                    "type": "string",
+                    "description": "ID of the session that produced this learning (optional).",
+                },
             },
             "required": ["type", "content", "source"],
+        },
+    },
+    "ask_user": {
+        "name": "ask_user",
+        "description": "Ask the user a free-form question and get a text response. Use when you need input, clarification, or information the user has that isn't in the context.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question to ask the user.",
+                },
+            },
+            "required": ["question"],
+        },
+    },
+    "ask_user_choices": {
+        "name": "ask_user_choices",
+        "description": "Present a list of options for the user to choose from. Use when the user needs to make a selection from predefined options.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question or prompt for the user.",
+                },
+                "choices": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of options the user can choose from.",
+                },
+            },
+            "required": ["question", "choices"],
+        },
+    },
+    "ask_user_confirm": {
+        "name": "ask_user_confirm",
+        "description": "Ask the user a yes/no confirmation question. Use when you need a binary decision before proceeding.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The yes/no question to ask the user.",
+                },
+            },
+            "required": ["question"],
+        },
+    },
+    "question": {
+        "name": "question",
+        "description": (
+            "Ask the user one or more questions during execution. Supports single-choice, "
+            "multi-select, and free-form text questions with optional custom answers and notes. "
+            "Use when you need input, clarification, or a decision to continue. This tool does "
+            "NOT require gate approval — it is part of the conversation flow.\n\n"
+            "PRESET TEMPLATES — copy and adapt these:\n\n"
+            "1. Single-choice with custom fallback (use when options may not be exhaustive):\n"
+            '   {"header": "Approach", "question": "Which approach?", "type": "single",\n'
+            '    "options": ["Option A", "Option B"], "allow_custom": true, "allow_notes": false}\n\n'
+            "2. Multi-select with custom option and rationale notes:\n"
+            '   {"header": "Features", "question": "Which features to include?", "type": "multi",\n'
+            '    "options": ["Auth", "API", "UI"], "allow_custom": true, "allow_notes": true}\n\n'
+            "3. Free-form text with notes for additional context:\n"
+            '   {"header": "Details", "question": "Describe what you need.", "type": "text",\n'
+            '    "allow_notes": true}\n\n'
+            "WHEN TO SET FLAGS:\n"
+            "- allow_custom: set to true for single/multi questions unless options are genuinely "
+            "exhaustive (e.g. yes/no). Default is true — only set false when you are certain no "
+            "other answer is valid.\n"
+            "- allow_notes: set to true whenever the user's rationale or context would be helpful. "
+            "Default is true. Only set false for purely mechanical choices.\n"
+            "- required: set to false for optional questions the user may skip.\n\n"
+            "IMPORTANT: Yes/no questions MUST use type \"single\" with options [\"Yes\", \"No\"]. "
+            "Never use type \"text\" for questions with a finite set of answers."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "questions": {
+                    "type": "array",
+                    "description": "One or more questions to present to the user (max 8).",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "header": {
+                                "type": "string",
+                                "description": "Short label or category shown above the question (max 40 chars).",
+                            },
+                            "question": {
+                                "type": "string",
+                                "description": "The question text to present to the user.",
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": ["single", "multi", "text"],
+                                "description": "Question type: single-choice, multi-select, or free-form text.",
+                                "default": "single",
+                            },
+                            "options": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Answer choices for single or multi questions.",
+                            },
+                            "allow_custom": {
+                                "type": "boolean",
+                                "description": (
+                                    "If true, user can type a custom answer instead of selecting. "
+                                    "Default is true — set false only when options are exhaustive."
+                                ),
+                                "default": True,
+                            },
+                            "allow_notes": {
+                                "type": "boolean",
+                                "description": (
+                                    "If true, user can add free-form notes to the answer. "
+                                    "Default is true — set false only for purely mechanical choices."
+                                ),
+                                "default": True,
+                            },
+                            "required": {
+                                "type": "boolean",
+                                "description": "If false, question can be left unanswered.",
+                                "default": True,
+                            },
+                        },
+                        "required": ["header", "question"],
+                    },
+                },
+            },
+            "required": ["questions"],
+        },
+    },
+    "select_context": {
+        "name": "select_context",
+        "description": ("Pull relevant context from past learnings, sessions, project docs, "
+                        "and source files in one call. Use when the auto-injected prefix is "
+                        "insufficient or you need a non-learnings source."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query":   {"type": "string",  "description": "Natural-language search query."},
+                "sources": {"type": "array",   "items": {"type": "string", "enum": ["learnings","sessions","docs","files"]},
+                            "default": ["learnings","sessions","docs","files"],
+                            "description": "Which sources to query. Default: all four."},
+                "k":       {"type": "integer", "minimum": 1, "maximum": 20, "default": 5,
+                            "description": "Total result count; divided roughly equally across sources."},
+            },
+            "required": ["query"],
+        },
+    },
+    "declare_fileset": {
+        "name": "declare_fileset",
+        "description": "Declare which files the agent will write. Writes outside this set require approval.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "paths": {"type": "array", "items": {"type": "string"}, "description": "Paths the agent commits to write to"},
+                "reason": {"type": "string", "description": "Why this fileset is necessary"},
+            },
+            "required": ["paths", "reason"],
+        },
+    },
+    "infer_fileset": {
+        "name": "infer_fileset",
+        "description": "Show the current fileset (inferred from project root).",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    "glob": {
+        "name": "glob",
+        "description": "Find files matching a glob pattern, sorted by modification time descending (newest first). Use this instead of powershell/ls for file discovery.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "Glob pattern (e.g. '**/*.tsx', 'src/**/*.py')."},
+                "path": {"type": "string", "description": "Root directory to search (defaults to current working directory)."},
+            },
+            "required": ["pattern"],
+        },
+    },
+    "write_plan_artifact": {
+        "name": "write_plan_artifact",
+        "description": "Write a plan artifact file for the current session. Use this in plan mode to produce a reviewable plan document before writing any code. The plan file survives context compaction.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "Full plan markdown content — include goal, files to change, steps, and open questions."},
+            },
+            "required": ["content"],
+        },
+    },
+    "read_plan_artifact": {
+        "name": "read_plan_artifact",
+        "description": "Read the plan artifact for the current session or a specified session. Use this to re-read the plan after context compaction or to check progress.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "Session ID to read the plan for. Defaults to current session if omitted."},
+            },
+        },
+    },
+    "write_progress": {
+        "name": "write_progress",
+        "description": "Append a progress entry to the progress file for the current session. Progress files track step completion during multi-step task execution.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "The progress update to append."},
+            },
+            "required": ["content"],
         },
     },
 }

@@ -22,6 +22,12 @@ You are summarizing a session for context compaction. Write a structured handoff
 **Critical Context:** [facts the model must retain: paths, names, values]
 **Next Steps:** [what was about to happen when compaction fired]
 
+Important: When summarizing, preserve the following EXACTLY as written (do not summarize, do not paraphrase):
+- The current goal / objective
+- The plan steps / task list
+- Any open todos or decisions
+Only compress and summarize the conversational content (tool outputs, intermediate reasoning, etc.).
+
 Be specific and dense. Omit nothing that a future instance of yourself would need to continue seamlessly.
 """
 
@@ -38,6 +44,15 @@ def count_tokens_approx(text: str) -> int:
 def needs_compaction(current_tokens: int, context_window: int, threshold: float) -> bool:
     """Return True when ``current_tokens`` meets or exceeds ``context_window * threshold``."""
     return current_tokens >= int(context_window * threshold)
+
+
+def needs_cheap_collapse(current_tokens: int, context_window: int) -> bool:
+    """Return True when current_tokens >= 50% of context window.
+
+    Triggers the cheap string-pass (collapse_old_tool_outputs) before
+    the full LLM-summary compaction.
+    """
+    return current_tokens >= int(context_window * 0.5)
 
 
 def collapse_old_tool_outputs(
@@ -82,17 +97,20 @@ async def run_compaction(
     anthropic_client: Any,
     model: str,
 ) -> dict[str, Any]:
-    """
-    Full compaction sequence.
+    """Full compaction sequence with two-phase split trigger.
+
+    Phase 1 (cheap): collapse_old_tool_outputs at 50% of context window.
+    Phase 2 (LLM): summarization at threshold (default 85%).
+
     Returns dict with keys: messages, summary, tokens_reclaimed, method
     method: "string_pass_only" | "llm_summary" | "none"
     """
     current_tokens = sum(count_tokens_approx(m.get("content", "")) for m in messages)
 
-    if not needs_compaction(current_tokens, context_window, threshold):
+    # Phase 1: Cheap string pass at 50%
+    if not needs_cheap_collapse(current_tokens, context_window):
         return {"messages": messages, "summary": None, "tokens_reclaimed": 0, "method": "none"}
 
-    # Step 1: O(n) string pass
     collapsed, saved = collapse_old_tool_outputs(messages)
     new_tokens = current_tokens - saved
 
@@ -104,7 +122,7 @@ async def run_compaction(
             "method": "string_pass_only",
         }
 
-    # Step 2: LLM summarization — preserve head (first 3) + tail (last 15)
+    # Phase 2: LLM summarization at threshold
     head = collapsed[:3]
     tail = collapsed[-15:] if len(collapsed) > 15 else []
     middle = collapsed[3:len(collapsed) - 15] if len(collapsed) > 18 else collapsed[3:]
@@ -114,9 +132,7 @@ async def run_compaction(
         for m in middle
     )
 
-    # Step 2a: Memory flush — write critical context to session_notes_path
-    # before the summary pass, so it survives the compaction boundary.
-    # Errors here must NOT abort compaction; capture into result dict instead.
+    # Memory flush
     notes_error: str | None = None
     try:
         flush_messages = [
