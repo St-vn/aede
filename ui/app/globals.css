@@ -166,10 +166,13 @@
   rotate: 0deg !important;
 }
 
-/* ── ScrollArea: styled native scrollbar ── */
+/* ── ScrollArea: hide native scrollbar ── */
 [data-slot="scroll-area-viewport"] {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(var(--border)) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+[data-slot="scroll-area-viewport"]::-webkit-scrollbar {
+  display: none;
 }
 
 /* ── Docs prose styles ── */
