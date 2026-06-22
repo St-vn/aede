@@ -429,12 +429,12 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     await websocket.send_json({"type": "error", "message": "Missing session_id or content"})
                     continue
 
-                # Per-turn model override from the UI (do NOT mutate shared cfg)
-                _original_model = cfg.model
+                # Per-turn model override from the UI. Passed into AgentLoop as
+                # model_override so concurrent turns on different sessions never
+                # bleed into each other — the shared cfg.model is NEVER mutated.
                 turn_model = data.get("model")
                 if turn_model:
                     print(f"[WS#{hid}] per-turn model override: {cfg.model} → {turn_model}", flush=True)
-                    cfg.model = turn_model
 
                 # Bootstrap AgentLoop for this turn
                 from aede.session import Session
@@ -561,6 +561,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     stream_thinking=_stream_thinking,
                     stream_tool_call=_stream_tool_call,
                     stream_tool_result=_stream_tool_result,
+                    model_override=turn_model or None,
                 )
                 state.agent = agent
 
@@ -606,8 +607,8 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 def on_turn_done(fut):
                     nonlocal hid, turn_start_ms
                     print(f"[WS#{hid}] on_turn_done CALLED", flush=True)
-                    # Restore original model after turn
-                    cfg.model = _original_model
+                    # No cfg.model restore needed: the per-turn model is passed as
+                    # model_override into AgentLoop and shared cfg is never mutated.
                     # A cancelled turn (e.g. WS disconnect/reconnect while waiting
                     # on a gate response) raises CancelledError — a BaseException,
                     # NOT caught by `except Exception`.  Swallow it explicitly so
@@ -674,7 +675,6 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                         except Exception as e:
                             print(f"[WS#{hid}] learnings error: {e}", flush=True)
                     except Exception as e:
-                        cfg.model = _original_model
                         print(f"[WS#{hid}] run_turn FAILED: {e}", flush=True)
                         import traceback
                         traceback.print_exc()
@@ -839,11 +839,17 @@ async def list_sessions(request: Request):
 @app.post("/api/projects")
 async def create_project(request: Request, payload: dict):
     """Register a project directory. Idempotent — returns existing project if path already registered."""
-    from aede.project import Project
+    from aede.project import Project, validate_project_dir
     db = request.app.state.db
     project_dir = payload.get("project_dir") or payload.get("path")
     if not project_dir:
         raise HTTPException(status_code=400, detail="project_dir is required")
+    # Safety: reject dangerous paths before they are stored (e.g. home dir, drive
+    # root). This prevents a later delete-folder from rmtree-ing a critical dir.
+    try:
+        validate_project_dir(project_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     existing = db.get_project_by_dir(project_dir)
     if existing:
         return Project(existing).to_dict()
@@ -872,14 +878,31 @@ async def delete_project(request: Request, project_id: str):
 
 
 @app.post("/api/projects/{project_id}/delete-folder")
-async def delete_project_folder(request: Request, project_id: str):
-    """Remove project from list AND delete the project directory from disk."""
+async def delete_project_folder(request: Request, project_id: str, payload: dict = None):
+    """Remove project from list AND delete the project directory from disk.
+
+    Requires ``{"confirm": true}`` in the request body as a CSRF mitigation —
+    a blind cross-site POST will not include this field.  Defence-in-depth:
+    also re-validates the path before calling rmtree.
+    """
     import shutil
+    if payload is None:
+        payload = {}
+    # CSRF mitigation: require explicit confirmation from the caller.
+    if payload.get("confirm") is not True:
+        raise HTTPException(
+            status_code=400,
+            detail='confirm:true required to delete a project folder',
+        )
     db = request.app.state.db
-    from aede.project import Project
+    from aede.project import Project, validate_project_dir
     try:
         project = Project.load(db, project_id)
-        path = Path(project.project_dir).expanduser().resolve()
+        # Defence-in-depth: re-validate even if it passed registration.
+        try:
+            path = validate_project_dir(project.project_dir)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
         if path.exists():
             shutil.rmtree(str(path))
         project.delete(db)

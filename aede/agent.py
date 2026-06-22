@@ -507,6 +507,7 @@ class AgentLoop:
         stream_thinking: Any = None,
         stream_tool_call: Any = None,
         stream_tool_result: Any = None,
+        model_override: str | None = None,
     ) -> None:
         self._cfg = cfg
         self._session = session
@@ -522,6 +523,9 @@ class AgentLoop:
         self._stream_thinking = stream_thinking
         self._stream_tool_call = stream_tool_call
         self._stream_tool_result = stream_tool_result
+        # Per-turn model override.  Stored on the instance so concurrent turns
+        # each use their own value and the shared cfg.model is never mutated.
+        self._model_override: str | None = model_override
         self._accumulated_thinking = ""
         self._current_assist_id: str | None = None
 
@@ -1183,8 +1187,13 @@ class AgentLoop:
                     if self._stream_thinking:
                         await self._stream_thinking(text)
 
+                # Prefer the per-turn model_override (set at construction time
+                # by the websocket handler) over the shared cfg.model, so
+                # concurrent turns on different sessions never bleed into each
+                # other's model selection.
+                active_model = getattr(self, "_model_override", None) or self._cfg.model
                 return await provider.stream_turn(
-                    model=self._cfg.model,
+                    model=active_model,
                     system=self._system_prompt,
                     tools=self._router.anthropic_tool_schemas(),
                     messages=normalize_messages_for_provider(self._messages),
