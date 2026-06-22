@@ -83,7 +83,7 @@ export function SettingsModal({ open, onOpenChange, initialTab, sessionId, proje
                 </TabsTrigger>
               ))}
             </TabsList>
-            <ScrollArea className="flex-1 min-h-0">
+            <ScrollArea key={activeTab} className="flex-1 min-h-0">
               <div className="pr-2">
                 <TabsContent value="config" className="mt-0">
                   <ConfigTab />
