@@ -1,4 +1,4 @@
-﻿"""
+"""
 FastAPI backend server for aede.
 
 Provides REST and WebSocket endpoints for the browser-based UI, including
