@@ -95,3 +95,19 @@ def test_admissibility_handles_malformed_llm_response():
     result = check_admissibility(candidate, [], llm=llm)
     assert result.admissible  # fail-open
     assert "Could not parse" in result.reason
+
+
+def test_admissibility_handles_json_array_response():
+    """A valid-JSON-but-non-object reply (array) must not crash — fail open.
+
+    Regression for C2-4: the parsed result was assumed to be a dict and
+    ``result.get(...)`` raised AttributeError on a list, crashing the whole
+    extraction pipeline. LLMs return arrays often enough that this must degrade.
+    """
+    from aede.memory.admissibility import check_admissibility
+
+    llm = _mock_llm(json.dumps([{"admissible": True}]))  # valid JSON, but a list
+    candidate = {"prescriptive_rule": "Use pathlib"}
+    result = check_admissibility(candidate, [], llm=llm)
+    assert result.admissible  # fail-open, no crash
+    assert "not a JSON object" in result.reason
