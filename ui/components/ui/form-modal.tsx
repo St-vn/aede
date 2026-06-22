@@ -19,11 +19,30 @@ export function FormModal({ open, onOpenChange, title, children, filePath, onOpe
     if (open) contentRef.current?.focus()
   }, [open])
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { e.stopPropagation(); onOpenChange(false); return }
+    if (e.key === 'Tab') {
+      const content = contentRef.current
+      if (!content) return
+      const focusable = content.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault(); last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault(); first.focus()
+      }
+    }
+  }
+
   if (!open) return null
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center" onClick={() => onOpenChange(false)}>
-      <div className="fixed inset-0 bg-black/50" />
+      <div className="fixed inset-0 bg-black/50" aria-hidden="true" />
       <div
         ref={contentRef}
         tabIndex={-1}
@@ -31,7 +50,7 @@ export function FormModal({ open, onOpenChange, title, children, filePath, onOpe
         aria-modal="true"
         aria-label={title}
         onClick={e => e.stopPropagation()}
-        onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onOpenChange(false) } }}
+        onKeyDown={handleKeyDown}
         className="relative z-10 w-full max-w-lg rounded-xl border bg-popover text-popover-foreground shadow-lg max-h-[85vh] overflow-y-auto scroll-thin p-0 outline-none"
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border/60">

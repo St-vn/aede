@@ -9,6 +9,7 @@ import { useConfigSources, useUpdateConfig } from '@/hooks/useConfig'
 import { ScopeSelector } from '@/components/settings/ScopeSelector'
 import { apiFetch } from '@/lib/api'
 import { Save, ExternalLink } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface ConfigField {
   key: string
@@ -46,7 +47,14 @@ export function ConfigTab() {
   const handleSave = async (key: string) => {
     const value = values[key]
     if (value === undefined) return
-    await updateConfig.mutateAsync({ key, value, scope })
+    try {
+      await updateConfig.mutateAsync({ key, value, scope })
+      const field = CONFIG_FIELDS.find(f => f.key === key)
+      toast.success(`${field?.label ?? key} saved`)
+    } catch (err) {
+      const field = CONFIG_FIELDS.find(f => f.key === key)
+      toast.error(`Failed to save ${field?.label ?? key}`)
+    }
   }
 
   const handleToggle = async (key: string, checked: boolean) => {
@@ -81,7 +89,7 @@ export function ConfigTab() {
             return (
               <div key={field.key} className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <Label className="text-xs">{field.label}</Label>
+                  <Label className="text-xs" htmlFor={`cfg-${field.key}`}>{field.label}</Label>
                   {field.description && (
                     <p className="text-[10px] text-muted-foreground">{field.description}</p>
                   )}
@@ -89,12 +97,14 @@ export function ConfigTab() {
                 </div>
                 {field.type === 'boolean' ? (
                   <Switch
+                    id={`cfg-${field.key}`}
                     checked={values[field.key] === 'true'}
                     onCheckedChange={(c) => handleToggle(field.key, c)}
                   />
                 ) : (
                   <div className="flex items-center gap-1">
                     <Input
+                      id={`cfg-${field.key}`}
                       className="w-32 h-7 text-xs"
                       placeholder={String(sources?.[field.key] || '')}
                       value={values[field.key] ?? ''}
@@ -104,6 +114,7 @@ export function ConfigTab() {
                       size="icon-sm"
                       variant="ghost"
                       className="h-7 w-7"
+                      aria-label={`Save ${field.label}`}
                       onClick={() => handleSave(field.key)}
                       disabled={updateConfig.isPending}
                     >

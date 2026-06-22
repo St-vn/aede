@@ -84,10 +84,10 @@ export function SkillsTab() {
                 <span className="text-sm font-medium truncate">{skill.name}</span>
               </div>
               <div className="flex items-center gap-1 shrink-0 ml-2">
-                <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground" onClick={() => handleEdit(skill)} title="Edit">
+                <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground" onClick={() => handleEdit(skill)} aria-label={`Edit ${skill.name}`}>
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
-                <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive" onClick={() => deleteSkill.mutate({ name: skill.name, scope, project_dir: projectDir })} title="Delete">
+                <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive" onClick={() => deleteSkill.mutate({ name: skill.name, scope, project_dir: projectDir })} aria-label={`Delete ${skill.name}`}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>

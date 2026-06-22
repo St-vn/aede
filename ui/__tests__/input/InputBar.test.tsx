@@ -10,8 +10,12 @@ beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } })
 })
 
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+}
+
 function renderWithQC(ui: React.ReactElement) {
-  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
+  return render(ui, { wrapper: Wrapper })
 }
 
 test('textarea has aria-label', () => {
@@ -93,4 +97,18 @@ test('during streaming, Enter still queues (regression check)', () => {
   fireEvent.change(ta, { target: { value: 'hello' } })
   fireEvent.keyDown(ta, { key: 'Enter', shiftKey: false })
   expect(onQueue).toHaveBeenCalledWith('hello')
+})
+
+test('clears text when sessionId changes', () => {
+  const { rerender } = renderWithQC(<InputBar onSend={() => {}} disabled={false} sessionId="sess-a" />)
+  const textarea = screen.getByRole('textbox', { name: /message/i })
+  fireEvent.change(textarea, { target: { value: 'typed text' } })
+  expect(textarea).toHaveValue('typed text')
+  rerender(<InputBar onSend={() => {}} disabled={false} sessionId="sess-b" />)
+  expect(textarea).toHaveValue('')
+})
+
+test('preserves prefillText on mount (rewind flow)', () => {
+  renderWithQC(<InputBar onSend={() => {}} disabled={false} sessionId="sess-a" prefillText="rewound text" />)
+  expect(screen.getByRole('textbox', { name: /message/i })).toHaveValue('rewound text')
 })

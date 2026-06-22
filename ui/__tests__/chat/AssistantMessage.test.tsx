@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { AssistantMessage } from '../../components/chat/AssistantMessage'
 
 test('renders markdown bold', () => {
@@ -26,4 +26,24 @@ test('no spinner when not streaming', () => {
 test('has aria-live on streaming region', () => {
   const { container } = render(<AssistantMessage content="hi" isStreaming={true} />)
   expect(container.querySelector('[aria-live="polite"]')).not.toBeNull()
+})
+
+test('has a copy button that writes content to clipboard', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.assign(navigator, { clipboard: { writeText } })
+  render(<AssistantMessage content="hello world" isStreaming={false} />)
+  fireEvent.click(screen.getByRole('button', { name: /copy assistant message/i }))
+  expect(writeText).toHaveBeenCalledWith('hello world')
+})
+
+test('long non-streaming message collapses with Show more button', () => {
+  const long = 'line\n'.repeat(20)
+  render(<AssistantMessage content={long} isStreaming={false} />)
+  expect(screen.getByRole('button', { name: /show more/i })).toBeInTheDocument()
+})
+
+test('streaming message does not collapse even if long', () => {
+  const long = 'line\n'.repeat(20)
+  render(<AssistantMessage content={long} isStreaming={true} />)
+  expect(screen.queryByRole('button', { name: /show more/i })).not.toBeInTheDocument()
 })

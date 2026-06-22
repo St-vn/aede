@@ -94,14 +94,14 @@ export function SkillFormDialog({ open, onOpenChange, mode, skill, scope, projec
       filePath={mode === 'edit' ? skill?.file_path : undefined}
       onOpenFile={mode === 'edit' && skill ? () => apiFetch(`/api/skills/${encodeURIComponent(skill.name)}/open?scope=${scope || 'global'}${projectDir ? `&project_dir=${encodeURIComponent(projectDir)}` : ''}`, { method: 'POST' }) : undefined}>
       <div className="space-y-3">
-          <Field label="Name">
-            <Input value={name} onChange={e => setName(e.target.value)} className="h-8 text-xs" placeholder="my-skill" disabled={mode === 'edit'} />
+          <Field label="Name" id="skill-name">
+            <Input id="skill-name" value={name} onChange={e => setName(e.target.value)} className="h-8 text-xs" placeholder="my-skill" disabled={mode === 'edit'} />
           </Field>
-          <Field label="Description">
-            <Input value={description} onChange={e => setDescription(e.target.value)} className="h-8 text-xs" placeholder="What this skill does" />
+          <Field label="Description" id="skill-description">
+            <Input id="skill-description" value={description} onChange={e => setDescription(e.target.value)} className="h-8 text-xs" placeholder="What this skill does" />
           </Field>
-          <Field label="Trigger phrases (comma-separated)">
-            <Input value={triggerPhrases} onChange={e => setTriggerPhrases(e.target.value)} className="h-8 text-xs" placeholder="research, find info, look up" />
+          <Field label="Trigger phrases (comma-separated)" id="skill-trigger">
+            <Input id="skill-trigger" value={triggerPhrases} onChange={e => setTriggerPhrases(e.target.value)} className="h-8 text-xs" placeholder="research, find info, look up" />
           </Field>
           {/* <Field label="Allowed tools (blank = all)">
             <ChipSelect value={allowedTools} onChange={setAllowedTools} options={useTools} label="tool" />
@@ -109,8 +109,8 @@ export function SkillFormDialog({ open, onOpenChange, mode, skill, scope, projec
           {/* <Field label="Model (blank = inherit)">
             <ModelDropdown model={model} onModelChange={setModel} />
           </Field> */}
-          <Field label="Body">
-            <Textarea value={body} onChange={e => setBody(e.target.value)} className="text-xs min-h-[80px]" placeholder="Skill instruction content" />
+          <Field label="Body" id="skill-body">
+            <Textarea id="skill-body" value={body} onChange={e => setBody(e.target.value)} className="text-xs min-h-[80px]" placeholder="Skill instruction content" />
           </Field>
           <div className="flex items-center justify-between pt-2">
             <div>
@@ -132,10 +132,10 @@ export function SkillFormDialog({ open, onOpenChange, mode, skill, scope, projec
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, id, children }: { label: string; id?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">{label}</label>
       {children}
     </div>
   )

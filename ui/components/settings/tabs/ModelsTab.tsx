@@ -384,6 +384,7 @@ function SortableModelRow({
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground p-0.5"
+        aria-label="Drag to reorder"
       >
         <GripVertical className="w-3.5 h-3.5" />
       </button>
@@ -405,6 +406,7 @@ function SortableModelRow({
         size="icon-sm"
         className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
         onClick={() => onConfigure(model)}
+        aria-label={`Edit ${model.label}`}
       >
         <Settings2 className="w-3 h-3" />
       </Button>
@@ -413,6 +415,7 @@ function SortableModelRow({
         size="icon-sm"
         className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
         onClick={() => onDelete(model.id)}
+        aria-label={`Delete ${model.label}`}
       >
         <Trash2 className="w-3 h-3" />
       </Button>
@@ -488,6 +491,7 @@ function InlineModelForm({
           size="icon-sm"
           className="h-5 w-5 text-muted-foreground"
           onClick={onCancel}
+          aria-label="Close"
         >
           <X className="w-3 h-3" />
         </Button>
@@ -925,6 +929,7 @@ export function ModelsTab() {
                   size="icon-sm"
                   className="h-6 w-6 text-muted-foreground hover:text-destructive"
                   onClick={() => disconnectMut.mutate(cred.provider!)}
+                  aria-label={`Disconnect ${cred.provider}`}
                 >
                   <WifiOff className="w-3 h-3" />
                 </Button>
@@ -935,6 +940,7 @@ export function ModelsTab() {
                   size="icon-sm"
                   className="h-6 w-6 text-muted-foreground"
                   onClick={() => connectMut.mutate(cred.provider!)}
+                  aria-label={`Connect ${cred.provider}`}
                 >
                   <Wifi className="w-3 h-3" />
                 </Button>
@@ -944,6 +950,7 @@ export function ModelsTab() {
                 size="icon-sm"
                 className="h-6 w-6 text-muted-foreground hover:text-destructive"
                 onClick={() => deleteCredential.mutate(cred.name)}
+                aria-label={`Delete ${cred.name}`}
               >
                 <Trash2 className="w-3 h-3" />
               </Button>
@@ -979,6 +986,7 @@ export function ModelsTab() {
                     size="icon-sm"
                     className="h-6 w-6 text-muted-foreground hover:text-destructive"
                     onClick={() => deleteAgentMut.mutate(a.name)}
+                    aria-label={`Delete ${a.name}`}
                   >
                     <Trash2 className="w-3 h-3" />
                   </Button>

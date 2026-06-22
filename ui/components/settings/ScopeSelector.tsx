@@ -34,7 +34,7 @@ export function ScopeSelector({ value, onChange }: Props) {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger render={
-          <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7">
+          <Button variant="outline" size="sm" className="gap-1.5 text-xs h-7" aria-label="Scope">
             {isGlobal ? (
               <Globe className="w-3.5 h-3.5 shrink-0" />
             ) : (

@@ -33,6 +33,10 @@ export function KeybindsTab() {
           </div>
         ))}
       </div>
+      <Separator />
+      <p className="text-xs text-muted-foreground">
+        Edit <code className="font-mono">keybindings.json</code> to customize shortcuts.
+      </p>
     </div>
   )
 }

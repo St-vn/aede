@@ -82,6 +82,13 @@ test('all action buttons have aria-labels', () => {
   expect(screen.getByRole('button', { name: /open in modal/i })).toBeInTheDocument()
 })
 
+test('collapsed view replaces base64 data URIs with placeholder', () => {
+  const content = `Look at this:\n![image](data:image/png;base64,iVBORw0KGgoAAAANS${'A'.repeat(2000)})`
+  render(<UserMessage content={content} timestamp={new Date().toISOString()} />)
+  expect(screen.getByText(/\[image attachment\]/i)).toBeInTheDocument()
+  expect(screen.queryByText(/iVBORw0KGgo/)).not.toBeInTheDocument()
+})
+
 test('has aria-live region for screen reader copy feedback', () => {
   render(<UserMessage content="hello" timestamp={new Date().toISOString()} />)
   const liveRegion = document.querySelector('[aria-live="polite"]')

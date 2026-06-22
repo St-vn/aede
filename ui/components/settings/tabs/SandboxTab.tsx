@@ -84,8 +84,8 @@ export function SandboxTab() {
           <span className="text-xs font-medium">Enable sandbox</span>
         </label>
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">Docker image</label>
-          <Input
+          <label htmlFor="sandbox-image" className="text-xs font-medium">Docker image</label>
+          <Input id="sandbox-image"
             value={image}
             onChange={e => setImage(e.target.value)}
             placeholder="python:3.12-slim"
@@ -94,8 +94,8 @@ export function SandboxTab() {
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">Workspace mount path</label>
-          <Input
+          <label htmlFor="sandbox-workspace-mount" className="text-xs font-medium">Workspace mount path</label>
+          <Input id="sandbox-workspace-mount"
             value={workspaceMount}
             onChange={e => setWorkspaceMount(e.target.value)}
             placeholder="/workspace"
@@ -105,8 +105,8 @@ export function SandboxTab() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium">Memory limit</label>
-            <Input
+            <label htmlFor="sandbox-memory-limit" className="text-xs font-medium">Memory limit</label>
+            <Input id="sandbox-memory-limit"
               value={memoryLimit}
               onChange={e => setMemoryLimit(e.target.value)}
               placeholder="512m"
@@ -115,8 +115,8 @@ export function SandboxTab() {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-medium">CPU limit</label>
-            <Input
+            <label htmlFor="sandbox-cpu-limit" className="text-xs font-medium">CPU limit</label>
+            <Input id="sandbox-cpu-limit"
               value={cpuLimit}
               onChange={e => setCpuLimit(e.target.value)}
               placeholder="1.0"

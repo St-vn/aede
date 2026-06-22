@@ -44,7 +44,7 @@ export function UserMessage({ content, timestamp, messageId, onRewind }: Props) 
         <div className="bg-muted rounded-xl px-4 py-3 text-sm">
           {shouldCollapse && !expanded ? (
             <div className="relative">
-              <p className="text-sm whitespace-pre-wrap break-words line-clamp-6">{content}</p>
+              <p className="text-sm whitespace-pre-wrap break-words line-clamp-6">{content.replace(/data:image\/[^;]+;base64,[^\s)]+/g, '[image attachment]')}</p>
               <div className="absolute bottom-0 right-0 pl-4 bg-gradient-to-l from-muted via-muted to-transparent text-muted-foreground">…</div>
             </div>
           ) : (

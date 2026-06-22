@@ -110,7 +110,7 @@ export function McpTab() {
         <div className="border border-border/60 rounded-lg bg-muted/30 p-3 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold">Add MCP Server</span>
-            <Button variant="ghost" size="icon-sm" className="h-5 w-5 text-muted-foreground" onClick={() => { setShowForm(false); setUseUrl(false) }}>
+            <Button variant="ghost" size="icon-sm" className="h-5 w-5 text-muted-foreground" onClick={() => { setShowForm(false); setUseUrl(false) }} aria-label="Close">
               <X className="w-3 h-3" />
             </Button>
           </div>
@@ -177,7 +177,7 @@ export function McpTab() {
                 <button
                   className="p-0.5 rounded hover:bg-muted text-muted-foreground shrink-0"
                   onClick={() => setExpandedServer(isExpanded ? null : name)}
-                  title={isExpanded ? 'Collapse' : 'Expand tools'}
+                  aria-label={`Expand tools for ${name}`}
                 >
                   <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                 </button>
@@ -218,7 +218,7 @@ export function McpTab() {
                     <><WifiOff className="w-3 h-3 text-muted-foreground" /> {server.status || 'stopped'}</>
                   )}
                 </span>
-                <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive shrink-0" onClick={() => deleteServer.mutate(name)} title="Delete">
+                <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive shrink-0" onClick={() => deleteServer.mutate(name)} aria-label={`Delete ${name}`}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>

@@ -87,10 +87,10 @@ export function AgentsTab() {
                 )}
               </div>
               <div className="flex items-center gap-1 shrink-0 ml-2">
-                <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground" onClick={() => handleEdit(agent)} title="Edit">
+                <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground" onClick={() => handleEdit(agent)} aria-label={`Edit ${agent.name}`}>
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
-                <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive" onClick={() => deleteAgent.mutate({ name: agent.name, scope, project_dir: projectDir })} title="Delete">
+                <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive" onClick={() => deleteAgent.mutate({ name: agent.name, scope, project_dir: projectDir })} aria-label={`Delete ${agent.name}`}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>

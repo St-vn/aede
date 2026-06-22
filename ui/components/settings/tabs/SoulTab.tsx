@@ -189,8 +189,8 @@ export function SoulTab({ projectDir }: Props) {
       <Separator />
       <div className="space-y-3">
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">Name</label>
-          <input
+          <label htmlFor="soul-name" className="text-xs font-medium">Name</label>
+          <input id="soul-name"
             value={name}
             onChange={e => setName(e.target.value)}
             className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -198,8 +198,8 @@ export function SoulTab({ projectDir }: Props) {
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">Phonetic</label>
-          <input
+          <label htmlFor="soul-phonetic" className="text-xs font-medium">Phonetic</label>
+          <input id="soul-phonetic"
             value={phonetic}
             onChange={e => setPhonetic(e.target.value)}
             className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -207,8 +207,8 @@ export function SoulTab({ projectDir }: Props) {
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">Wake word</label>
-          <input
+          <label htmlFor="soul-wake-word" className="text-xs font-medium">Wake word</label>
+          <input id="soul-wake-word"
             value={wakeWord}
             onChange={e => setWakeWord(e.target.value)}
             className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -216,8 +216,8 @@ export function SoulTab({ projectDir }: Props) {
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">Persona</label>
-          <textarea
+          <label htmlFor="soul-persona" className="text-xs font-medium">Persona</label>
+          <textarea id="soul-persona"
             value={persona}
             onChange={e => setPersona(e.target.value)}
             rows={6}
@@ -257,8 +257,8 @@ export function SoulTab({ projectDir }: Props) {
         </label>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">Wake word model</label>
-          <select
+          <label htmlFor="soul-wake-model" className="text-xs font-medium">Wake word model</label>
+          <select id="soul-wake-model"
             value={wakeModel}
             onChange={e => { setWakeModel(e.target.value); void saveConfigKey('voice_wake_model', e.target.value) }}
             className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -271,8 +271,8 @@ export function SoulTab({ projectDir }: Props) {
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">Transcription model (ASR)</label>
-          <select
+          <label htmlFor="soul-asr-model" className="text-xs font-medium">Transcription model (ASR)</label>
+          <select id="soul-asr-model"
             value={asrModel}
             onChange={e => { setAsrModel(e.target.value); void saveConfigKey('voice_asr_model', e.target.value) }}
             className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

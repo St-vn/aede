@@ -60,7 +60,7 @@ export function SettingsModal({ open, onOpenChange, initialTab, sessionId, proje
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl h-[80vh] p-0 flex flex-col overflow-hidden" aria-describedby={undefined}>
+      <DialogContent className="sm:max-w-4xl max-h-[calc(100dvh-2rem)] h-[80vh] p-0 flex flex-col overflow-hidden" aria-describedby={undefined}>
         <DialogHeader className="px-6 pt-4 pb-0">
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
@@ -71,7 +71,7 @@ export function SettingsModal({ open, onOpenChange, initialTab, sessionId, proje
             orientation="vertical"
             className="flex gap-4 w-full"
           >
-            <TabsList className="flex flex-col h-full w-36 shrink-0 bg-muted/30 rounded-lg p-1 gap-0.5">
+            <TabsList className="flex flex-col max-h-full overflow-y-auto scroll-thin w-36 shrink-0 bg-muted/30 rounded-lg p-1 gap-0.5">
               {TABS.map(({ id, label, icon: Icon }) => (
                 <TabsTrigger
                   key={id}

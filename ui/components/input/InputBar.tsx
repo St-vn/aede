@@ -126,6 +126,17 @@ export function InputBar({ onSend, disabled, isStreaming = false, onStop, onQueu
     }
   }, [soul?.wake_word])
 
+  // Clear input state when sessionId changes (UI-15)
+  const prevSessionRef = useRef(sessionId)
+  useEffect(() => {
+    if (prevSessionRef.current !== sessionId) {
+      setText('')
+      setImageAttachments([])
+      setMentionedFiles([])
+      prevSessionRef.current = sessionId
+    }
+  }, [sessionId])
+
   // Auto-resize
   useEffect(() => {
     if (ref.current) {

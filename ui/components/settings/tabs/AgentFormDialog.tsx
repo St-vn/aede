@@ -107,32 +107,32 @@ export function AgentFormDialog({ open, onOpenChange, mode, agent, scope, projec
       filePath={mode === 'edit' ? agent?.file_path : undefined}
       onOpenFile={mode === 'edit' && agent ? () => apiFetch(`/api/agents/${encodeURIComponent(agent.name)}/open?scope=${scope || 'global'}${projectDir ? `&project_dir=${encodeURIComponent(projectDir)}` : ''}`, { method: 'POST' }) : undefined}>
       <div className="space-y-3">
-          <Field label="Name">
-            <Input value={name} onChange={e => setName(e.target.value)} className="h-8 text-xs" placeholder="my-agent" disabled={mode === 'edit'} />
+          <Field label="Name" id="agent-name">
+            <Input id="agent-name" value={name} onChange={e => setName(e.target.value)} className="h-8 text-xs" placeholder="my-agent" disabled={mode === 'edit'} />
           </Field>
-          <Field label="Description">
-            <Input value={description} onChange={e => setDescription(e.target.value)} className="h-8 text-xs" placeholder="What this agent does" />
+          <Field label="Description" id="agent-description">
+            <Input id="agent-description" value={description} onChange={e => setDescription(e.target.value)} className="h-8 text-xs" placeholder="What this agent does" />
           </Field>
-          <Field label="Model">
+          <Field label="Model" id="agent-model">
             <ModelDropdown model={model} onModelChange={setModel} />
           </Field>
-          <Field label="Skills">
+          <Field label="Skills" id="agent-skills">
             <ChipSelect value={skills} onChange={setSkills} options={useSkills} label="skill" />
           </Field>
-          <Field label="Allowed tools (blank = all)">
+          <Field label="Allowed tools (blank = all)" id="agent-allowed-tools">
             <ChipSelect value={tools} onChange={setTools} options={useTools} label="tool" />
           </Field>
-          <Field label="Disallowed tools">
+          <Field label="Disallowed tools" id="agent-disallowed-tools">
             <ChipSelect value={disallowedTools} onChange={setDisallowedTools} options={useTools} label="tool" />
           </Field>
-          <Field label="Max turns">
-            <Input value={maxTurns} onChange={e => setMaxTurns(e.target.value)} className="h-8 text-xs" placeholder="20" type="number" min={1} />
+          <Field label="Max turns" id="agent-max-turns">
+            <Input id="agent-max-turns" value={maxTurns} onChange={e => setMaxTurns(e.target.value)} className="h-8 text-xs" placeholder="20" type="number" min={1} />
           </Field>
-          <Field label="System prompt">
-            <Textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)} className="text-xs min-h-[60px]" placeholder="Custom system prompt for this agent" />
+          <Field label="System prompt" id="agent-system-prompt">
+            <Textarea id="agent-system-prompt" value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)} className="text-xs min-h-[60px]" placeholder="Custom system prompt for this agent" />
           </Field>
-          <Field label="Body">
-            <Textarea value={body} onChange={e => setBody(e.target.value)} className="text-xs min-h-[80px]" placeholder="Additional body text after frontmatter" />
+          <Field label="Body" id="agent-body">
+            <Textarea id="agent-body" value={body} onChange={e => setBody(e.target.value)} className="text-xs min-h-[80px]" placeholder="Additional body text after frontmatter" />
           </Field>
           <div className="flex items-center justify-between pt-2">
             <div>
@@ -154,10 +154,10 @@ export function AgentFormDialog({ open, onOpenChange, mode, agent, scope, projec
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, id, children }: { label: string; id?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">{label}</label>
       {children}
     </div>
   )

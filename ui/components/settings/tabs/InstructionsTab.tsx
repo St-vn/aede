@@ -99,7 +99,7 @@ export function InstructionsTab({ projectDir }: Props) {
           {meta && (
             <p className="text-[10px] font-mono text-muted-foreground truncate">{meta.path}</p>
           )}
-          <textarea
+          <textarea aria-label="Project instructions"
             value={content}
             onChange={e => setContent(e.target.value)}
             rows={16}

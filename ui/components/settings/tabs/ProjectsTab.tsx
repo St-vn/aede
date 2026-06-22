@@ -42,7 +42,7 @@ export function ProjectsTab() {
                 <p className="text-[10px] font-mono text-muted-foreground truncate">{p.project_dir}</p>
               </div>
               <Button variant="ghost" size="icon-sm" className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
-                onClick={() => setRemovingProject(p)}>
+                onClick={() => setRemovingProject(p)} aria-label={`Delete ${p.project_dir}`}>
                 <Trash2 className="w-3 h-3" />
               </Button>
             </div>

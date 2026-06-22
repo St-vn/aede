@@ -15,10 +15,13 @@ stack:
   framework: fastapi + next.js
   database: sqlite
   test-runner: pytest
-  ci: none
+  ci: github-actions
 
 # Derived fields (do not edit manually)
-security-tier: minimal
+# security-tier manually raised minimal→standard on 2026-06-21: cloud deployment is
+# near-term and Phase 2 adds real trust boundaries (acp auth/credentials, code-executing
+# sandbox, daemon). Do not auto-revert to minimal on next /configure.
+security-tier: standard
 launch-tier: standard
 research-tracks:
   market: true
