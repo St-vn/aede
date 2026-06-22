@@ -18,4 +18,11 @@ Object.defineProperty(window, 'matchMedia', {
 window.HTMLElement.prototype.scrollIntoView = vi.fn()
 window.HTMLElement.prototype.scrollTo = vi.fn()
 
+class ResizeObserverMock {
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+}
+vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+
 

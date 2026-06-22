@@ -80,6 +80,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   const queueRef = useRef<string[]>([])
   const [queuedMessages, setQueuedMessages] = useState<string[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const { rewind } = useRewind()
   const prevMessagesLenRef = useRef(messages.length)
@@ -290,6 +291,20 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     }
   }, [messages, streamingText, streamingBlocks, gates, askUserRequests])
 
+  // Force @base-ui ScrollBar to recalculate when content height changes
+  // (e.g. expand/collapse message). The custom scrollbar's ResizeObserver
+  // doesn't always fire on dynamic content height changes.
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      const viewport = containerRef.current?.querySelector('[data-slot="scroll-area-viewport"]')
+      viewport?.dispatchEvent(new Event('scroll', { bubbles: true }))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const scrollToBottom = () => {
     const viewport = containerRef.current?.querySelector('[data-slot="scroll-area-viewport"]')
     if (!viewport) return
@@ -405,7 +420,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
     <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
       <div className="relative flex flex-col flex-1 min-h-0">
         <ScrollArea key={sessionId} className="flex-1 min-h-0 px-4">
-          <div className="max-w-[760px] mx-auto py-4 px-4 space-y-1">
+          <div ref={contentRef} className="max-w-[760px] mx-auto py-4 px-4 space-y-1">
             {messages.map((m, mi) =>
               m.is_branch_point
                 ? <div key={m.id} className="flex items-center gap-3 py-4 px-4 select-none">
