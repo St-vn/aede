@@ -404,7 +404,7 @@ export function ChatView({ sessionId, messages, initialMessage, onClearInitialMe
   return (
     <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
       <div className="relative flex flex-col flex-1 min-h-0">
-        <ScrollArea className="flex-1 min-h-0 px-4">
+        <ScrollArea key={sessionId} className="flex-1 min-h-0 px-4">
           <div className="max-w-[760px] mx-auto py-4 px-4 space-y-1">
             {messages.map((m, mi) =>
               m.is_branch_point
