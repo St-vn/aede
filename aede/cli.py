@@ -178,6 +178,7 @@ def _memory_edit(store: Any, learning_id: str) -> None:
     """Open $EDITOR on a temp file containing the learning JSON; write back on save."""
     import json as _json
     import os
+    import shlex
     import subprocess
     import tempfile
 
@@ -198,7 +199,9 @@ def _memory_edit(store: Any, learning_id: str) -> None:
         tmp_path = Path(tmp.name)
 
     try:
-        subprocess.run([editor, str(tmp_path)])
+        # shlex.split handles editors with embedded flags, e.g. "code --wait"
+        editor_cmd = shlex.split(editor) + [str(tmp_path)]
+        subprocess.run(editor_cmd)
         try:
             updated = _json.loads(tmp_path.read_text(encoding="utf-8"))
         except _json.JSONDecodeError as exc:
@@ -236,7 +239,19 @@ def main() -> None:
         _handle_serve_cmd(args)
         return
 
-    asyncio.run(_run(initial_task=args.task, attach=bool(getattr(args, "attach", False))))
+    # Loop on /resume: _run returns the resume target instead of recursing,
+    # so each session teardown is fully complete before the next one starts.
+    resume_target: str | None = None
+    while True:
+        resume_target = asyncio.run(
+            _run(
+                initial_task=args.task if resume_target is None else None,
+                attach=bool(getattr(args, "attach", False)) if resume_target is None else False,
+                resume_session_id=resume_target,
+            )
+        )
+        if resume_target is None:
+            break
 
 
 def _handle_daemon_cmd(args: argparse.Namespace) -> None:
@@ -375,7 +390,7 @@ def _handle_import(args: argparse.Namespace) -> None:
         console.print("[red]Error: unknown import type[/red]")
 
 
-async def _run(initial_task: str | None = None, resume_session_id: str | None = None, attach: bool = False) -> None:
+async def _run(initial_task: str | None = None, resume_session_id: str | None = None, attach: bool = False) -> str | None:
     """Bootstrap all subsystems and run the interactive REPL until exit.
 
     If ``initial_task`` is provided it is submitted as the first user turn
@@ -733,8 +748,9 @@ async def _run(initial_task: str | None = None, resume_session_id: str | None = 
 
     _shutdown(session, db, rollout, stop_reason, data_dir=cfg.data_dir, sandbox=sandbox)
 
-    if resume_target is not None:
-        return await _run(resume_session_id=resume_target)
+    # Return the resume target to the caller rather than recursing — avoids
+    # unbounded async stack growth when the user runs /resume many times.
+    return resume_target if resume_target is not None else None
 
 
 def _handle_esc_key(agent_loop):
