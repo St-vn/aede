@@ -706,7 +706,7 @@ class DB:
         }
 
     def search_messages(
-        self, query: str, limit: int = 10
+        self, query: str, limit: int = 10, session_id: str | None = None
     ) -> list[dict[str, Any]]:
         """Full-text search over message history using FTS5.
 
@@ -718,6 +718,7 @@ class DB:
         Args:
             query: FTS5 MATCH expression (e.g. a keyword or phrase).
             limit: Maximum number of hit messages to process.
+            session_id: When set, restrict search to messages in this session.
 
         Returns:
             A list of result-group dicts, one per hit, each containing:
@@ -728,17 +729,31 @@ class DB:
             deduplicated with context).
         """
         # Find matching rows via FTS5, joined back to the messages table.
-        hits = self.con.execute(
-            """
-            SELECT m.*
-            FROM messages m
-            JOIN messages_fts f ON m.rowid = f.rowid
-            WHERE messages_fts MATCH ?
-            ORDER BY m.created_at DESC
-            LIMIT ?
-            """,
-            (query, limit),
-        ).fetchall()
+        if session_id is not None:
+            hits = self.con.execute(
+                """
+                SELECT m.*
+                FROM messages m
+                JOIN messages_fts f ON m.rowid = f.rowid
+                WHERE messages_fts MATCH ?
+                  AND m.session_id = ?
+                ORDER BY m.created_at DESC
+                LIMIT ?
+                """,
+                (query, session_id, limit),
+            ).fetchall()
+        else:
+            hits = self.con.execute(
+                """
+                SELECT m.*
+                FROM messages m
+                JOIN messages_fts f ON m.rowid = f.rowid
+                WHERE messages_fts MATCH ?
+                ORDER BY m.created_at DESC
+                LIMIT ?
+                """,
+                (query, limit),
+            ).fetchall()
 
         if not hits:
             return []

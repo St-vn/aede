@@ -22,7 +22,7 @@ def _make_db(tmp_home: Path) -> DB:
     return DB(tmp_home / "data" / "aede.db")
 
 
-def _make_router(db: DB):
+def _make_router(db: DB, session_id: str | None = None):
     """Build a ToolRouter with a db attached."""
     from aede.tools.router import ToolRouter
 
@@ -31,6 +31,7 @@ def _make_router(db: DB):
         wsl_distro="",
         tool_output_max_tokens=4096,
         db=db,
+        _session_id=session_id,
     )
 
 
@@ -227,6 +228,60 @@ def test_db_search_without_db_raises(tmp_home):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# T-03: Cross-session isolation (CVE fix)
+# ---------------------------------------------------------------------------
+
+
+SESSION_A = "01SSEARCH000000000000000SA"
+SESSION_B = "01SSEARCH000000000000000SB"
+
+
+def test_cross_session_isolation_via_db(tmp_home):
+    """search_messages with session_id returns only messages from that session."""
+    db = _make_db(tmp_home)
+    db.insert_session(id=SESSION_A, parent_id=None, title="session A", model=MODEL)
+    db.insert_session(id=SESSION_B, parent_id=None, title="session B", model=MODEL)
+
+    MARKER = "zzqqxxcrosssession"
+    _insert_message(db, "01SSEARCH000000000000M0A", SESSION_A, "user",
+                    f"Session A secret: {MARKER}")
+    _insert_message(db, "01SSEARCH000000000000M0B", SESSION_B, "user",
+                    "Session B mundane content")
+
+    global_results = db.search_messages(query=MARKER, limit=10)
+    assert len(global_results) == 1, "Global search should find the marker"
+
+    scoped_a = db.search_messages(query=MARKER, limit=10, session_id=SESSION_A)
+    assert len(scoped_a) == 1, "Session A scoped search should find the marker"
+
+    scoped_b = db.search_messages(query=MARKER, limit=10, session_id=SESSION_B)
+    assert scoped_b == [], f"Session B scoped search should be empty, got: {scoped_b}"
+
+
+def test_cross_session_isolation_via_execute_sync(tmp_home):
+    """session_search via router.execute_sync with session_id scopes results."""
+    db = _make_db(tmp_home)
+    db.insert_session(id=SESSION_A, parent_id=None, title="session A", model=MODEL)
+    db.insert_session(id=SESSION_B, parent_id=None, title="session B", model=MODEL)
+
+    MARKER = "zzqqxxroutescope"
+    _insert_message(db, "01SSEARCH000000000000M0C", SESSION_A, "user",
+                    f"Session A: {MARKER}")
+    _insert_message(db, "01SSEARCH000000000000M0D", SESSION_B, "user",
+                    "Session B only")
+
+    router_a = _make_router(db, session_id=SESSION_A)
+    result_a = router_a.execute_sync("session_search", {"query": MARKER})
+    assert result_a.status == "success", f"session_search failed: {result_a.output}"
+    assert MARKER in result_a.output, "Session A should see its own message"
+
+    router_b = _make_router(db, session_id=SESSION_B)
+    result_b = router_b.execute_sync("session_search", {"query": MARKER})
+    assert result_b.status == "success"
+    assert "(no results" in result_b.output, "Session B should get no-results for Session A marker"
+
+
 # T-06: write_learning tool registration
 # ---------------------------------------------------------------------------
 

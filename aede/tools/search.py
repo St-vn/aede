@@ -54,7 +54,7 @@ def search_files(args: dict, sandbox: Any = None) -> str:
         raise RuntimeError("ripgrep (rg) not found. Install ripgrep: https://github.com/BurntSushi/ripgrep")
 
 
-def session_search(args: dict, db: "DB | None" = None, sandbox_filter_session: bool = False) -> str:
+def session_search(args: dict, db: "DB | None" = None, sandbox_filter_session: bool = False, session_id: str | None = None) -> str:
     """Search past session message history by keyword using FTS5.
 
     Args:
@@ -80,7 +80,7 @@ def session_search(args: dict, db: "DB | None" = None, sandbox_filter_session: b
     query: str = args["query"]
     limit: int = int(args.get("limit", 10))
 
-    groups = db.search_messages(query=query, limit=limit)
+    groups = db.search_messages(query=query, limit=limit, session_id=session_id)
 
     if not groups:
         result = f"(no results for query: {query!r})"
