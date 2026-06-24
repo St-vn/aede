@@ -18,6 +18,7 @@ verifier_outcome : str|None — None until Phase D verifier runs
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -43,6 +44,29 @@ class LearningsStore:
     def __init__(self, data_dir: Path, db: "DB | None" = None) -> None:
         self._path: Path = data_dir / "learnings.jsonl"
         self._db: "DB | None" = db
+    # ------------------------------------------------------------------
+    # File locking -- stdlib only (msvcrt on Win32, fcntl on POSIX)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _lock_exclusive(fh) -> None:
+        if sys.platform == "win32":
+            import msvcrt
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 2_147_483_647)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+
+    @staticmethod
+    def _unlock(fh) -> None:
+        if sys.platform == "win32":
+            import msvcrt
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 2_147_483_647)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
     # ------------------------------------------------------------------
     # Write
@@ -106,9 +130,15 @@ class LearningsStore:
             "conflicting_rule_ids": conflicting_rule_ids or [],
         }
 
+        line = (json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8")
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        with self._path.open("ab") as fh:
+            self._lock_exclusive(fh)
+            try:
+                fh.write(line)
+                fh.flush()
+            finally:
+                self._unlock(fh)
 
         # Mirror to DB retrieval cache if a DB instance was provided
         if self._db is not None:
@@ -134,13 +164,14 @@ class LearningsStore:
         if not self._path.exists():
             return []
         records = []
-        for line in self._path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    records.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass  # skip malformed lines
+        with self._path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    try:
+                        records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass  # skip malformed lines
         return records
 
     def get(self, learning_id: str) -> dict[str, Any] | None:
@@ -158,13 +189,21 @@ class LearningsStore:
         """Remove the learning with the given id.
 
         Returns True if it was found and removed, False if not found.
-        Performs a full file rewrite.
+        Performs a full file rewrite under exclusive lock.
         """
-        records = self.list_all()
-        new_records = [r for r in records if r.get("id") != learning_id]
-        if len(new_records) == len(records):
-            return False  # not found
-        self._rewrite(new_records)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        if not self._path.exists():
+            self._path.touch()
+        with self._path.open("r+b") as fh:
+            self._lock_exclusive(fh)
+            try:
+                records = self._read_lines(fh)
+                new_records = [r for r in records if r.get("id") != learning_id]
+                if len(new_records) == len(records):
+                    return False
+                self._write_lines(fh, new_records)
+            finally:
+                self._unlock(fh)
         return True
 
     # ------------------------------------------------------------------
@@ -175,28 +214,64 @@ class LearningsStore:
         """Replace the record with the given id with ``updated``.
 
         Returns True if the record was found and updated, False otherwise.
-        Performs a full file rewrite.
+        Performs a full file rewrite under exclusive lock.
         """
-        records = self.list_all()
-        found = False
-        new_records = []
-        for r in records:
-            if r.get("id") == learning_id:
-                new_records.append(updated)
-                found = True
-            else:
-                new_records.append(r)
-        if found:
-            self._rewrite(new_records)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        if not self._path.exists():
+            self._path.touch()
+        with self._path.open("r+b") as fh:
+            self._lock_exclusive(fh)
+            try:
+                records = self._read_lines(fh)
+                found = False
+                new_records = []
+                for r in records:
+                    if r.get("id") == learning_id:
+                        new_records.append(updated)
+                        found = True
+                    else:
+                        new_records.append(r)
+                if not found:
+                    return False
+                self._write_lines(fh, new_records)
+            finally:
+                self._unlock(fh)
         return found
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _read_lines(fh) -> list[dict[str, Any]]:
+        """Read JSONL records from an open binary file handle."""
+        records = []
+        for line_bytes in fh:
+            line = line_bytes.decode("utf-8").strip()
+            if line:
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return records
+
+    @staticmethod
+    def _write_lines(fh, records: list[dict[str, Any]]) -> None:
+        """Overwrite the content of an open binary file handle."""
+        fh.seek(0)
+        fh.truncate()
+        for record in records:
+            fh.write((json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8"))
+        fh.flush()
+
     def _rewrite(self, records: list[dict[str, Any]]) -> None:
-        """Overwrite the JSONL file with the given records."""
+        """Overwrite the JSONL file with the given records (under exclusive lock)."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._path.open("w", encoding="utf-8") as fh:
-            for record in records:
-                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        with self._path.open("wb") as fh:
+            self._lock_exclusive(fh)
+            try:
+                for record in records:
+                    fh.write((json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8"))
+                fh.flush()
+            finally:
+                self._unlock(fh)
