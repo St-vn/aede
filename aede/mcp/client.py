@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import sys
 import concurrent.futures
 import threading
 import time
@@ -23,19 +24,53 @@ SHUTDOWN_GRACE = 5.0  # seconds total for shutdown
 _ENV_VAR_RE = re.compile(r"\$\{([^}:-]+)(?::-([^}]*))?\}")
 
 
+def _is_secret_var(name: str) -> bool:
+    """Return True if *name* looks like a credential variable.
+
+    Guards against leaking API keys, tokens, secrets, and passwords
+    into MCP subprocesses or through variable expansion.
+    """
+    upper = name.upper()
+    return upper.endswith("_KEY") or upper.endswith("_TOKEN") or upper.endswith("_SECRET") or "PASSWORD" in upper
+
+
 def expand_env_vars(value: str) -> str:
     """Expand ${VAR} and ${VAR:-default} patterns in *value* from ``os.environ``.
 
     Raises ``KeyError`` if a ``${VAR}`` without a ``:-default`` fallback is not
     found in the current environment.
+
+    Security: variables whose names match credential patterns (ending in
+    ``_KEY``, ``_TOKEN``, ``_SECRET``, or containing ``PASSWORD``) are
+    NEVER expanded — they raise ``ValueError`` instead.
     """
     def _replace(m: re.Match) -> str:
         var_name = m.group(1)
+        if _is_secret_var(var_name):
+            raise ValueError(f"Refusing to expand secret variable: {var_name}")
         default = m.group(2)
         if default is not None:
             return os.environ.get(var_name, default)
         return os.environ[var_name]
     return _ENV_VAR_RE.sub(_replace, value)
+
+
+def _build_mcp_env(cfg: MCPServerConfig) -> dict[str, str] | None:
+    """Build a sanitised environment dict for an MCP subprocess.
+
+    Starts from the MCP SDK's ``get_default_environment()`` (a safe
+    subset of the parent env) and overlays any user-configured
+    ``cfg.env`` entries.  Returns ``None`` when ``cfg.env`` is ``None``
+    (the SDK will inherit the default behaviour).
+    """
+    if cfg.env is None:
+        return None
+    from mcp.client.stdio import get_default_environment
+
+    env = dict(get_default_environment())
+    for k, v in cfg.env.items():
+        env[k] = expand_env_vars(v)
+    return env
 
 
 @dataclass
@@ -121,11 +156,7 @@ class MCPBridge:
             transport_cm = sse_client(url=expand_env_vars(cfg.url))
         else:
             from mcp.client.stdio import stdio_client
-            expanded_env = None
-            if cfg.env is not None:
-                expanded_env = {**os.environ}
-                for k, v in cfg.env.items():
-                    expanded_env[k] = expand_env_vars(v)
+            expanded_env = _build_mcp_env(cfg)
             server_params = mcp.StdioServerParameters(
                 command=expand_env_vars(cfg.command),
                 args=[expand_env_vars(a) for a in cfg.args],
@@ -133,34 +164,42 @@ class MCPBridge:
             )
             transport_cm = stdio_client(server_params)
         transport = await transport_cm.__aenter__()
-        read, write = transport
-
-        # Attempt to extract the subprocess handle for force-kill fallback.
         try:
-            proc = getattr(write, "_transport", None)
-            if proc is not None:
-                proc_info = getattr(proc, "_proc", None) or proc
-                self._processes[name] = proc_info
+            read, write = transport
+
+            # Attempt to extract the subprocess handle for force-kill fallback.
+            try:
+                proc = getattr(write, "_transport", None)
+                if proc is not None:
+                    proc_info = getattr(proc, "_proc", None) or proc
+                    self._processes[name] = proc_info
+            except Exception:
+                pass
+
+            session_cm = mcp.ClientSession(read, write)
+            session = await session_cm.__aenter__()
+            try:
+                await session.initialize()
+                tools_result = await session.list_tools()
+
+                raw_schemas = []
+                for tool in tools_result.tools:
+                    raw_schemas.append({
+                        "name": tool.name,
+                        "description": getattr(tool, "description", "") or "",
+                        "input_schema": getattr(tool, "inputSchema", {"type": "object"}),
+                    })
+
+                self._sessions[name] = session
+                self._session_cms[name] = session_cm
+                self._transport_cms[name] = transport_cm
+                return raw_schemas
+            except Exception:
+                await session_cm.__aexit__(*sys.exc_info())
+                raise
         except Exception:
-            pass
-
-        session_cm = mcp.ClientSession(read, write)
-        session = await session_cm.__aenter__()
-        await session.initialize()
-        tools_result = await session.list_tools()
-
-        raw_schemas = []
-        for tool in tools_result.tools:
-            raw_schemas.append({
-                "name": tool.name,
-                "description": getattr(tool, "description", "") or "",
-                "input_schema": getattr(tool, "inputSchema", {"type": "object"}),
-            })
-
-        self._sessions[name] = session
-        self._session_cms[name] = session_cm
-        self._transport_cms[name] = transport_cm
-        return raw_schemas
+            await transport_cm.__aexit__(*sys.exc_info())
+            raise
 
     def spawn_all(self) -> list[str]:
         """Spawn all configured MCP servers concurrently on the bridge loop.
