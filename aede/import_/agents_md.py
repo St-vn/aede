@@ -1,19 +1,11 @@
 from __future__ import annotations
-import re
 from pathlib import Path
 from typing import Callable
 
+from aede.import_ import slugify
 from aede.import_.claude_code import ImportReport
 
 _GENERIC_NAMES = {"agents.md", "gemini.md"}
-
-
-def _slugify(text: str) -> str:
-    """Lowercase, replace non-alphanumeric runs with a single hyphen, strip edges."""
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9]+", "-", text)
-    text = text.strip("-")
-    return text
 
 
 def import_agents_md(
@@ -37,7 +29,7 @@ def import_agents_md(
     else:
         raw_name = src_path.stem
 
-    name = _slugify(raw_name)
+    name = slugify(raw_name)
     if not name:
         name = "imported-agent"
 
