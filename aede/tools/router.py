@@ -7,9 +7,12 @@ all errors into ``ToolResult`` values so they flow back to the model), and
 exposes Anthropic-format JSON schemas for each registered tool.
 """
 from __future__ import annotations
+import logging
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -136,12 +139,12 @@ class ToolRouter:
         _sandbox_filter_session = False
         if _cfg is not None:
             _sandbox_filter_session = getattr(_cfg, 'sandbox_filter_session_search', False)
-        reg["session_search"] = lambda args: session_search(args, db=_db, sandbox_filter_session=_sandbox_filter_session)
+        reg["session_search"] = lambda args: session_search(args, db=_db, sandbox_filter_session=_sandbox_filter_session, session_id=_sid)
 
         from aede.tools.context import select_context
-        _db, _data_dir, _project_dir = self._db, self._data_dir, self._project_dir
+        _db, _data_dir, _project_dir, _sid = self._db, self._data_dir, self._project_dir, self._session_id
         reg["select_context"] = lambda args: select_context(
-            args, db=_db, data_dir=_data_dir, project_dir=_project_dir,
+            args, db=_db, data_dir=_data_dir, project_dir=_project_dir, session_id=_sid,
         )
 
         _data_dir = self._data_dir
@@ -407,7 +410,7 @@ def _write_learning_tool(args: dict[str, Any], data_dir: "Path | None") -> str:
         updated_record = {**record, **verdict}
         store.update(record["id"], updated_record)
     except Exception:
-        pass
+        _log.exception("write_learning: verifier failed for %s", record["id"])
 
     return f"Learning written: id={record['id']} type={record['type']!r} source={record['source']!r}"
 

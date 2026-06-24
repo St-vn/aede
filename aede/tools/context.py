@@ -80,9 +80,9 @@ def _learnings_source(query: str, k: int, db: "DB") -> list[str]:
 
 
 
-def _sessions_source(query: str, k: int, db: "DB") -> list[str]:
+def _sessions_source(query: str, k: int, db: "DB", session_id: str | None = None) -> list[str]:
     """Return top-k session-message groups as formatted multi-line blocks."""
-    groups = db.search_messages(query=query, limit=k)
+    groups = db.search_messages(query=query, limit=k, session_id=session_id)
     if not groups:
         return []
     blocks: list[str] = []
@@ -123,7 +123,7 @@ _VALID_SOURCES: frozenset[str] = frozenset(ALL_SOURCES)
 
 
 def select_context(
-    args: dict, *, db: "DB", data_dir: Path, project_dir: Path,
+    args: dict, *, db: "DB", data_dir: Path, project_dir: Path, session_id: str | None = None,
 ) -> str:
     """Fan out to selected sources in parallel; return sectioned markdown.
 
@@ -154,7 +154,7 @@ def select_context(
     def _runner(src: str, n: int) -> tuple[str, list[str]]:
         try:
             if src == "learnings":   return src, _learnings_source(query, n, db)
-            if src == "sessions":    return src, _sessions_source(query, n, db)
+            if src == "sessions":    return src, _sessions_source(query, n, db, session_id=session_id)
             if src == "docs":        return src, _docs_source(query, n, project_dir, db)
             if src == "files":       return src, _files_source(query, n, project_dir)
         except Exception as exc:
