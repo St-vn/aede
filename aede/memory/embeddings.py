@@ -12,6 +12,10 @@ class OllamaUnavailable(Exception):
     """Raised when the Ollama embedding service cannot be reached."""
 
 
+class EmbeddingDimensionError(Exception):
+    """Raised when the embedding vector has unexpected dimensions."""
+
+
 class OllamaClient:
     """Thin HTTP client for Ollama's /api/embeddings endpoint.
 
@@ -44,6 +48,9 @@ class OllamaClient:
 
         Raises:
             OllamaUnavailable: If Ollama is unreachable or times out.
+            EmbeddingDimensionError: If the response is missing the embedding
+                key, returns an empty vector, or the vector has the wrong
+                number of dimensions.
         """
         import httpx  # lazy — heavy import
 
@@ -60,4 +67,18 @@ class OllamaClient:
         except httpx.TimeoutException as exc:
             raise OllamaUnavailable(f"Ollama request timed out ({self._timeout_s}s): {exc}") from exc
 
-        return [float(v) for v in data["embedding"]]
+        embedding_raw = data.get("embedding")
+        if embedding_raw is None:
+            raise EmbeddingDimensionError(
+                "Ollama response missing 'embedding' key"
+            )
+        vector = [float(v) for v in embedding_raw]
+        if not vector:
+            raise EmbeddingDimensionError(
+                "Ollama returned an empty embedding vector"
+            )
+        if len(vector) != 768:
+            raise EmbeddingDimensionError(
+                f"Expected 768-dim embedding, got {len(vector)} dims"
+            )
+        return vector

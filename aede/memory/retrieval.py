@@ -71,6 +71,8 @@ def top_k_cosine(
 
     scored = []
     for row, vec in candidates:
+        if len(vec) != len(query_embedding):
+            continue
         v = np.array(vec, dtype=np.float32)
         v_norm = np.linalg.norm(v)
         if v_norm == 0:
