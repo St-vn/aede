@@ -8,7 +8,12 @@ it to the model as a tool error.
 """
 from __future__ import annotations
 import subprocess
+import time
 from typing import Any
+
+_MAX_OUTPUT_BYTES = 10 * 1024 * 1024
+_LINE_TIMEOUT = 30
+_WAIT_TIMEOUT = 30
 
 
 def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "", stream_callback: Any = None, sandbox: Any = None) -> str:
@@ -27,8 +32,9 @@ def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "", 
         Combined stdout and stderr as a single string.
 
     Raises:
-        RuntimeError: if the command exits with a non-zero code or times out
-            after 120 seconds.
+        RuntimeError: if the command exits with a non-zero code, exceeds
+            10 MiB of output, or produces no output for 30 consecutive
+            seconds.
     """
     cmd = args["cmd"]
     if shell == "wsl":
@@ -55,11 +61,33 @@ def run_powershell(args: dict, shell: str = "powershell", wsl_distro: str = "", 
             text=True,
         )
         output_parts = []
-        for line in iter(proc.stdout.readline, ''):
-            output_parts.append(line)
-            if stream_callback:
-                stream_callback(line)
-        proc.wait(timeout=120)
+        total_bytes = 0
+        last_output = time.monotonic()
+        try:
+            for line in iter(proc.stdout.readline, ''):
+                output_parts.append(line)
+                total_bytes += len(line.encode())
+                if total_bytes > _MAX_OUTPUT_BYTES:
+                    proc.kill()
+                    raise RuntimeError(f"Output exceeds 10 MiB limit ({total_bytes} bytes)")
+
+                now = time.monotonic()
+                if now - last_output > _LINE_TIMEOUT:
+                    proc.kill()
+                    raise RuntimeError(f"No output for {_LINE_TIMEOUT}s, aborting")
+                last_output = now
+
+                if stream_callback:
+                    stream_callback(line)
+        finally:
+            try:
+                proc.wait(timeout=_WAIT_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=_WAIT_TIMEOUT)
+            finally:
+                proc.stdout.close()
+
         output = ''.join(output_parts)
         if proc.returncode != 0:
             raise RuntimeError(f"Exit code {proc.returncode}:\n{output}")
