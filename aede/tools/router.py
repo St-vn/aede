@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable
+import logging
 
 _log = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from pathlib import Path
     from aede.db import DB
 
+_log = logging.getLogger(__name__)
 
 GATE_TOOLS = {"powershell", "write_file", "create_file", "write_learning", "edit"}
 

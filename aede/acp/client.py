@@ -253,7 +253,7 @@ class AcpClient:
         except asyncio.CancelledError:
             pass
         except Exception:
-            pass
+            logger.exception("ACP stderr forwarder crashed")
 
     def _dispatch(self, msg: dict) -> None:
         has_id = "id" in msg
@@ -519,7 +519,7 @@ class AcpClient:
                 val = credential_provider.get(self._config.credentials_ref)
                 env[self._config.credentials_ref] = val
             except KeyError:
-                pass
+                logger.warning("Credential %s not found", self._config.credentials_ref)
 
         if self._config.model_override:
             agent_name = self._config.name

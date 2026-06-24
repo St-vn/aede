@@ -142,6 +142,23 @@ class TestFdeCaptureUpload:
         assert "fde.example.com" in call_url
 
 
+
+    @patch("httpx.Client")
+    def test_upload_failure_logs_debug(self, mock_client_cls, tmp_path, caplog):
+        mock_client = MagicMock()
+        mock_client.post.side_effect = Exception("connection refused")
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+
+        capture = FdeCapture(enabled=True, data_dir=tmp_path, endpoint="https://fde.example.com/upload")
+        capture.capture_tool_call(
+            session_id="sess_001", turn_number=1, tool_name="read_file",
+            tool_args={}, tool_result="ok", outcome="success", latency_ms=10,
+        )
+        with caplog.at_level("DEBUG"):
+            capture.try_upload(session_id="sess_001")
+
+        assert any("FDE upload failed" in r.message for r in caplog.records)
+
 class TestFdeCaptureEdgeCases:
     def test_none_args(self, tmp_path):
         capture = FdeCapture(enabled=True, data_dir=tmp_path)

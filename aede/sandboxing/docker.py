@@ -3,7 +3,10 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 from pathlib import Path
 import asyncio
+import logging
 import re
+
+_log = logging.getLogger(__name__)
 
 TOOL_NETWORK_POLICY: dict[str, str] = {
     "fetch_url": "bridge",
@@ -57,6 +60,7 @@ class DockerSandbox:
                 if self._container.status == "running":
                     return
             except Exception:
+                _log.warning("Container reload failed", exc_info=True)
                 self._container = None
 
         client = docker.from_env()
@@ -178,9 +182,9 @@ class DockerSandbox:
             try:
                 self._container.stop()
             except Exception:
-                pass
+                _log.warning("Container stop failed", exc_info=True)
             try:
                 self._container.remove()
             except Exception:
-                pass
+                _log.warning("Container remove failed", exc_info=True)
             self._container = None

@@ -2,9 +2,12 @@
 from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
+import logging
 
 if TYPE_CHECKING:
     from aede.db import DB
+
+_log = logging.getLogger(__name__)
 
 _DOC_EXTS = ("*.md", "*.mdx", "*.txt")
 _DOC_ROOTS = ("docs", "docs-internal")
@@ -61,6 +64,7 @@ def _docs_indexer(query: str, k: int, project_dir: Path, db: "DB") -> list[str]:
             (safe_terms, int(k)),
         ).fetchall()
     except Exception:
+        _log.warning("docs FTS5 query failed", exc_info=True)
         return []
     return [f"[{r['path']}] {r['content'][:_PREVIEW]}" for r in rows]
 

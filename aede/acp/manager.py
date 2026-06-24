@@ -51,8 +51,8 @@ class AcpManager:
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))
                 return data.get(agent_name)
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.debug("ACP session cache error: %s", exc)
         return None
 
     def _save_saved_session(self, agent_name: str, session_id: str) -> None:
@@ -61,7 +61,8 @@ class AcpManager:
         if p.exists():
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.debug("ACP session cache error: %s", exc)
                 data = {}
         data[agent_name] = session_id
         p.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -77,8 +78,8 @@ class AcpManager:
                 p.write_text(json.dumps(data, indent=2), encoding="utf-8")
             else:
                 p.unlink(missing_ok=True)
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.debug("ACP session cache error: %s", exc)
 
     async def connect(self, agent_name: str, _meta: Optional[dict] = None) -> str:
         config = self._registry.get(agent_name)

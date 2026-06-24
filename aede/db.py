@@ -7,11 +7,14 @@ supports future full-text search.  All query methods return plain dicts via
 a custom row factory.
 """
 from __future__ import annotations
+import logging
 import sqlite3
 import threading
 import time
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 DDL = """
@@ -192,19 +195,19 @@ class DB:
             )
             self.con.commit()
         except Exception:
-            pass  # Column already exists — idempotent
+            _log.debug("Schema migration ALTER token_usage.role skipped")
         # WS-01 migration: add project_dir column to sessions if missing.
         try:
             self.con.execute("ALTER TABLE sessions ADD COLUMN project_dir TEXT")
             self.con.commit()
         except Exception:
-            pass
+            _log.debug("Schema migration ALTER sessions.project_dir skipped")
         # PM-01 migration: add gate_mode column to sessions if missing.
         try:
             self.con.execute("ALTER TABLE sessions ADD COLUMN gate_mode TEXT")
             self.con.commit()
         except Exception:
-            pass
+            _log.debug("Schema migration ALTER sessions.gate_mode skipped")
         # PJ-01 migration: create projects table if missing (DB created before DDL had it).
         try:
             self.con.execute("""
@@ -224,19 +227,19 @@ class DB:
             self.con.execute("ALTER TABLE messages ADD COLUMN thinking TEXT")
             self.con.commit()
         except Exception:
-            pass
+            _log.debug("Schema migration ALTER messages.thinking skipped")
         # TD-01 migration: add turn_duration_ms column to messages if missing.
         try:
             self.con.execute("ALTER TABLE messages ADD COLUMN turn_duration_ms INTEGER")
             self.con.commit()
         except Exception:
-            pass
+            _log.debug("Schema migration ALTER messages.turn_duration_ms skipped")
         # RW-01 migration: add branch_message_id column to sessions if missing.
         try:
             self.con.execute("ALTER TABLE sessions ADD COLUMN branch_message_id TEXT")
             self.con.commit()
         except Exception:
-            pass
+            _log.debug("Schema migration ALTER sessions.branch_message_id skipped")
         # FR-01 migration: add provider column to tool_calls if missing.
         try:
             self.con.execute(
@@ -244,7 +247,7 @@ class DB:
             )
             self.con.commit()
         except Exception:
-            pass  # Column already exists — idempotent
+            _log.debug("Schema migration ALTER tool_calls.provider skipped")
         # Set row_factory after schema is created
         self.con.row_factory = _row_factory
         # D1 — write-lock: one RLock guards every mutating commit so concurrent

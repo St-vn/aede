@@ -148,3 +148,13 @@ def test_resume_branch_messages(tmp_home):
     # Branch session has no messages of its own yet
     branch_msgs = db.get_messages(branch.id)
     assert branch_msgs == []
+
+def test_migration_alter_logs_debug_on_duplicate_column(tmp_home, caplog):
+    """Migration ALTER TABLE ADD COLUMN errors are logged, not silently swallowed."""
+    with caplog.at_level("DEBUG"):
+        from aede.db import DB
+        db = DB(tmp_home / "data" / "aede.db")
+        db.close()
+    alter_msgs = [r.message for r in caplog.records if "Schema migration ALTER" in r.message]
+    assert len(alter_msgs) >= 1
+    assert any("token_usage" in m and "role" in m for m in alter_msgs)
