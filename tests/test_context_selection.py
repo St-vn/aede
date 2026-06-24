@@ -384,3 +384,19 @@ def test_full_test_suite_includes_all_p0_4_acs():
     ]
     missing = [s for s in expected if s not in text]
     assert not missing, f"Missing AC tests: {missing}"
+
+# ---- T12 ---- silent-failure logging (caplog) ----
+def test_docs_indexer_fts5_failure_logs_warning(tmp_home, caplog):
+    from aede.tools.context import _docs_indexer
+    db = _make_db(tmp_home)
+    project_dir = tmp_home / "proj"
+    (project_dir / "docs").mkdir(parents=True)
+    (project_dir / "docs" / "test.md").write_text("hello world", encoding="utf-8")
+    _docs_indexer("hello", k=5, project_dir=project_dir, db=db)
+    db.con.execute("DROP TABLE IF EXISTS docs_fts")
+    db.con.commit()
+    with caplog.at_level("WARNING"):
+        hits = _docs_indexer("hello", k=5, project_dir=project_dir, db=db)
+    assert hits == []
+    assert any("docs FTS5 query failed" in r.message for r in caplog.records)
+    db.close()
