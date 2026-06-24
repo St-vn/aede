@@ -13,8 +13,26 @@ class FileSet:
     inferred_from_prompt: str = ""  # for audit
     project_dir: Optional[Path] = field(default=None, compare=False)
 
+    def is_within(self, path: str) -> bool:
+        """Check path against declared set WITHOUT following symlinks.
+
+        Uses ``os.path.abspath`` which normalises ``..`` but does *not*
+        follow symlinks.  This is the initial gate; call :meth:`is_writable`
+        after resolving to catch symlink escape.
+        """
+        import os
+
+        abs_path = os.path.abspath(path)
+        for declared_path in self.declared:
+            resolved_declared = str(Path(declared_path).resolve())
+            if abs_path.startswith(resolved_declared):
+                remainder = abs_path[len(resolved_declared) :]
+                if remainder == "" or remainder.startswith("/") or remainder.startswith("\\"):
+                    return True
+        return False
+
     def is_writable(self, path: str) -> bool:
-        """Prefix match: a declared directory implies all its children are writable.
+        """Prefix match: a declared directory implies all children are writable.
 
         Uses Path(path).resolve() to handle symlinks and '..' traversal.
         Returns True if path starts with any declared prefix.
