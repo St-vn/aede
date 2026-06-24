@@ -22,6 +22,7 @@ async def test_depth_limit_enforced(tmp_path):
     cfg.api_base_url = None
     cfg.home = tmp_path
     cfg.data_dir = tmp_path / "data"
+    cfg.max_spawn_depth = 1
     gate_store = MagicMock()
 
     # Run at depth 1 should fail when trying to spawn another

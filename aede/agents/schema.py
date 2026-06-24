@@ -26,6 +26,10 @@ class AgentDef:
             raise AgentLoadError("AgentDef requires a non-empty 'name'")
         if not self.description:
             raise AgentLoadError("AgentDef requires a non-empty 'description'")
+        if self.max_turns < 1 or self.max_turns > 200:
+            raise AgentLoadError(
+                f"AgentDef 'max_turns' must be between 1 and 200, got {self.max_turns}"
+            )
 
     @classmethod
     def from_file(cls, path: Path) -> AgentDef:
@@ -58,6 +62,7 @@ class AgentDef:
         tools: list[str] | None = meta.get("tools")
         disallowed_tools: list[str] = meta.get("disallowedTools") or []
         max_turns: int = meta.get("maxTurns", 20)
+        max_turns = max(1, min(200, max_turns))
         system_prompt: str = meta.get("systemPrompt", "")
 
         return cls(

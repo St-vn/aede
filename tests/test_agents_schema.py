@@ -114,3 +114,28 @@ body
 
     with pytest.raises(AgentLoadError, match="YAML"):
         AgentDef.from_file(md_file)
+
+
+def test_agentdef_max_turns_out_of_range_rejected():
+    """max_turns outside 1-200 raises AgentLoadError."""
+    from aede.agents.schema import AgentDef, AgentLoadError
+
+    with pytest.raises(AgentLoadError, match="max_turns"):
+        AgentDef(name="x", description="x", body="x", max_turns=1000000)
+
+
+def test_agentdefs_from_file_clamps_max_turns(tmp_path):
+    """from_file clamps maxTurns to 1-200."""
+    from aede.agents.schema import AgentDef
+
+    md_file = tmp_path / "big.md"
+    md_file.write_text("""\
+---
+name: big
+description: Big max turns
+maxTurns: 1000000
+---
+body
+""")
+    ad = AgentDef.from_file(md_file)
+    assert ad.max_turns == 200

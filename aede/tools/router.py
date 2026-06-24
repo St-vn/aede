@@ -60,6 +60,7 @@ class ToolRouter:
         sandbox: Any = None,
         fileset: Any = None,
         sandbox_filter: bool = False,
+        spawn_depth: int = 0,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
@@ -75,6 +76,7 @@ class ToolRouter:
         self._sandbox = sandbox
         self._fileset = fileset
         self._sandbox_filter = sandbox_filter
+        self._spawn_depth = spawn_depth
         self._registry = self._build_registry()
         self._mcp_bridge: Any = None
         self._trusted_servers: dict[str, bool] = {}
@@ -150,6 +152,7 @@ class ToolRouter:
             _o_cfg = self._cfg
             _o_gate = self._gate_store
             _o_sid = self._session_id
+            _o_depth = self._spawn_depth
             def _spawn(args: dict) -> str:
                 agent_name = args.get("agent_name", "")
                 task = args.get("task", "")
@@ -164,7 +167,7 @@ class ToolRouter:
                     orchestrator_cfg=_o_cfg,
                     orchestrator_gate_store=_o_gate,
                     orchestrator_session_id=_o_sid,
-                    orchestrator_spawn_depth=1,
+                    orchestrator_spawn_depth=_o_depth + 1,
                 )
                 try:
                     loop = asyncio.get_running_loop()

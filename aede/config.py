@@ -68,6 +68,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "sandbox_pids_limit": 256,
     "sandbox_pull_on_start": True,
     "sandbox_filter_session_search": False,
+    "max_spawn_depth": 1,
 }
 
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {
@@ -262,6 +263,7 @@ class AedeConfig:
         self.sandbox_pids_limit: int = int(data.get("sandbox_pids_limit", 256))
         self.sandbox_pull_on_start: bool = data.get("sandbox_pull_on_start", True)
         self.sandbox_filter_session_search: bool = data.get("sandbox_filter_session_search", False)
+        self.max_spawn_depth: int = data.get("max_spawn_depth", DEFAULT_CONFIG["max_spawn_depth"])
         # Plugin/skill toggle configuration
         self.plugins: dict = data.get("plugins") or {}
         # OTel observability
