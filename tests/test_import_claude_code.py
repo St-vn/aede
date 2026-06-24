@@ -85,6 +85,32 @@ Body.
     assert report.dest_path.read_text() != "original"
 
 
+def test_import_claude_code_traversal_blocked(tmp_path):
+    """name: ../../../EVIL in frontmatter is slugified to evil.md inside dest_dir."""
+    from aede.import_.claude_code import import_claude_code_agent
+
+    src = tmp_path / "evil_frontmatter.md"
+    src.write_text("""\
+---
+name: ../../../EVIL
+description: Traversal attempt
+---
+Body.
+""")
+
+    dest_dir = tmp_path / "agents"
+    dest_dir.mkdir()
+
+    report = import_claude_code_agent(src_path=src, dest_dir=dest_dir)
+
+    assert report.name == "evil"
+    assert report.dest_path == dest_dir / "evil.md"
+    assert report.dest_path.exists()
+    children = list(dest_dir.iterdir())
+    assert len(children) == 1
+    assert children[0].name == "evil.md"
+
+
 def test_import_claude_code_skip_on_no_overwrite(tmp_path):
     """When user declines overwrite, original file is preserved."""
     from aede.import_.claude_code import import_claude_code_agent

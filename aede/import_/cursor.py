@@ -1,19 +1,11 @@
 from __future__ import annotations
-import re
 from pathlib import Path
 from typing import Any, Callable
 
+from aede.import_ import slugify
 from aede.import_.claude_code import ImportReport
 
 _UNSUPPORTED_FIELDS = {"globs", "alwaysApply"}
-
-
-def _slugify(text: str) -> str:
-    """Lowercase, replace non-alphanumeric runs with a single hyphen, strip edges."""
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9]+", "-", text)
-    text = text.strip("-")
-    return text
 
 
 def import_cursor_mdc(
@@ -40,7 +32,7 @@ def import_cursor_mdc(
 
     meta: dict[str, Any] = yaml.safe_load(raw_yaml) or {}
 
-    name_slug = _slugify(src_path.stem)
+    name_slug = slugify(src_path.stem)
     if not name_slug:
         name_slug = "imported-agent"
 
