@@ -6,6 +6,11 @@ SAMPLE_EMAIL = "user@example.com"
 SAMPLE_HOME_PATH = "~/Documents/project/file.txt"
 SAMPLE_CREDIT_CARD = "4111-1111-1111-1111"
 SAMPLE_SSN = "123-45-6789"
+SAMPLE_GITHUB_TOKEN = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789abc"
+SAMPLE_GITHUB_OAUTH = "gho_" + "abcdefghijklmnopqrstuvwxyz0123456789abc"
+SAMPLE_GITHUB_APP = "ghs_" + "abcdefghijklmnopqrstuvwxyz0123456789abc"
+SAMPLE_SLACK_BOT = "xoxb-" + "123456789012-1234567890123-abc123def456"
+SAMPLE_SLACK_USER = "xoxp-" + "123456789012-1234567890123-abc123def456"
 
 
 class TestRedactSecretPatterns:
@@ -41,6 +46,46 @@ class TestRedactSecretPatterns:
         assert redact_value(3.14) == 3.14
         assert redact_value(True) is True
         assert redact_value(None) is None
+
+    # --- GitHub token patterns ---
+
+    def test_github_ghp_token_redacted(self):
+        result = redact_value(SAMPLE_GITHUB_TOKEN)
+        assert result != SAMPLE_GITHUB_TOKEN
+        assert "ghp_" not in result
+
+    def test_github_gho_token_redacted(self):
+        result = redact_value(SAMPLE_GITHUB_OAUTH)
+        assert result != SAMPLE_GITHUB_OAUTH
+        assert "gho_" not in result
+
+    def test_github_ghs_token_redacted(self):
+        result = redact_value(SAMPLE_GITHUB_APP)
+        assert result != SAMPLE_GITHUB_APP
+        assert "ghs_" not in result
+
+    # --- Slack token patterns ---
+
+    def test_slack_xoxb_token_redacted(self):
+        result = redact_value(SAMPLE_SLACK_BOT)
+        assert result != SAMPLE_SLACK_BOT
+        assert "xoxb-" not in result
+
+    def test_slack_xoxp_token_redacted(self):
+        result = redact_value(SAMPLE_SLACK_USER)
+        assert result != SAMPLE_SLACK_USER
+        assert "xoxp-" not in result
+
+    # --- Base64 false-positive guard ---
+
+    def test_benign_long_string_not_redacted(self):
+        benign = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        assert redact_value(benign) == benign
+
+    def test_base64_with_padding_still_redacted(self):
+        b64 = "dGhpcyBpcyBhIGJhc2U2NCBlbmNvZGVkIHNlY3JldCB2YWx1ZTEyMzQ1Njc4OTA="
+        result = redact_value(b64)
+        assert result != b64
 
 
 class TestRedactInDicts:

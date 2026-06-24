@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from aede.observability.redact import redact_value
 
 _SCHEMA_VERSION = "phase2-draft"
 
@@ -70,8 +71,8 @@ class TraceLogger:
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cached_tokens": cached_tokens,
-            "tool_calls": tool_calls,
-            "reasoning_text": reasoning_text,
+            "tool_calls": redact_value(tool_calls),
+            "reasoning_text": redact_value(reasoning_text),
             "outcome": outcome,
             "schema_version": _SCHEMA_VERSION,
         }
@@ -104,7 +105,7 @@ class TraceLogger:
             "session_id": session_id,
             "kind": "event",
             "event_type": event_type,
-            "payload": payload,
+            "payload": redact_value(payload),
             "timestamp": int(time.time() * 1000),
             "schema_version": _SCHEMA_VERSION,
         }

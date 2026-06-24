@@ -161,7 +161,9 @@ class TestFdeCaptureEdgeCases:
         )
         fde_path = tmp_path / "fde" / "sess_001.jsonl"
         record = json.loads(fde_path.read_text(encoding="utf-8"))
-        assert len(record["tool_result"]) <= 50
+        # Truncation appends "..." after slicing, so total = max_result_length + 3
+        expected_max = 50 + 3  # slice + "..."
+        assert len(record["tool_result"]) <= expected_max
 
     def test_directory_created_automatically(self, tmp_path):
         capture = FdeCapture(enabled=True, data_dir=tmp_path)
