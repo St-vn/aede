@@ -87,3 +87,38 @@ def test_reverse_replay_unlinks_created_file(tmp_path):
     edits = [{"name": "create_file", "args": {"path": "new.txt", "content": "hello"}}]
     _try_reverse_replay(tmp_path, edits)
     assert not f.exists()
+
+
+def test_reverse_replay_blocks_path_traversal(tmp_path):
+    """CWE-22: relative ../ traversal must not delete files outside project."""
+    outside = tmp_path.parent / "EVIL_traversal_rewind.txt"
+    outside.write_text("outside")
+    edits = [
+        {"name": "create_file", "args": {"path": "../EVIL_traversal_rewind.txt", "content": "outside"}},
+    ]
+    _try_reverse_replay(tmp_path, edits)
+    # RED: without fix, unlink deletes the outside file
+    assert outside.exists()
+
+
+def test_reverse_replay_blocks_absolute_path(tmp_path):
+    """CWE-22: absolute path strings must not write outside project."""
+    outside = tmp_path.parent / "EVIL_abs_rewind.txt"
+    outside.write_text("outside")
+    edits = [
+        {"name": "create_file", "args": {"path": str(outside.resolve()), "content": "outside"}},
+    ]
+    _try_reverse_replay(tmp_path, edits)
+    assert outside.exists()
+
+
+def test_reverse_replay_positive_legit_revert(tmp_path):
+    """Legit relative paths inside project_dir must still be reverted."""
+    f = tmp_path / "ok.txt"
+    f.write_text("original")
+    edits = [
+        {"name": "write_file", "args": {"path": "ok.txt", "old_string": "original", "new_string": "changed"}},
+    ]
+    f.write_text("changed")
+    _try_reverse_replay(tmp_path, edits)
+    assert f.read_text() == "original"
