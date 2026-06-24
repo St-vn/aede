@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import sys
 import concurrent.futures
 import threading
 import time
@@ -163,34 +164,42 @@ class MCPBridge:
             )
             transport_cm = stdio_client(server_params)
         transport = await transport_cm.__aenter__()
-        read, write = transport
-
-        # Attempt to extract the subprocess handle for force-kill fallback.
         try:
-            proc = getattr(write, "_transport", None)
-            if proc is not None:
-                proc_info = getattr(proc, "_proc", None) or proc
-                self._processes[name] = proc_info
+            read, write = transport
+
+            # Attempt to extract the subprocess handle for force-kill fallback.
+            try:
+                proc = getattr(write, "_transport", None)
+                if proc is not None:
+                    proc_info = getattr(proc, "_proc", None) or proc
+                    self._processes[name] = proc_info
+            except Exception:
+                pass
+
+            session_cm = mcp.ClientSession(read, write)
+            session = await session_cm.__aenter__()
+            try:
+                await session.initialize()
+                tools_result = await session.list_tools()
+
+                raw_schemas = []
+                for tool in tools_result.tools:
+                    raw_schemas.append({
+                        "name": tool.name,
+                        "description": getattr(tool, "description", "") or "",
+                        "input_schema": getattr(tool, "inputSchema", {"type": "object"}),
+                    })
+
+                self._sessions[name] = session
+                self._session_cms[name] = session_cm
+                self._transport_cms[name] = transport_cm
+                return raw_schemas
+            except Exception:
+                await session_cm.__aexit__(*sys.exc_info())
+                raise
         except Exception:
-            pass
-
-        session_cm = mcp.ClientSession(read, write)
-        session = await session_cm.__aenter__()
-        await session.initialize()
-        tools_result = await session.list_tools()
-
-        raw_schemas = []
-        for tool in tools_result.tools:
-            raw_schemas.append({
-                "name": tool.name,
-                "description": getattr(tool, "description", "") or "",
-                "input_schema": getattr(tool, "inputSchema", {"type": "object"}),
-            })
-
-        self._sessions[name] = session
-        self._session_cms[name] = session_cm
-        self._transport_cms[name] = transport_cm
-        return raw_schemas
+            await transport_cm.__aexit__(*sys.exc_info())
+            raise
 
     def spawn_all(self) -> list[str]:
         """Spawn all configured MCP servers concurrently on the bridge loop.

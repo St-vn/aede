@@ -73,3 +73,55 @@ class TestBuildMcpEnv:
         assert built_env.get("X") == "1"
         assert built_env.get("Y") == "2"
         assert "FAKE_SECRET_KEY" not in built_env
+
+
+class TestTransportCleanup:
+    """B54 B32: transport/session cleaned up on init failure."""
+
+    def test_transport_cleanup_on_list_tools_failure(self, monkeypatch):
+        import asyncio
+        import mcp
+        import mcp.client.stdio
+        from unittest.mock import AsyncMock, MagicMock
+
+        from aede.mcp.client import MCPBridge, MCPServerConfig
+
+        cfg = MCPServerConfig(command="echo", args=[])
+        bridge = MCPBridge(servers={"test": cfg})
+        try:
+            mock_transport_cm = MagicMock()
+            mock_transport_cm.__aenter__ = AsyncMock(
+                return_value=(MagicMock(), MagicMock()),
+            )
+            mock_transport_cm.__aexit__ = AsyncMock(return_value=None)
+
+            monkeypatch.setattr(
+                mcp.client.stdio, "stdio_client",
+                lambda *a, **kw: mock_transport_cm,
+            )
+
+            mock_session = MagicMock()
+            mock_session.initialize = AsyncMock()
+            mock_session.list_tools = AsyncMock(
+                side_effect=RuntimeError("list_tools failed"),
+            )
+
+            mock_session_cm = MagicMock()
+            mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cm.__aexit__ = AsyncMock(return_value=None)
+
+            monkeypatch.setattr(
+                mcp, "ClientSession",
+                lambda r, w: mock_session_cm,
+            )
+
+            future = asyncio.run_coroutine_threadsafe(
+                bridge._spawn_one("test", cfg), bridge._loop,
+            )
+            with pytest.raises(RuntimeError, match="list_tools"):
+                future.result(timeout=5)
+
+            assert mock_transport_cm.__aexit__.await_count >= 1
+            assert mock_session_cm.__aexit__.await_count >= 1
+        finally:
+            bridge.shutdown_all()
