@@ -12,6 +12,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from aede.observability.redact import redact_value
+
 
 class Rollout:
     """Writer for the per-session JSONL rollout log.
@@ -30,5 +32,6 @@ class Rollout:
     def write(self, record: dict) -> None:
         """Append ``record`` to the log, injecting a schema version and UTC timestamp."""
         record = {"v": 1, "ts": int(time.time() * 1000), **record}
+        record = redact_value(record)
         with self._path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")

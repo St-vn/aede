@@ -10,7 +10,13 @@ _REDACTED = "<REDACTED>"
 _SECRET_PATTERNS: list[re.Pattern] = [
     re.compile(r"sk-[a-zA-Z0-9\-_]{10,}"),
     re.compile(r"api[-_]?key[-_]?[=:]\s*\S+", re.IGNORECASE),
-    re.compile(r"[A-Za-z0-9+/=]{40,}"),
+    # GitHub tokens
+    re.compile(r"\bgh[ops]_[a-zA-Z0-9]{36,}\b"),
+    re.compile(r"\bghr_[a-zA-Z0-9]{36,}\b"),
+    # Slack tokens
+    re.compile(r"\bxox[abprs]-[a-zA-Z0-9-]{20,}\b"),
+    # Base64 — require at least one +, /, or = to avoid over-matching plain alpha strings
+    re.compile(r"(?=[A-Za-z0-9+/=]{40,})[A-Za-z0-9+/=]*[+/=][A-Za-z0-9+/=]*"),
     re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
     re.compile(r"~[/\\](?:[^/\\]+[/\\])*[^/\\]+"),
     re.compile(r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b"),
