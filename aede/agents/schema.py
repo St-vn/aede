@@ -3,6 +3,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+_SUPPORTED_FIELDS = frozenset({
+    "name",
+    "description",
+    "model",
+    "skills",
+    "tools",
+    "disallowedTools",
+    "maxTurns",
+    "systemPrompt",
+})
+
 
 class AgentLoadError(Exception):
     """Raised when an agent definition cannot be parsed or validated."""
@@ -29,6 +46,13 @@ class AgentDef:
 
     @classmethod
     def from_file(cls, path: Path) -> AgentDef:
+        file_size = path.stat().st_size
+        if file_size > _MAX_FILE_SIZE:
+            raise AgentLoadError(
+                f"File {path} size ({file_size} bytes) exceeds maximum size "
+                f"of {_MAX_FILE_SIZE} bytes"
+            )
+
         text = path.read_text(encoding="utf-8")
         import yaml
 
@@ -50,6 +74,15 @@ class AgentDef:
             meta: dict[str, Any] = yaml.safe_load(raw_yaml) or {}
         except Exception as e:
             raise AgentLoadError(f"Invalid YAML frontmatter in {path}: {e}") from e
+
+        unknown = set(meta) - _SUPPORTED_FIELDS
+        if unknown:
+            logger.warning(
+                "Ignoring unknown frontmatter field(s) in %s: %s",
+                path,
+                ", ".join(sorted(unknown)),
+            )
+        meta = {k: v for k, v in meta.items() if k in _SUPPORTED_FIELDS}
 
         name = meta.get("name", "")
         description = meta.get("description", "")
