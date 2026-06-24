@@ -85,47 +85,50 @@ async def run_subagent(
     from rich.console import Console
 
     db = DB(sub_cfg.data_dir / "aede.db")
-    sub_session = Session.create(
-        db=db,
-        model=sub_cfg.model,
-        parent_id=orchestrator_session_id,
-    )
+    try:
+        sub_session = Session.create(
+            db=db,
+            model=sub_cfg.model,
+            parent_id=orchestrator_session_id,
+        )
 
-    rollout = Rollout(sub_cfg.data_dir / "sessions", sub_session.id)
-    rollout.write({"type": "subagent_start", "agent": agent_def.name, "session_id": sub_session.id})
+        rollout = Rollout(sub_cfg.data_dir / "sessions", sub_session.id)
+        rollout.write({"type": "subagent_start", "agent": agent_def.name, "session_id": sub_session.id})
 
-    tracker = TokenTracker(session_id=sub_session.id, db=db)
+        tracker = TokenTracker(session_id=sub_session.id, db=db)
 
-    console = Console()
+        console = Console()
 
-    agent = AgentLoop(
-        cfg=sub_cfg,
-        session=sub_session,
-        db=db,
-        rollout=rollout,
-        router=sub_router,
-        gate_store=orchestrator_gate_store,
-        tracker=tracker,
-        console=console,
-        project_dir=Path.cwd(),
-    )
+        agent = AgentLoop(
+            cfg=sub_cfg,
+            session=sub_session,
+            db=db,
+            rollout=rollout,
+            router=sub_router,
+            gate_store=orchestrator_gate_store,
+            tracker=tracker,
+            console=console,
+            project_dir=Path.cwd(),
+        )
 
-    agent.initialize(is_resume=False, session_notes=None, compaction_summary=None)
+        agent.initialize(is_resume=False, session_notes=None, compaction_summary=None)
 
-    for turn in range(agent_def.max_turns):
-        await agent.run_turn(task if turn == 0 else "")
+        for turn in range(agent_def.max_turns):
+            await agent.run_turn(task if turn == 0 else "")
 
-        final_text = ""
-        for msg in reversed(agent._messages):
-            if msg.get("role") == "assistant" and isinstance(msg.get("content"), str):
-                final_text = msg["content"]
-                break
+            final_text = ""
+            for msg in reversed(agent._messages):
+                if msg.get("role") == "assistant" and isinstance(msg.get("content"), str):
+                    final_text = msg["content"]
+                    break
 
-        if final_text:
-            sub_session.archive(db)
-            rollout.write({"type": "subagent_end", "status": "completed"})
-            return final_text
+            if final_text:
+                sub_session.archive(db)
+                rollout.write({"type": "subagent_end", "status": "completed"})
+                return final_text
 
-    sub_session.archive(db)
-    rollout.write({"type": "subagent_end", "status": "max_turns"})
-    return f"[subagent terminated: maxTurns ({agent_def.max_turns}) reached without final response]"
+        sub_session.archive(db)
+        rollout.write({"type": "subagent_end", "status": "max_turns"})
+        return f"[subagent terminated: maxTurns ({agent_def.max_turns}) reached without final response]"
+    finally:
+        db.close()
