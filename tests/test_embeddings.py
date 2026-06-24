@@ -34,6 +34,47 @@ def test_embed_text_returns_768_dim_floats():
     assert all(isinstance(v, float) for v in result), "All elements must be float"
 
 
+# ---------------------------------------------------------------------------
+# #45: embedding dimension guard (added at ratify — fix shipped without a test)
+# ---------------------------------------------------------------------------
+
+
+def test_embed_text_raises_on_wrong_dimension():
+    """A non-768-dim vector raises EmbeddingDimensionError (#45)."""
+    from aede.memory.embeddings import OllamaClient, EmbeddingDimensionError
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"embedding": [0.1] * 100}  # wrong dims
+    mock_response.raise_for_status = MagicMock()
+    with patch("httpx.Client") as MockClient:
+        MockClient.return_value.__enter__.return_value.post.return_value = mock_response
+        with pytest.raises(EmbeddingDimensionError):
+            OllamaClient().embed_text("x")
+
+
+def test_embed_text_raises_on_empty_vector():
+    """An empty embedding raises EmbeddingDimensionError (#45)."""
+    from aede.memory.embeddings import OllamaClient, EmbeddingDimensionError
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"embedding": []}
+    mock_response.raise_for_status = MagicMock()
+    with patch("httpx.Client") as MockClient:
+        MockClient.return_value.__enter__.return_value.post.return_value = mock_response
+        with pytest.raises(EmbeddingDimensionError):
+            OllamaClient().embed_text("x")
+
+
+def test_embed_text_raises_on_missing_key():
+    """A response with no 'embedding' key raises EmbeddingDimensionError (#45)."""
+    from aede.memory.embeddings import OllamaClient, EmbeddingDimensionError
+    mock_response = MagicMock()
+    mock_response.json.return_value = {}
+    mock_response.raise_for_status = MagicMock()
+    with patch("httpx.Client") as MockClient:
+        MockClient.return_value.__enter__.return_value.post.return_value = mock_response
+        with pytest.raises(EmbeddingDimensionError):
+            OllamaClient().embed_text("x")
+
+
 def test_embed_text_posts_correct_payload():
     """embed_text POSTs to /api/embeddings with model and prompt fields."""
     from aede.memory.embeddings import OllamaClient
