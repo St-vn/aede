@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# aede commit-msg gate. Enforces conventional header with an issue ref (#NN).
+# Activate: git config core.hooksPath .githooks
+set -euo pipefail
+
+msg_file="$1"
+header="$(head -n1 "$msg_file")"
+
+# Merge/revert commits pass through unchanged.
+case "$header" in
+  "Merge "*|"Revert "*) exit 0 ;;
+esac
+
+# Conventional header: type(scope): summary (#NN)  — scope optional, issue ref required.
+if ! printf '%s' "$header" | grep -Eq '^(fix|feat|refactor|perf|test|docs|chore|build|ci|style)(\([a-z0-9_,/-]+\))?: .+ \(#[0-9]+\)$'; then
+  echo "✗ commit-msg: header must be 'type(scope): summary (#issue)'." >&2
+  echo "  got: $header" >&2
+  echo "  e.g. fix(mcp): scope MCP subprocess env to allowlist (#54)" >&2
+  exit 1
+fi
+
+if grep -Eiq '\b(wip|fixup!|squash!|do not commit|TODO-SECRET)\b' "$msg_file"; then
+  echo "✗ commit-msg: contains WIP/fixup/secret marker — clean the message." >&2
+  exit 1
+fi
+
+exit 0
