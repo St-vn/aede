@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 from aede.observability.redact import redact_value
 
@@ -80,4 +83,4 @@ class FdeCapture:
             with httpx.Client() as client:
                 client.post(self._endpoint, json={"session_id": session_id, "records": records}, timeout=10)
         except Exception:
-            pass
+            _log.debug("FDE upload failed", exc_info=True)

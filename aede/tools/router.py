@@ -10,11 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable
+import logging
 
 if TYPE_CHECKING:
     from pathlib import Path
     from aede.db import DB
 
+_log = logging.getLogger(__name__)
 
 GATE_TOOLS = {"powershell", "write_file", "create_file", "write_learning", "edit"}
 
@@ -404,7 +406,7 @@ def _write_learning_tool(args: dict[str, Any], data_dir: "Path | None") -> str:
         updated_record = {**record, **verdict}
         store.update(record["id"], updated_record)
     except Exception:
-        pass
+        _log.exception("write_learning: verifier failed for %s", record["id"])
 
     return f"Learning written: id={record['id']} type={record['type']!r} source={record['source']!r}"
 
