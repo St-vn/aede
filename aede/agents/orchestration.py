@@ -60,8 +60,9 @@ async def run_subagent(
         The final text response from the subagent, or an error string if
         the subagent was rejected or exceeded max_turns.
     """
-    if orchestrator_spawn_depth >= MAX_SPAWN_DEPTH:
-        return f"[subagent spawn rejected: max depth {MAX_SPAWN_DEPTH} reached]"
+    max_depth = getattr(orchestrator_cfg, 'max_spawn_depth', MAX_SPAWN_DEPTH)
+    if isinstance(max_depth, int) and orchestrator_spawn_depth >= max_depth:
+        return f"[subagent spawn rejected: max depth {max_depth} reached]"
 
     from aede.tools.router import ToolRouter
     from aede.config import AedeConfig
