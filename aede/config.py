@@ -70,6 +70,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "sandbox_filter_session_search": False,
     "max_spawn_depth": 1,
 }
+SECURITY_CRITICAL_KEYS: frozenset[str] = frozenset({
+    "gate_mode",
+    "sandbox_enabled",
+    "sandbox_image",
+    "sandbox_network",
+    "sandbox_memory",
+    "sandbox_cpus",
+    "critic_enabled",
+    "critic_api_base_url",
+    "api_base_url",
+    "auto_approve",
+})
 
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     # Anthropic
@@ -251,9 +263,6 @@ class AedeConfig:
         self.project_dir = project_dir
         from aede.instructions import load_soul_def, SoulDef
         self.soul: SoulDef = load_soul_def(home=self.home, project_dir=self.project_dir)
-        raw_sandbox = data.get("sandbox") or {}
-        from aede.sandboxing.docker import SandboxConfig
-        self.sandbox: SandboxConfig = SandboxConfig.from_dict(raw_sandbox)
         # Sandboxing (P0.2) — flat top-level keys
         self.sandbox_enabled: bool = data.get("sandbox_enabled", False)
         self.sandbox_image: str = data.get("sandbox_image", "aede-sandbox:latest")
@@ -304,12 +313,18 @@ def load_config(
         project_data = yaml.safe_load(project_path.read_text()) or {}
 
     merged = {**DEFAULT_CONFIG, **global_data}
+    skipped_security_keys: set[str] = set()
     for key, val in project_data.items():
+        if key in SECURITY_CRITICAL_KEYS:
+            skipped_security_keys.add(key)
+            continue
         merged[key] = val
 
     sources = {}
     for key in DEFAULT_CONFIG:
-        if project_data and key in project_data:
+        if key in skipped_security_keys:
+            sources[key] = "ignored (security-critical, user-level only)"
+        elif project_data and key in project_data:
             sources[key] = "project"
         elif global_data and key in global_data:
             sources[key] = "global"
@@ -417,3 +432,5 @@ def edit_config_file(scope: str, home: Path | None = None, project_dir: Path | N
 
     subprocess.run([editor, str(file_path)])
     return file_path
+
+

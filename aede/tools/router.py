@@ -306,19 +306,33 @@ class ToolRouter:
             "integer": int,
             "number": (int, float),
             "boolean": bool,
+            "array": list,
+            "object": dict,
         }
         for field, value in args.items():
             if field not in properties:
-                continue  # extra fields are allowed (forward-compat)
+                continue
             expected_type_str: str = properties[field].get("type", "")
             expected_python = _JSON_SCHEMA_TO_PYTHON.get(expected_type_str)
             if expected_python is None:
-                continue  # object/array/unknown — skip type check
+                continue
             if not isinstance(value, expected_python):
                 raise ToolParamError(
                     f"Tool {name!r} field {field!r}: expected {expected_type_str}, "
                     f"got {type(value).__name__!r}"
                 )
+            if expected_type_str == "array" and isinstance(value, list):
+                items_schema = properties[field].get("items", {})
+                items_type = items_schema.get("type", "")
+                if items_type:
+                    items_python = _JSON_SCHEMA_TO_PYTHON.get(items_type)
+                    if items_python is not None:
+                        for i, item in enumerate(value):
+                            if not isinstance(item, items_python):
+                                raise ToolParamError(
+                                    f"Tool {name!r} field {field!r}[{i}]: expected {items_type}, "
+                                    f"got {type(item).__name__!r}"
+                                )
 
     def requires_approval(self, name: str) -> bool:
         """Return True if the tool must pass through the user approval gate.
@@ -365,12 +379,18 @@ class ToolRouter:
             return ToolResult(status="error", output=str(exc), duration_ms=duration_ms)
 
     def _truncate(self, text: str) -> str:
-        """Truncate tool output that exceeds the configured token cap."""
-        max_chars = self._max_tokens * 4
-        if len(text) <= max_chars:
+        """Truncate tool output that exceeds the configured token cap.
+
+        Uses UTF-8 byte cap (len(text.encode("utf-8")) * 4 per token) because
+        no tiktoken tokenizer is available in this project.
+        """
+        max_bytes = self._max_tokens * 4
+        text_bytes = text.encode("utf-8")
+        if len(text_bytes) <= max_bytes:
             return text
-        token_estimate = len(text) // 4
-        return text[:max_chars] + f"\n[...output truncated at {self._max_tokens} tokens — ~{token_estimate} total tokens in result]"
+        truncated = text_bytes[:max_bytes].decode("utf-8", errors="replace")
+        token_estimate = len(text_bytes) // 4
+        return truncated + f"\n[...output truncated at {self._max_tokens} tokens — ~{token_estimate} total tokens in result]"
 
     def anthropic_tool_schemas(self) -> list[dict]:
         """Return the Anthropic-format tool schema list for all registered tools."""

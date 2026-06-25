@@ -144,6 +144,61 @@ async def test_drive_auth_auth_required_terminal_fallback():
     client._init_result = result
     client.new_session = AsyncMock(side_effect=AcpError(-32000, "auth required"))
     steps = [step async for step in drive_auth("claude-code", client=client, vault=vault, registry=registry)]
-    assert len(steps) == 1
+    assert len(steps) >= 2
     assert isinstance(steps[0], NeedsTerminal)
+    assert isinstance(steps[-1], Failed)
     assert steps[0].command == "claude"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Task W2-F — AUTH-002/003/001
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+async def test_drive_auth_authenticate_timeout():
+    """AUTH-002: authenticate hanging must yield Failed via asyncio.wait_for timeout."""
+    vault = MagicMock()
+    vault.get_for_agent.side_effect = KeyError("not found")
+    config = AgentConfig(name="codex", transport=AgentTransport.LOCAL,
+                         command="codex-acp", args=[], credentials_ref="OPENAI_API_KEY")
+    registry = MagicMock()
+    registry.get.return_value = config
+    client = MagicMock()
+    result = MagicMock()
+    result.auth_methods = [{"type": "agent", "id": "oauth-google"}]
+    client.initialize = AsyncMock(return_value=result)
+    client._init_result = result
+    client.new_session = AsyncMock(side_effect=[AcpError(-32000, "auth required"), "sess_retry"])
+    client.authenticate = AsyncMock(side_effect=TimeoutError("timed out"))
+    steps = [step async for step in drive_auth("codex", client=client, vault=vault, registry=registry)]
+    assert len(steps) >= 1
+    assert isinstance(steps[-1], Failed)
+
+
+async def test_drive_auth_initialize_oserror():
+    """AUTH-003: OSError during initialize must yield Failed, not crash generator."""
+    client = MagicMock()
+    client.initialize = AsyncMock(side_effect=OSError("connection refused"))
+    steps = [step async for step in drive_auth("codex", client=client, vault=None, registry=None)]
+    assert len(steps) >= 1
+    assert isinstance(steps[0], Failed)
+
+
+async def test_drive_auth_terminal_auth_yields_actionable_state():
+    """AUTH-001: terminal auth must yield actionable state, not silent dead-end."""
+    vault = MagicMock()
+    vault.get_for_agent.side_effect = KeyError("not found")
+    config = AgentConfig(name="claude-code", transport=AgentTransport.LOCAL,
+                         command="claude-agent-acp", args=[])
+    registry = MagicMock()
+    registry.get.return_value = config
+    client = MagicMock()
+    result = MagicMock()
+    result.auth_methods = []
+    client.initialize = AsyncMock(return_value=result)
+    client._init_result = result
+    client.new_session = AsyncMock(side_effect=AcpError(-32000, "auth required"))
+    steps = [step async for step in drive_auth("claude-code", client=client, vault=vault, registry=registry)]
+    assert len(steps) == 2
+    assert isinstance(steps[0], NeedsTerminal)
+    assert isinstance(steps[1], Failed)

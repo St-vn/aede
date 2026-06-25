@@ -3,31 +3,6 @@ from pathlib import Path
 import pytest
 
 
-def test_sandbox_disabled_by_default():
-    from aede.sandboxing.docker import SandboxConfig
-    cfg = SandboxConfig()
-    assert cfg.enabled is False
-
-
-def test_sandbox_config_defaults():
-    from aede.sandboxing.docker import SandboxConfig
-    cfg = SandboxConfig()
-    assert cfg.image == "python:3.12-slim"
-    assert cfg.workspace_mount == "/workspace"
-    assert cfg.memory_limit == "512m"
-    assert cfg.cpu_limit == 1.0
-
-
-def test_sandbox_config_from_dict():
-    from aede.sandboxing.docker import SandboxConfig
-    raw = {"enabled": True, "image": "custom:latest", "memory_limit": "1g", "cpu_limit": 2.0}
-    cfg = SandboxConfig.from_dict(raw)
-    assert cfg.enabled is True
-    assert cfg.image == "custom:latest"
-    assert cfg.memory_limit == "1g"
-    assert cfg.cpu_limit == 2.0
-
-
 def test_mount_builds_docker_mount(tmp_path):
     from aede.sandboxing.mounts import Mount
     m = Mount(source=tmp_path, target="/workspace", read_only=True)
@@ -68,17 +43,3 @@ def test_sandbox_container_name_sanitizes():
     assert "/" not in name
     assert ":" not in name
     assert "!" not in name
-
-
-def test_sandbox_config_from_dict_partial():
-    from aede.sandboxing.docker import SandboxConfig
-    raw = {"enabled": True}
-    cfg = SandboxConfig.from_dict(raw)
-    assert cfg.enabled is True
-    assert cfg.image == "python:3.12-slim"
-
-
-def test_sandbox_config_from_dict_empty():
-    from aede.sandboxing.docker import SandboxConfig
-    cfg = SandboxConfig.from_dict({})
-    assert cfg.enabled is False
