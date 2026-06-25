@@ -2,16 +2,17 @@
 
 from pathlib import Path
 
+SID_A = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+SID_B = "01ARZ3NDEKTSV4RRFFQ69G5FAW"
+
 
 def test_write_progress_appends_to_file(tmp_path: Path):
     from aede.tools.plan_mode import write_progress
 
-    sid = "test-progress-001"
+    result1 = write_progress({"content": "Step 1 done"}, project_dir=tmp_path, session_id=SID_A)
+    result2 = write_progress({"content": "Step 2 done"}, project_dir=tmp_path, session_id=SID_A)
 
-    result1 = write_progress({"content": "Step 1 done"}, project_dir=tmp_path, session_id=sid)
-    result2 = write_progress({"content": "Step 2 done"}, project_dir=tmp_path, session_id=sid)
-
-    progress_file = tmp_path / "docs-internal" / "plans" / f"{sid}-progress.md"
+    progress_file = tmp_path / "docs-internal" / "plans" / f"{SID_A}-progress.md"
     assert progress_file.exists()
 
     text = progress_file.read_text()
@@ -23,7 +24,7 @@ def test_write_progress_appends_to_file(tmp_path: Path):
 def test_write_progress_empty_content(tmp_path: Path):
     from aede.tools.plan_mode import write_progress
 
-    result = write_progress({"content": ""}, project_dir=tmp_path, session_id="test-skip")
+    result = write_progress({"content": ""}, project_dir=tmp_path, session_id=SID_B)
     assert "nothing written" in result.lower()
 
 

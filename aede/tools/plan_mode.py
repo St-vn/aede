@@ -7,7 +7,26 @@ context compaction, acting as the review checkpoint before code is written.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+ULID_PATTERN = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$", re.IGNORECASE)
+
+
+def _validate_session_id(sid: str) -> None:
+    if not ULID_PATTERN.match(sid):
+        raise ValueError(f"Invalid session_id: {sid!r} -- must be a valid ULID")
+
+
+def _assert_path_in_project(filepath: Path, project_dir: Path) -> None:
+    resolved = filepath.resolve()
+    project_root = project_dir.resolve()
+    if project_root.parent == project_root:
+        raise ValueError("project_dir must not be a filesystem root")
+    if not resolved.is_relative_to(project_root):
+        raise ValueError(
+            f"Plan path {resolved} escapes project directory {project_root}"
+        )
 
 
 def write_plan_artifact(args: dict, project_dir: Path, session_id: str) -> str:
@@ -28,10 +47,12 @@ def write_plan_artifact(args: dict, project_dir: Path, session_id: str) -> str:
     if not content:
         return "[write_plan_artifact: content is empty — nothing written]"
 
-    plans_dir = project_dir / "docs-internal" / "plans"
-    plans_dir.mkdir(parents=True, exist_ok=True)
+    _validate_session_id(session_id)
 
-    filepath = plans_dir / f"{session_id}.md"
+    filepath = project_dir / "docs-internal" / "plans" / f"{session_id}.md"
+    _assert_path_in_project(filepath, project_dir)
+
+    filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text(content, encoding="utf-8")
 
     return f"Plan artifact written: {filepath} ({len(content)} chars)"
@@ -53,7 +74,16 @@ def read_plan_artifact(args: dict, project_dir: Path, session_id: str) -> str:
         The plan file content, or a status message if it doesn't exist.
     """
     target_sid = args.get("session_id", session_id)
+    _validate_session_id(target_sid)
+
+    if target_sid != session_id:
+        raise ValueError(
+            f"Cannot read plan for session {target_sid!r}: "
+            f"not the current session {session_id!r}"
+        )
+
     filepath = project_dir / "docs-internal" / "plans" / f"{target_sid}.md"
+    _assert_path_in_project(filepath, project_dir)
 
     if not filepath.exists():
         return f"[read_plan_artifact: no plan found for session {target_sid}]"
@@ -79,10 +109,12 @@ def write_progress(args: dict, project_dir: Path, session_id: str) -> str:
     if not content:
         return "[write_progress: content is empty — nothing written]"
 
-    plans_dir = project_dir / "docs-internal" / "plans"
-    plans_dir.mkdir(parents=True, exist_ok=True)
+    _validate_session_id(session_id)
 
-    filepath = plans_dir / f"{session_id}-progress.md"
+    filepath = project_dir / "docs-internal" / "plans" / f"{session_id}-progress.md"
+    _assert_path_in_project(filepath, project_dir)
+
+    filepath.parent.mkdir(parents=True, exist_ok=True)
 
     import datetime
     timestamp = datetime.datetime.now().isoformat()
