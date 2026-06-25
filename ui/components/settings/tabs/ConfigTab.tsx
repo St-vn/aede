@@ -93,7 +93,7 @@ export function ConfigTab() {
                   {field.description && (
                     <p className="text-[10px] text-muted-foreground">{field.description}</p>
                   )}
-                  <span className="text-[10px] text-muted-foreground/50">({source})</span>
+                  <span className="text-[10px] text-muted-foreground">({source})</span>
                 </div>
                 {field.type === 'boolean' ? (
                   <Switch
