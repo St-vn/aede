@@ -80,7 +80,7 @@ interface DocsSidebarProps {
 
 export function DocsSidebar({ nav, onNavClick }: DocsSidebarProps) {
   return (
-    <nav className="flex h-full flex-col">
+    <nav aria-label="Docs navigation" className="flex h-full flex-col">
       <div className="border-b border-border px-4 py-3">
         <Link
           href="/docs"
