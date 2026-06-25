@@ -1,10 +1,26 @@
 'use client'
 import React, { useState, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { Layout } from '@/components/Layout'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { EmptyState } from '@/components/empty/EmptyState'
-import { ChatView } from '@/components/chat/ChatView'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useSessionMessages, useCreateSession, useDeleteSession, useUpdateSessionMode } from '@/hooks/useSession'
+
+const ChatView = dynamic(
+  () => import('@/components/chat/ChatView').then((m) => m.ChatView),
+  {
+    ssr: false,
+    loading: () => (
+      <div data-testid="chat-skeleton" className="flex-1 flex flex-col gap-4 p-4">
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-16 w-5/6" />
+        <Skeleton className="h-20 w-2/3" />
+      </div>
+    ),
+  },
+)
 import { InputBar } from '@/components/input/InputBar'
 import { useQueryClient } from '@tanstack/react-query'
 import { useConfig } from '@/hooks/useConfig'

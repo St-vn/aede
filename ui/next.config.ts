@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   // build output to the wrong .next and breaking `next start`. (UI-CONFIG-1)
   outputFileTracingRoot: path.join(__dirname),
   trailingSlash: true,
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'date-fns', 'recharts'],
+  },
   env: {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000',
   },
