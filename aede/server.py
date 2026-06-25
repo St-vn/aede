@@ -1242,7 +1242,6 @@ async def get_token_usage(request: Request, session_id: str | None = None):
 async def get_config(request: Request):
     """Return the current merged config as a dict."""
     cfg = request.app.state.cfg
-    import dataclasses
     d = {}
     for key in ("model", "context_window", "compaction_threshold", "tool_output_max_tokens",
                  "shell", "wsl_distro", "batch_approval_max", "auto_approve",
@@ -1257,7 +1256,16 @@ async def get_config(request: Request):
             d[key] = val
     d["model_prices"] = cfg.model_prices
     d["plugins"] = cfg.plugins
-    d["sandbox"] = dataclasses.asdict(cfg.sandbox) if cfg.sandbox else {}
+    # Sandbox config was flattened onto AedeConfig (the SandboxConfig dataclass was
+    # removed in #63). Rebuild the dict shape the UI expects from the flat fields.
+    d["sandbox"] = {
+        "enabled": cfg.sandbox_enabled,
+        "image": cfg.sandbox_image,
+        "workspace_mount": getattr(cfg, "sandbox_workspace_mount", "/workspace"),
+        "memory_limit": cfg.sandbox_memory,
+        "cpu_limit": cfg.sandbox_cpus,
+        "network": cfg.sandbox_network,
+    }
     for key in ("otel_endpoint", "otel_service_name", "fde_enabled", "fde_endpoint"):
         val = getattr(cfg, key, None)
         if val is not None:
