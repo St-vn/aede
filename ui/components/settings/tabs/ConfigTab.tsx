@@ -70,7 +70,7 @@ export function ConfigTab() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => apiFetch('/api/config/open', { method: 'POST', body: JSON.stringify({ scope }), headers: { 'Content-Type': 'application/json' } })}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             title="Open config file in editor"
           >
             <ExternalLink className="w-3 h-3" />
@@ -91,9 +91,9 @@ export function ConfigTab() {
                 <div className="flex-1 min-w-0">
                   <Label className="text-xs" htmlFor={`cfg-${field.key}`}>{field.label}</Label>
                   {field.description && (
-                    <p className="text-[10px] text-muted-foreground">{field.description}</p>
+                    <p className="text-xs text-muted-foreground">{field.description}</p>
                   )}
-                  <span className="text-[10px] text-muted-foreground/50">({source})</span>
+                  <span className="text-xs text-muted-foreground/50">({source})</span>
                 </div>
                 {field.type === 'boolean' ? (
                   <Switch

@@ -46,7 +46,7 @@ export function CollapsibleBlock({
                      disabled:cursor-default disabled:hover:text-muted-foreground"
         >
           <span className="font-medium truncate">{label}</span>
-          {meta && <span className="text-[10px] text-muted-foreground/60 shrink-0">{meta}</span>}
+          {meta && <span className="text-xs text-muted-foreground/60 shrink-0">{meta}</span>}
         </button>
         <span className="flex items-center gap-2 shrink-0">
           {right}

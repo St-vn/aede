@@ -26,7 +26,7 @@ export function KeybindsTab() {
               {shortcut.keys.map((key, j) => (
                 <React.Fragment key={j}>
                   {j > 0 && <span className="text-xs text-muted-foreground">+</span>}
-                  <kbd className="px-1.5 py-0.5 text-[10px] font-mono rounded border border-border bg-muted shadow-sm">{key}</kbd>
+                  <kbd className="px-1.5 py-0.5 text-xs font-mono rounded border border-border bg-muted shadow-sm">{key}</kbd>
                 </React.Fragment>
               ))}
             </div>

@@ -1,5 +1,6 @@
 'use client'
 import React, { useState } from 'react'
+import { toast } from 'sonner'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import type { TokenBucket } from '@/hooks/useTokens'
 
@@ -60,7 +61,9 @@ export function ContextBar({ sessionId }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
       })
-    } catch {}
+    } catch {
+      toast.error('Failed to compact context')
+    }
     setCompacting(false)
   }
 
@@ -78,7 +81,7 @@ export function ContextBar({ sessionId }: Props) {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="text-[10px] font-mono text-muted-foreground/60 whitespace-nowrap">
+          <span className="text-xs font-mono text-muted-foreground/60 whitespace-nowrap">
             {pct.toFixed(0)}%
           </span>
         </div>
@@ -110,7 +113,7 @@ export function ContextBar({ sessionId }: Props) {
           )}
 
           {usage.compactions.length > 0 && (
-            <div className="text-[10px] text-muted-foreground/40">
+            <div className="text-xs text-muted-foreground/40">
               Last compaction: {usage.compactions[usage.compactions.length - 1]}
             </div>
           )}

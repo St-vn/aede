@@ -52,7 +52,7 @@ export function GateBatchCard({ gates, onDecision }: Props) {
       <div className="flex items-center gap-2 mb-3">
         <TriangleAlert className="w-4 h-4 text-[--color-warning] shrink-0" />
         {gates[0]?.mode && (
-          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted">
             {gates[0].mode}
           </span>
         )}
@@ -82,7 +82,7 @@ export function GateBatchCard({ gates, onDecision }: Props) {
                     state === 'approved' ? 'bg-green-500' : state === 'denied' ? 'bg-red-500' : 'bg-yellow-500'
                   }`} />
                   <span className="font-mono text-xs flex-1 truncate">{g.toolName}</span>
-                  <span className="text-[10px] text-muted-foreground truncate max-w-[160px]">{cmdArg}</span>
+                  <span className="text-xs text-muted-foreground truncate max-w-[160px]">{cmdArg}</span>
                   {state === 'pending' ? (
                     <span className="flex gap-0.5 ml-2">
                       <button className="p-0.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30"

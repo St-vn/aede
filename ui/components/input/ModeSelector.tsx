@@ -40,7 +40,7 @@ export function ModeSelector({ currentMode, onModeChange }: Props) {
       } />
       <DropdownMenuContent align="end" className="min-w-[220px]">
         <DropdownMenuGroup>
-          <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Permission Mode
           </DropdownMenuLabel>
         </DropdownMenuGroup>
@@ -56,7 +56,7 @@ export function ModeSelector({ currentMode, onModeChange }: Props) {
                   {m.label}
                   {m.value === currentMode && <Check className="w-3 h-3 shrink-0 text-primary" />}
                 </span>
-                <span className="text-[10px] text-muted-foreground leading-tight">{m.description}</span>
+                <span className="text-xs text-muted-foreground leading-tight">{m.description}</span>
               </span>
             </DropdownMenuItem>
           )

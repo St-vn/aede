@@ -24,9 +24,9 @@ function ToolRow({ tool, disabledTools, onToggle }: {
         aria-label={`toggle ${tool.name}`}
       />
       <span className="text-[11px] font-mono text-foreground flex-1">{tool.name}</span>
-      <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">{tool.description || ''}</span>
+      <span className="text-xs text-muted-foreground truncate max-w-[200px]">{tool.description || ''}</span>
       {tool.inputSchema && Object.keys(tool.inputSchema).length > 0 && (
-        <span className="text-[10px] text-muted-foreground/50 shrink-0" title={JSON.stringify(tool.inputSchema, null, 1)}>
+        <span className="text-xs text-muted-foreground/50 shrink-0" title={JSON.stringify(tool.inputSchema, null, 1)}>
           <Code className="w-3 h-3" />
         </span>
       )}
@@ -88,7 +88,7 @@ export function McpTab() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => apiFetch('/api/config/open', { method: 'POST', body: JSON.stringify({ scope }), headers: { 'Content-Type': 'application/json' } })}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             title="Open MCP config file in editor"
           >
             <ExternalLink className="w-3 h-3" />
@@ -116,7 +116,7 @@ export function McpTab() {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground">Name</label>
+              <label className="text-xs font-medium text-muted-foreground">Name</label>
               <Input value={newName} onChange={e => setNewName(e.target.value)} className="h-8 text-xs" placeholder="my-server" />
             </div>
             <div className="flex items-end gap-1">
@@ -128,17 +128,17 @@ export function McpTab() {
           </div>
           {useUrl ? (
             <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground">URL (SSE/WebSocket)</label>
+              <label className="text-xs font-medium text-muted-foreground">URL (SSE/WebSocket)</label>
               <Input value={newUrl} onChange={e => setNewUrl(e.target.value)} className="h-8 text-xs" placeholder="http://localhost:3002/sse" />
             </div>
           ) : (
             <>
               <div className="space-y-1">
-                <label className="text-[10px] font-medium text-muted-foreground">Command</label>
+                <label className="text-xs font-medium text-muted-foreground">Command</label>
                 <Input value={newCommand} onChange={e => setNewCommand(e.target.value)} className="h-8 text-xs" placeholder="npx" />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-medium text-muted-foreground">Args (space-separated)</label>
+                <label className="text-xs font-medium text-muted-foreground">Args (space-separated)</label>
                 <Input value={newArgs} onChange={e => setNewArgs(e.target.value)} className="h-8 text-xs" placeholder="-y roblox-mcp" />
               </div>
             </>
@@ -150,7 +150,7 @@ export function McpTab() {
               onCheckedChange={setNewTrusted}
               id="new-trusted"
             />
-            <label htmlFor="new-trusted" className="text-[10px] text-muted-foreground">Trusted (bypass approval gate)</label>
+            <label htmlFor="new-trusted" className="text-xs text-muted-foreground">Trusted (bypass approval gate)</label>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setShowForm(false); setUseUrl(false) }}>Cancel</Button>
@@ -184,7 +184,7 @@ export function McpTab() {
                 <Plug className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
                   <span className="text-xs font-mono truncate block">{name}</span>
-                  <span className="text-[10px] text-muted-foreground truncate block">
+                  <span className="text-xs text-muted-foreground truncate block">
                     {server.url ? server.url : `${server.command} ${server.args?.join(' ') || ''}`}
                   </span>
                 </div>
@@ -197,7 +197,7 @@ export function McpTab() {
                       onCheckedChange={(checked) => handleUpdate(name, { enabled: checked })}
                       aria-label={`enable ${name}`}
                     />
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">{isEnabled ? 'On' : 'Off'}</span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">{isEnabled ? 'On' : 'Off'}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <ShieldCheck className={`w-3 h-3 ${server.trusted ? 'text-amber-500' : 'text-muted-foreground'}`} />
@@ -208,10 +208,10 @@ export function McpTab() {
                       aria-label={`trust ${name}`}
                       title={server.trusted ? 'Trusted (bypasses approval)' : 'Not trusted (requires approval)'}
                     />
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">{server.trusted ? 'Trusted' : 'Gated'}</span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">{server.trusted ? 'Trusted' : 'Gated'}</span>
                   </div>
                 </div>
-                <span className="flex items-center gap-1 text-[10px] shrink-0">
+                <span className="flex items-center gap-1 text-xs shrink-0">
                   {server.status === 'running' ? (
                     <><Wifi className="w-3 h-3 text-green-500" /> Running</>
                   ) : (
@@ -226,7 +226,7 @@ export function McpTab() {
               {isExpanded && (
                 <div className="border-t border-border/40 px-3 py-2">
                   {tools.length === 0 ? (
-                    <p className="text-[10px] text-muted-foreground italic">
+                    <p className="text-xs text-muted-foreground italic">
                       {server.status === 'running' ? 'No tools reported.' : 'Start server to browse tools.'}
                     </p>
                   ) : (
