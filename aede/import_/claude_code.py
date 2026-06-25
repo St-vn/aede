@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -17,6 +17,7 @@ class ImportReport:
     dest_path: Path
     was_skipped: bool = False
     format: str = "Claude Code"
+    warnings: list[str] = field(default_factory=list)
 
 
 def import_claude_code_agent(
@@ -24,11 +25,6 @@ def import_claude_code_agent(
     dest_dir: Path,
     _input_fn: Callable[[str], str] | None = None,
 ) -> ImportReport:
-    """Import a Claude Code agent .md file into aede AGENT.md format.
-
-    Maps supported fields 1:1, comments out unsupported fields, and
-    prompts before overwrite.
-    """
     import yaml
 
     text = src_path.read_text(encoding="utf-8")
