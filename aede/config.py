@@ -1,4 +1,4 @@
-﻿"""
+"""
 Configuration loading for aede.
 
 Merges defaults, a global ``~/.aede/config.yml``, and an optional
@@ -26,7 +26,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "api_base_url": None,  # None = Anthropic direct; set to OpenAI-compatible base URL (e.g. https://openrouter.ai/api/v1) for non-Anthropic models via OpenAI SDK
     "reasoning_effort": "auto",  # auto | none | low | medium | high | xhigh | max
     "thinking_budget": 0,  # 0 = auto/default, otherwise token count (min 1024)
-    # Basic Correctness â€” Phase 2
+    # Basic Correctness — Phase 2
     "grounding_enabled": True,
     "critic_enabled": False,
     "critic_model": None,
@@ -40,7 +40,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "learnings_max_tokens": 2000,
     # Provider configurations (e.g. opencode-zen, opencode-go)
     "providers": {},
-    # Compaction model override â€” None means use active model
+    # Compaction model override — None means use active model
     "compaction_model": None,
     # MCP server configurations
     "mcp_servers": {},
@@ -49,17 +49,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "voice_wake_word_enabled": False,
     "voice_asr_model": "whisper-large-v3-turbo",
     "voice_wake_model": "hey_jarvis",
-    # Sandboxing (Phase 2 â€” P0.2)
+    # Sandboxing (Phase 2 — P0.2)
     "sandbox": {},
     # Plugin/skill toggle configuration
     "plugins": {},
     # OTel observability
     "otel_endpoint": None,  # None = no-op; set to OTLP gRPC endpoint (e.g. http://localhost:4317)
     "otel_service_name": "aede",
-    # FDE (fair-data-ethics) capture â€” opt-in
+    # FDE (fair-data-ethics) capture — opt-in
     "fde_enabled": False,
     "fde_endpoint": None,
-    # Sandboxing (P0.2) â€” flat top-level keys
+    # Sandboxing (P0.2) — flat top-level keys
     "sandbox_enabled": False,
     "sandbox_image": "aede-sandbox:latest",
     "sandbox_memory": "512m",
@@ -151,7 +151,7 @@ shell: powershell          # powershell | cmd | wsl
 wsl_distro:                # only used when shell: wsl
 batch_approval_max: 20
 
-# API provider â€” leave blank for Anthropic direct (ANTHROPIC_API_KEY)
+# API provider — leave blank for Anthropic direct (ANTHROPIC_API_KEY)
 # For OpenRouter / non-Anthropic models: set api_base_url to the OpenAI-compatible
 # base URL and use OPENROUTER_API_KEY env var. The OpenAI SDK appends
 # /chat/completions (not /v1/messages), so this URL must NOT include a trailing /v1.
@@ -187,7 +187,7 @@ def _aede_home() -> Path:
 def bootstrap(home: Path | None = None) -> None:
     """Create the aede home directory tree and write a default config if absent.
 
-    Idempotent â€” safe to call on every launch.
+    Idempotent — safe to call on every launch.
     """
     if home is None:
         home = _aede_home()
@@ -225,7 +225,7 @@ class AedeConfig:
         # Reasoning / thinking mode
         self.reasoning_effort: str = data.get("reasoning_effort", "auto")
         self.thinking_budget: int = data.get("thinking_budget", 0)
-        # Basic Correctness â€” Phase 2
+        # Basic Correctness — Phase 2
         self.grounding_enabled: bool = data.get("grounding_enabled", True)
         self.critic_enabled: bool = data.get("critic_enabled", False)
         self.critic_model: str | None = data.get("critic_model") or None
@@ -239,7 +239,7 @@ class AedeConfig:
         self.learnings_max_tokens: int = data.get("learnings_max_tokens", DEFAULT_CONFIG["learnings_max_tokens"])
         # Provider configurations (e.g. opencode-zen, opencode-go)
         self.providers: dict[str, Any] = data.get("providers") or {}
-        # Compaction model override â€” None means use active model
+        # Compaction model override — None means use active model
         self.compaction_model: str | None = data.get("compaction_model") or None
         # MCP server configurations
         raw_mcp = data.get("mcp_servers") or data.get("mcpServers") or {}
@@ -263,10 +263,7 @@ class AedeConfig:
         self.project_dir = project_dir
         from aede.instructions import load_soul_def, SoulDef
         self.soul: SoulDef = load_soul_def(home=self.home, project_dir=self.project_dir)
-        raw_sandbox = data.get("sandbox") or {}
-        from aede.sandboxing.docker import SandboxConfig
-        self.sandbox: SandboxConfig = SandboxConfig.from_dict(raw_sandbox)
-        # Sandboxing (P0.2) â€” flat top-level keys
+        # Sandboxing (P0.2) — flat top-level keys
         self.sandbox_enabled: bool = data.get("sandbox_enabled", False)
         self.sandbox_image: str = data.get("sandbox_image", "aede-sandbox:latest")
         self.sandbox_memory: str = data.get("sandbox_memory", "512m")
@@ -287,7 +284,7 @@ def load_config(
     home: Path | None = None,
     project_dir: Path | None = None,
 ) -> AedeConfig:
-    """Load and merge config from defaults â†’ global config â†’ project config.
+    """Load and merge config from defaults → global config → project config.
 
     Args:
         home: aede home directory; defaults to ``_aede_home()``.
@@ -435,4 +432,5 @@ def edit_config_file(scope: str, home: Path | None = None, project_dir: Path | N
 
     subprocess.run([editor, str(file_path)])
     return file_path
+
 
