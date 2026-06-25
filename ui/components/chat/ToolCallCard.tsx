@@ -203,7 +203,7 @@ export function ToolCallCard({ toolName, status, args, output, durationMs, strea
             {cfg.icon}
             {cfg.label && <span className={cfg.color}>{cfg.label}</span>}
             {status === 'running' && streamingOutput && (
-              <span className="text-[10px] text-muted-foreground/60 truncate max-w-[200px]">
+              <span className="text-xs text-muted-foreground/60 truncate max-w-[200px]">
                 {streamingOutput.split('\n').pop()}
               </span>
             )}

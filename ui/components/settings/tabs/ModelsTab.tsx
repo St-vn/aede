@@ -498,7 +498,7 @@ function InlineModelForm({
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <label className="text-[10px] font-medium text-muted-foreground">
+          <label className="text-xs font-medium text-muted-foreground">
             Provider
           </label>
           <Select
@@ -521,7 +521,7 @@ function InlineModelForm({
           </Select>
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-medium text-muted-foreground">
+          <label className="text-xs font-medium text-muted-foreground">
             Model ID
           </label>
           <Popover open={showSuggestions} onOpenChange={setShowSuggestions}>
@@ -586,7 +586,7 @@ function InlineModelForm({
                           )}
                         />
                         <span>{s.label}</span>
-                        <span className="ml-auto text-[10px] text-muted-foreground">
+                        <span className="ml-auto text-xs text-muted-foreground">
                           {s.id}
                         </span>
                       </CommandItem>
@@ -599,7 +599,7 @@ function InlineModelForm({
         </div>
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-medium text-muted-foreground">
+        <label className="text-xs font-medium text-muted-foreground">
           Displayed name
         </label>
         <div className="h-8 flex items-center px-3 rounded-lg border border-input/50 bg-input/20 text-xs text-muted-foreground">
@@ -813,7 +813,7 @@ export function ModelsTab() {
               body: JSON.stringify({ scope: "global" }),
             })
           }
-          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           title="Open config file in editor"
         >
           <ExternalLink className="w-3 h-3" />
@@ -973,7 +973,7 @@ export function ModelsTab() {
                   <span className="text-xs font-medium flex-1">
                     {acpAgentLabels[a.name] ?? a.name}
                   </span>
-                  <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[200px]">
+                  <span className="text-xs text-muted-foreground font-mono truncate max-w-[200px]">
                     {a.command} {a.args?.join(" ")}
                   </span>
                   {isConn && (

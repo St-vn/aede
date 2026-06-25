@@ -78,7 +78,7 @@ export function InstructionsTab({ projectDir }: Props) {
         <div className="flex items-center gap-2">
           <button
             onClick={handleEditFile}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             title="Open instructions file in editor"
           >
             <ExternalLink className="w-3 h-3" />
@@ -91,13 +91,13 @@ export function InstructionsTab({ projectDir }: Props) {
       <Separator />
 
       {loading ? (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-12" aria-live="polite" aria-busy="true">
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       ) : (
         <div className="space-y-3">
           {meta && (
-            <p className="text-[10px] font-mono text-muted-foreground truncate">{meta.path}</p>
+            <p className="text-xs font-mono text-muted-foreground truncate">{meta.path}</p>
           )}
           <textarea aria-label="Project instructions"
             value={content}

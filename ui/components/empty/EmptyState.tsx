@@ -1,5 +1,6 @@
 'use client'
 import React, { useState } from 'react'
+import { toast } from 'sonner'
 import { EMPTY_STATE } from '@/config/emptyState'
 import { HeadlineRotator } from './HeadlineRotator'
 import {
@@ -35,7 +36,9 @@ export function EmptyState({ onOpenProject, projectName, activeProjectDir }: Pro
   const handleOpenProject = async (dir: string) => {
     try {
       await addProject.mutateAsync(dir)
-    } catch { }
+    } catch {
+      toast.error('Could not add project folder')
+    }
     onOpenProject?.(dir)
   }
 
@@ -70,7 +73,7 @@ export function EmptyState({ onOpenProject, projectName, activeProjectDir }: Pro
                   <MessageCircle className="w-4 h-4 shrink-0 text-muted-foreground" />
                   <div className="flex flex-col min-w-0 flex-1">
                     <span className="text-sm truncate">{p.display_name}</span>
-                    <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">{p.project_dir}</span>
+                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">{p.project_dir}</span>
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>

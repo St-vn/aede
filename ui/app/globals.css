@@ -150,6 +150,11 @@
   @keyframes blink { 50% { opacity: 0; } }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin, .animate-pulse, .chevron-collapsible,
+  [data-slot="collapsible-content"] { animation: none !important; }
+}
+
 /* ── Collapsible slide animation (sidebar projects, chats) ── */
 @keyframes collapsible-slide {
   from { opacity: 0; clip-path: inset(0 0 100% 0); }

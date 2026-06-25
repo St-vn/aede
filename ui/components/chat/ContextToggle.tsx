@@ -26,7 +26,7 @@ export function ContextToggle({ messageId, tokenCount }: Props) {
         <TooltipContent side="top">{isOpen ? 'Hide context info' : 'Show context info'}</TooltipContent>
       </Tooltip>
       {isOpen && tokenCount !== undefined && (
-        <span className="text-[10px] text-muted-foreground/60 font-mono">
+        <span className="text-xs text-muted-foreground/60 font-mono">
           {tokenCount} tokens
         </span>
       )}

@@ -139,7 +139,7 @@ export function Sidebar({ activeSessionId, activeProjectDir, onSelectSession, on
                     <CollapsibleTrigger className={`flex items-center gap-2 flex-1 min-w-0 px-1 py-1.5 text-xs font-medium transition-colors rounded-md ${isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}>
                       <FolderOpen className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate">{project.display_name}</span>
-                      <span className="ml-auto text-[10px] text-muted-foreground/60">{projectSessions.length}</span>
+                      <span className="ml-auto text-xs text-muted-foreground/60">{projectSessions.length}</span>
                     </CollapsibleTrigger>
                     <DropdownMenu>
                       <DropdownMenuTrigger render={
@@ -169,7 +169,7 @@ export function Sidebar({ activeSessionId, activeProjectDir, onSelectSession, on
                     {projectSessions.length > 0 ? (
                       <SessionSearch sessions={projectSessions} activeId={activeSessionId} onSelect={onSelectSession} onDelete={handleDelete} onResumeBranch={onResumeBranch} />
                     ) : (
-                      <p className="text-[10px] text-muted-foreground/50 px-3 py-1.5 italic">No sessions yet</p>
+                      <p className="text-xs text-muted-foreground/50 px-3 py-1.5 italic">No sessions yet</p>
                     )}
                   </CollapsibleContent>
                 </Collapsible>
@@ -186,7 +186,7 @@ export function Sidebar({ activeSessionId, activeProjectDir, onSelectSession, on
                     <CollapsibleTrigger className={`flex items-center gap-2 flex-1 min-w-0 px-1 py-1.5 text-xs font-medium transition-colors rounded-md ${isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}>
                       <FolderOpen className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate">{displayName(dir)}</span>
-                      <span className="ml-auto text-[10px] text-muted-foreground/60">{projectSessions.length}</span>
+                      <span className="ml-auto text-xs text-muted-foreground/60">{projectSessions.length}</span>
                     </CollapsibleTrigger>
                     <button
                       onClick={() => onOpenProject?.(dir)}
@@ -200,7 +200,7 @@ export function Sidebar({ activeSessionId, activeProjectDir, onSelectSession, on
                     {projectSessions.length > 0 ? (
                       <SessionSearch sessions={projectSessions} activeId={activeSessionId} onSelect={onSelectSession} onDelete={handleDelete} onResumeBranch={onResumeBranch} />
                     ) : (
-                      <p className="text-[10px] text-muted-foreground/50 px-3 py-1.5 italic">No sessions yet</p>
+                      <p className="text-xs text-muted-foreground/50 px-3 py-1.5 italic">No sessions yet</p>
                     )}
                   </CollapsibleContent>
                 </Collapsible>
@@ -222,7 +222,7 @@ export function Sidebar({ activeSessionId, activeProjectDir, onSelectSession, on
                 <CollapsibleTrigger className="flex items-center gap-2 w-full px-1 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
                   <MessageCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>Chats</span>
-                  <span className="ml-auto text-[10px] text-muted-foreground/60">{sessionsData.global.total}</span>
+                  <span className="ml-auto text-xs text-muted-foreground/60">{sessionsData.global.total}</span>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <SessionSearch sessions={sessionsData.global.sessions} activeId={activeSessionId} onSelect={onSelectSession} onDelete={handleDelete} onResumeBranch={onResumeBranch} />

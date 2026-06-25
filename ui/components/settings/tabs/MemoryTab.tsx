@@ -33,7 +33,7 @@ export function MemoryTab() {
               <p className="text-xs">{l.content}</p>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">{l.type}</span>
-                <span className="text-[10px] text-muted-foreground/50">
+                <span className="text-xs text-muted-foreground/50">
                   {new Date(l.created_at).toLocaleDateString()}
                 </span>
               </div>
