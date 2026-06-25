@@ -113,7 +113,7 @@ class GoogleAsrProvider:
             },
             "content": b64,
         }
-        resp = await self._post(f"{self.BASE}?key={self._api_key}", json=payload)
+        resp = await self._post(self.BASE, json=payload, headers={"x-goog-api-key": self._api_key})
         resp.raise_for_status()
         data = resp.json()
         text = ""
