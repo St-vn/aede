@@ -264,19 +264,24 @@ class AcpClient:
         elif has_method and not has_id:
             asyncio.ensure_future(self._handle_notification(msg))
         elif has_id and not has_method:
-            rid = self._norm_id(msg["id"])
+            rid = self._norm_id(msg.get("id"))
             future = self._pending.pop(rid, None)
             if future is None:
-                logger.warning("ACP response to unknown id %r", msg["id"])
+                logger.warning("ACP response to unknown id %r", msg.get("id"))
                 return
             if not future.done():
-                if "error" in msg:
-                    future.set_exception(AcpError(
-                        msg["error"]["code"],
-                        msg["error"]["message"],
-                    ))
-                else:
+                error = msg.get("error")
+                if error is not None:
+                    code = error.get("code", -1) if isinstance(error, dict) else -1
+                    message = error.get("message", "unknown error") if isinstance(error, dict) else str(error)
+                    future.set_exception(AcpError(code, message))
+                elif "result" in msg:
                     future.set_result(msg["result"])
+                else:
+                    logger.warning("ACP response %r missing both 'error' and 'result'", msg.get("id"))
+                    future.set_exception(AcpError(-1, "malformed response: missing error and result"))
+        else:
+            logger.warning("ACP: skipping malformed message (no id or method): %s", str(msg)[:200])
 
     @staticmethod
     def _norm_id(rid: Any) -> Any:
@@ -519,7 +524,7 @@ class AcpClient:
                 val = credential_provider.get(self._config.credentials_ref)
                 env[self._config.credentials_ref] = val
             except KeyError:
-                logger.warning("Credential %s not found", self._config.credentials_ref)
+                logger.warning("Credential %s not found for agent %s", self._config.credentials_ref, self._config.name)
 
         if self._config.model_override:
             agent_name = self._config.name
