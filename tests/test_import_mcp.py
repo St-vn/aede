@@ -14,8 +14,8 @@ def test_import_mcp_server_basic(tmp_path):
                 "command": "C:/Users/megas/venv/Scripts/python.exe",
                 "args": ["-m", "onshape_mcp.server"],
                 "env": {
-                    "ONSHAPE_ACCESS_KEY": "ak",
-                    "ONSHAPE_SECRET_KEY": "sk",
+                    "ONSHAPE_MODE": "cloud",
+                    "ONSHAPE_HOST": "cad.onshape.com",
                 },
             }
         }
@@ -35,7 +35,7 @@ def test_import_mcp_server_basic(tmp_path):
     srv = data["mcp_servers"]["onshape"]
     assert srv["command"] == "C:/Users/megas/venv/Scripts/python.exe"
     assert srv["args"] == ["-m", "onshape_mcp.server"]
-    assert srv["env"]["ONSHAPE_ACCESS_KEY"] == "ak"
+    assert srv["env"]["ONSHAPE_MODE"] == "cloud"
     assert srv["enabled"] is True
 
 
@@ -110,3 +110,25 @@ def test_import_mcp_no_mcp_servers_key(tmp_path):
     reports = import_mcp_servers_from_claude_code(src_config_path=src, dest_config_path=dest)
 
     assert reports == []
+
+
+def test_import_mcp_b22_exec_warning(tmp_path):
+    """Import report carries executes-arbitrary-command warning."""
+    from aede.import_.mcp import import_mcp_servers_from_claude_code
+
+    src = tmp_path / "mcp.json"
+    src.write_text(
+        '{"mcpServers": {"exec-srv": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-everything"]}}}',
+        encoding="utf-8",
+    )
+
+    dest = tmp_path / "config.yml"
+    dest.write_text("mcp_servers:\n")
+
+    reports = import_mcp_servers_from_claude_code(
+        src_config_path=src, dest_config_path=dest
+    )
+
+    assert len(reports) == 1
+    assert any("execute" in w.lower() for w in reports[0].warnings)
+    assert any("command" in w.lower() for w in reports[0].warnings)
