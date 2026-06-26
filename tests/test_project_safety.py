@@ -5,6 +5,7 @@ TDD tests for #19 S2 — path-safety validator and CSRF confirm guard.
 RED phase: all tests fail before fix because validate_project_dir does not
 exist yet and delete-folder has no confirm guard.
 """
+import sys
 import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
@@ -22,6 +23,11 @@ def test_validate_project_dir_rejects_filesystem_root():
         validate_project_dir("/")
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="'C:\\' is a Windows drive-root concept; on POSIX it resolves to a normal "
+    "subpath. The POSIX root ('/') is covered by test_validate_project_dir_rejects_filesystem_root.",
+)
 def test_validate_project_dir_rejects_drive_root():
     """Windows drive root (C:\\) must be rejected."""
     from aede.project import validate_project_dir
