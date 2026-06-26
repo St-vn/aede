@@ -107,16 +107,20 @@ def test_project_dir_root_rejected(tmp_path):
 )
 def test_plan_artifact_escape_via_symlink(tmp_path):
     """Plan paths that resolve outside project_dir via symlink must be rejected."""
+    # project_dir is a subdir; `outside` is a genuine SIBLING (truly outside the
+    # project root) — otherwise the symlink target is still inside project_dir and
+    # the boundary check correctly allows it.
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
     outside = tmp_path / "outside"
-    outside.mkdir()
     outside_plans = outside / "docs-internal" / "plans"
     outside_plans.mkdir(parents=True)
     (outside_plans / f"{SID_A}.md").write_text("escaped content")
 
-    (tmp_path / "docs-internal").symlink_to(outside / "docs-internal")
+    (project_dir / "docs-internal").symlink_to(outside / "docs-internal")
 
     with pytest.raises(ValueError, match="escapes project directory"):
-        read_plan_artifact({}, project_dir=tmp_path, session_id=SID_A)
+        read_plan_artifact({}, project_dir=project_dir, session_id=SID_A)
 
 
 # -- #51: cross-session isolation --
