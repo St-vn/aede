@@ -4,10 +4,11 @@ import subprocess
 from unittest.mock import MagicMock, patch
 from aede.tools.powershell import run_powershell
 
-# These tests spawn the real `powershell` binary, which only exists on Windows
-# (and PowerShell-Core installs). Skip where it isn't available (e.g. Linux CI).
+# These tests spawn the real `powershell` binary (run_powershell hardcodes
+# "powershell", not "pwsh"). It only exists on Windows; Linux CI runners have
+# `pwsh` (PowerShell-Core) but NOT `powershell`, so check the exact binary used.
 pytestmark = pytest.mark.skipif(
-    shutil.which("powershell") is None and shutil.which("pwsh") is None,
+    shutil.which("powershell") is None,
     reason="powershell binary not available on this platform",
 )
 
