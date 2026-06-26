@@ -7,14 +7,19 @@ all errors into ``ToolResult`` values so they flow back to the model), and
 exposes Anthropic-format JSON schemas for each registered tool.
 """
 from __future__ import annotations
+import logging
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable
+import logging
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pathlib import Path
     from aede.db import DB
 
+_log = logging.getLogger(__name__)
 
 GATE_TOOLS = {"powershell", "write_file", "create_file", "write_learning", "edit"}
 
@@ -60,6 +65,7 @@ class ToolRouter:
         sandbox: Any = None,
         fileset: Any = None,
         sandbox_filter: bool = False,
+        spawn_depth: int = 0,
     ) -> None:
         self._shell = shell
         self._wsl_distro = wsl_distro
@@ -75,6 +81,7 @@ class ToolRouter:
         self._sandbox = sandbox
         self._fileset = fileset
         self._sandbox_filter = sandbox_filter
+        self._spawn_depth = spawn_depth
         self._registry = self._build_registry()
         self._mcp_bridge: Any = None
         self._trusted_servers: dict[str, bool] = {}
@@ -134,12 +141,12 @@ class ToolRouter:
         _sandbox_filter_session = False
         if _cfg is not None:
             _sandbox_filter_session = getattr(_cfg, 'sandbox_filter_session_search', False)
-        reg["session_search"] = lambda args: session_search(args, db=_db, sandbox_filter_session=_sandbox_filter_session)
+        reg["session_search"] = lambda args: session_search(args, db=_db, sandbox_filter_session=_sandbox_filter_session, session_id=_sid)
 
         from aede.tools.context import select_context
-        _db, _data_dir, _project_dir = self._db, self._data_dir, self._project_dir
+        _db, _data_dir, _project_dir, _sid = self._db, self._data_dir, self._project_dir, self._session_id
         reg["select_context"] = lambda args: select_context(
-            args, db=_db, data_dir=_data_dir, project_dir=_project_dir,
+            args, db=_db, data_dir=_data_dir, project_dir=_project_dir, session_id=_sid,
         )
 
         _data_dir = self._data_dir
@@ -150,6 +157,7 @@ class ToolRouter:
             _o_cfg = self._cfg
             _o_gate = self._gate_store
             _o_sid = self._session_id
+            _o_depth = self._spawn_depth
             def _spawn(args: dict) -> str:
                 agent_name = args.get("agent_name", "")
                 task = args.get("task", "")
@@ -164,7 +172,7 @@ class ToolRouter:
                     orchestrator_cfg=_o_cfg,
                     orchestrator_gate_store=_o_gate,
                     orchestrator_session_id=_o_sid,
-                    orchestrator_spawn_depth=1,
+                    orchestrator_spawn_depth=_o_depth + 1,
                 )
                 try:
                     loop = asyncio.get_running_loop()
@@ -298,19 +306,33 @@ class ToolRouter:
             "integer": int,
             "number": (int, float),
             "boolean": bool,
+            "array": list,
+            "object": dict,
         }
         for field, value in args.items():
             if field not in properties:
-                continue  # extra fields are allowed (forward-compat)
+                continue
             expected_type_str: str = properties[field].get("type", "")
             expected_python = _JSON_SCHEMA_TO_PYTHON.get(expected_type_str)
             if expected_python is None:
-                continue  # object/array/unknown — skip type check
+                continue
             if not isinstance(value, expected_python):
                 raise ToolParamError(
                     f"Tool {name!r} field {field!r}: expected {expected_type_str}, "
                     f"got {type(value).__name__!r}"
                 )
+            if expected_type_str == "array" and isinstance(value, list):
+                items_schema = properties[field].get("items", {})
+                items_type = items_schema.get("type", "")
+                if items_type:
+                    items_python = _JSON_SCHEMA_TO_PYTHON.get(items_type)
+                    if items_python is not None:
+                        for i, item in enumerate(value):
+                            if not isinstance(item, items_python):
+                                raise ToolParamError(
+                                    f"Tool {name!r} field {field!r}[{i}]: expected {items_type}, "
+                                    f"got {type(item).__name__!r}"
+                                )
 
     def requires_approval(self, name: str) -> bool:
         """Return True if the tool must pass through the user approval gate.
@@ -357,12 +379,18 @@ class ToolRouter:
             return ToolResult(status="error", output=str(exc), duration_ms=duration_ms)
 
     def _truncate(self, text: str) -> str:
-        """Truncate tool output that exceeds the configured token cap."""
-        max_chars = self._max_tokens * 4
-        if len(text) <= max_chars:
+        """Truncate tool output that exceeds the configured token cap.
+
+        Uses UTF-8 byte cap (len(text.encode("utf-8")) * 4 per token) because
+        no tiktoken tokenizer is available in this project.
+        """
+        max_bytes = self._max_tokens * 4
+        text_bytes = text.encode("utf-8")
+        if len(text_bytes) <= max_bytes:
             return text
-        token_estimate = len(text) // 4
-        return text[:max_chars] + f"\n[...output truncated at {self._max_tokens} tokens — ~{token_estimate} total tokens in result]"
+        truncated = text_bytes[:max_bytes].decode("utf-8", errors="replace")
+        token_estimate = len(text_bytes) // 4
+        return truncated + f"\n[...output truncated at {self._max_tokens} tokens — ~{token_estimate} total tokens in result]"
 
     def anthropic_tool_schemas(self) -> list[dict]:
         """Return the Anthropic-format tool schema list for all registered tools."""
@@ -404,7 +432,7 @@ def _write_learning_tool(args: dict[str, Any], data_dir: "Path | None") -> str:
         updated_record = {**record, **verdict}
         store.update(record["id"], updated_record)
     except Exception:
-        pass
+        _log.exception("write_learning: verifier failed for %s", record["id"])
 
     return f"Learning written: id={record['id']} type={record['type']!r} source={record['source']!r}"
 

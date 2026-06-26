@@ -1,4 +1,4 @@
-﻿"""
+"""
 FastAPI backend server for aede.
 
 Provides REST and WebSocket endpoints for the browser-based UI, including
@@ -378,6 +378,56 @@ async def health():
 
 _ws_handler_id = 0
 
+
+# ── WebSocket message handlers ──────────────────────────────────────────────
+# Extracted from websocket_turn's message loop to keep its complexity bounded
+# (the loop was CC=42). Each handles one non-"user_message" frame type.
+
+async def _handle_gate_response(data: dict, gate: "SessionGate", websocket: WebSocket) -> None:
+    """Resolve a pending approval-gate future with the user's decision."""
+    gate_id = data.get("gate_id")
+    fut = gate.futures.get(gate_id)
+    if fut is not None and not fut.done():
+        fut.set_result((data.get("decision"), data.get("redirect_msg", "")))
+    else:
+        await websocket.send_json({"type": "error", "message": f"Unknown gate_id: {gate_id}"})
+
+
+def _handle_stop(session_states: dict, session_id: str, hid: int) -> None:
+    """Cancel the session's in-flight turn task, if any (the only frame that
+    cancels a turn — disconnects do not)."""
+    state = session_states.get(session_id)
+    if state and state.turn_task and not state.turn_task.done():
+        print(f"[WS#{hid}] stop requested — cancelling turn", flush=True)
+        state.turn_task.cancel()
+    else:
+        print(f"[WS#{hid}] stop requested — no active turn to cancel", flush=True)
+
+
+async def _handle_ask_user_response(data: dict, gate: "SessionGate", websocket: WebSocket) -> None:
+    """Resolve a pending ask_user question future with the user's answers."""
+    question_id = data.get("question_id")
+    fut = gate.futures.get(f"ask:{question_id}")
+    if fut is not None and not fut.done():
+        fut.set_result((data.get("answers", {}), ""))
+    else:
+        await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+
+
+async def _handle_ask_user_chat(data: dict, gate: "SessionGate", websocket: WebSocket) -> None:
+    """Resolve a pending question future with a chat sentinel so the agent
+    receives the comment as a tool result, responds, then re-asks."""
+    question_id = data.get("question_id")
+    fut = gate.futures.get(f"ask:{question_id}")
+    if fut is not None and not fut.done():
+        fut.set_result((
+            {"__chat__": data.get("comment", ""), "__question__": data.get("question", "")},
+            "",
+        ))
+    else:
+        await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+
+
 @app.websocket("/ws/sessions/{session_id}")
 async def websocket_turn(websocket: WebSocket, session_id: str):
     """Handle interactive agent turns for a specific session over WebSocket."""
@@ -429,12 +479,12 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     await websocket.send_json({"type": "error", "message": "Missing session_id or content"})
                     continue
 
-                # Per-turn model override from the UI (do NOT mutate shared cfg)
-                _original_model = cfg.model
+                # Per-turn model override from the UI. Passed into AgentLoop as
+                # model_override so concurrent turns on different sessions never
+                # bleed into each other — the shared cfg.model is NEVER mutated.
                 turn_model = data.get("model")
                 if turn_model:
                     print(f"[WS#{hid}] per-turn model override: {cfg.model} → {turn_model}", flush=True)
-                    cfg.model = turn_model
 
                 # Bootstrap AgentLoop for this turn
                 from aede.session import Session
@@ -561,6 +611,7 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                     stream_thinking=_stream_thinking,
                     stream_tool_call=_stream_tool_call,
                     stream_tool_result=_stream_tool_result,
+                    model_override=turn_model or None,
                 )
                 state.agent = agent
 
@@ -606,8 +657,8 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 def on_turn_done(fut):
                     nonlocal hid, turn_start_ms
                     print(f"[WS#{hid}] on_turn_done CALLED", flush=True)
-                    # Restore original model after turn
-                    cfg.model = _original_model
+                    # No cfg.model restore needed: the per-turn model is passed as
+                    # model_override into AgentLoop and shared cfg is never mutated.
                     # A cancelled turn (e.g. WS disconnect/reconnect while waiting
                     # on a gate response) raises CancelledError — a BaseException,
                     # NOT caught by `except Exception`.  Swallow it explicitly so
@@ -674,7 +725,6 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                         except Exception as e:
                             print(f"[WS#{hid}] learnings error: {e}", flush=True)
                     except Exception as e:
-                        cfg.model = _original_model
                         print(f"[WS#{hid}] run_turn FAILED: {e}", flush=True)
                         import traceback
                         traceback.print_exc()
@@ -684,48 +734,16 @@ async def websocket_turn(websocket: WebSocket, session_id: str):
                 print(f"[WS#{hid}] Done setting up turn, returning to message loop", flush=True)
 
             elif msg_type == "gate_response":
-                gate_id = data.get("gate_id")
-                decision = data.get("decision")
-                redirect_msg = data.get("redirect_msg", "")
-
-                fut = gate.futures.get(gate_id)
-                if fut is not None and not fut.done():
-                    fut.set_result((decision, redirect_msg))
-                else:
-                    await websocket.send_json({"type": "error", "message": f"Unknown gate_id: {gate_id}"})
+                await _handle_gate_response(data, gate, websocket)
 
             elif msg_type == "stop":
-                state = session_states.get(session_id)
-                if state and state.turn_task and not state.turn_task.done():
-                    print(f"[WS#{hid}] stop requested — cancelling turn", flush=True)
-                    state.turn_task.cancel()
-                else:
-                    print(f"[WS#{hid}] stop requested — no active turn to cancel", flush=True)
+                _handle_stop(session_states, session_id, hid)
 
             elif msg_type == "ask_user_response":
-                question_id = data.get("question_id")
-                answers = data.get("answers", {})
-                key = f"ask:{question_id}"
-                fut = gate.futures.get(key)
-                if fut is not None and not fut.done():
-                    fut.set_result((answers, ""))
-                else:
-                    await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+                await _handle_ask_user_response(data, gate, websocket)
 
             elif msg_type == "ask_user_chat":
-                # User clicked "Chat about this" on a pending question.
-                # Resolve the pending future with a sentinel dict so the agent
-                # receives the comment as a tool result and can respond
-                # conversationally, then re-ask the question(s).
-                question_id = data.get("question_id")
-                question_text = data.get("question", "")
-                comment = data.get("comment", "")
-                key = f"ask:{question_id}"
-                fut = gate.futures.get(key)
-                if fut is not None and not fut.done():
-                    fut.set_result(({"__chat__": comment, "__question__": question_text}, ""))
-                else:
-                    await websocket.send_json({"type": "error", "message": f"Unknown question_id: {question_id}"})
+                await _handle_ask_user_chat(data, gate, websocket)
 
     except WebSocketDisconnect:
         print(f"[WS#{hid}] WebSocket disconnected", flush=True)
@@ -839,11 +857,17 @@ async def list_sessions(request: Request):
 @app.post("/api/projects")
 async def create_project(request: Request, payload: dict):
     """Register a project directory. Idempotent — returns existing project if path already registered."""
-    from aede.project import Project
+    from aede.project import Project, validate_project_dir
     db = request.app.state.db
     project_dir = payload.get("project_dir") or payload.get("path")
     if not project_dir:
         raise HTTPException(status_code=400, detail="project_dir is required")
+    # Safety: reject dangerous paths before they are stored (e.g. home dir, drive
+    # root). This prevents a later delete-folder from rmtree-ing a critical dir.
+    try:
+        validate_project_dir(project_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     existing = db.get_project_by_dir(project_dir)
     if existing:
         return Project(existing).to_dict()
@@ -872,14 +896,31 @@ async def delete_project(request: Request, project_id: str):
 
 
 @app.post("/api/projects/{project_id}/delete-folder")
-async def delete_project_folder(request: Request, project_id: str):
-    """Remove project from list AND delete the project directory from disk."""
+async def delete_project_folder(request: Request, project_id: str, payload: dict = None):
+    """Remove project from list AND delete the project directory from disk.
+
+    Requires ``{"confirm": true}`` in the request body as a CSRF mitigation —
+    a blind cross-site POST will not include this field.  Defence-in-depth:
+    also re-validates the path before calling rmtree.
+    """
     import shutil
+    if payload is None:
+        payload = {}
+    # CSRF mitigation: require explicit confirmation from the caller.
+    if payload.get("confirm") is not True:
+        raise HTTPException(
+            status_code=400,
+            detail='confirm:true required to delete a project folder',
+        )
     db = request.app.state.db
-    from aede.project import Project
+    from aede.project import Project, validate_project_dir
     try:
         project = Project.load(db, project_id)
-        path = Path(project.project_dir).expanduser().resolve()
+        # Defence-in-depth: re-validate even if it passed registration.
+        try:
+            path = validate_project_dir(project.project_dir)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
         if path.exists():
             shutil.rmtree(str(path))
         project.delete(db)
@@ -1201,7 +1242,6 @@ async def get_token_usage(request: Request, session_id: str | None = None):
 async def get_config(request: Request):
     """Return the current merged config as a dict."""
     cfg = request.app.state.cfg
-    import dataclasses
     d = {}
     for key in ("model", "context_window", "compaction_threshold", "tool_output_max_tokens",
                  "shell", "wsl_distro", "batch_approval_max", "auto_approve",
@@ -1216,7 +1256,16 @@ async def get_config(request: Request):
             d[key] = val
     d["model_prices"] = cfg.model_prices
     d["plugins"] = cfg.plugins
-    d["sandbox"] = dataclasses.asdict(cfg.sandbox) if cfg.sandbox else {}
+    # Sandbox config was flattened onto AedeConfig (the SandboxConfig dataclass was
+    # removed in #63). Rebuild the dict shape the UI expects from the flat fields.
+    d["sandbox"] = {
+        "enabled": cfg.sandbox_enabled,
+        "image": cfg.sandbox_image,
+        "workspace_mount": cfg.sandbox_workspace_mount,
+        "memory_limit": cfg.sandbox_memory,
+        "cpu_limit": cfg.sandbox_cpus,
+        "network": cfg.sandbox_network,
+    }
     for key in ("otel_endpoint", "otel_service_name", "fde_enabled", "fde_endpoint"):
         val = getattr(cfg, key, None)
         if val is not None:

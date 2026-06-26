@@ -58,7 +58,7 @@ export function FormModal({ open, onOpenChange, title, children, filePath, onOpe
           {filePath && onOpenFile && (
             <button
               onClick={onOpenFile}
-              className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               title="Open in editor"
             >
               <ExternalLink className="w-3 h-3" />

@@ -1,8 +1,9 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from aede.import_ import slugify_or_fallback, safe_dest_path
 
 _UNSUPPORTED_FIELDS = {
     "permissionMode", "mcpServers", "memory", "isolation",
@@ -16,6 +17,7 @@ class ImportReport:
     dest_path: Path
     was_skipped: bool = False
     format: str = "Claude Code"
+    warnings: list[str] = field(default_factory=list)
 
 
 def import_claude_code_agent(
@@ -23,11 +25,6 @@ def import_claude_code_agent(
     dest_dir: Path,
     _input_fn: Callable[[str], str] | None = None,
 ) -> ImportReport:
-    """Import a Claude Code agent .md file into aede AGENT.md format.
-
-    Maps supported fields 1:1, comments out unsupported fields, and
-    prompts before overwrite.
-    """
     import yaml
 
     text = src_path.read_text(encoding="utf-8")
@@ -40,7 +37,7 @@ def import_claude_code_agent(
     body = parts[2].strip() if len(parts) >= 3 else ""
 
     meta: dict[str, Any] = yaml.safe_load(raw_yaml) or {}
-    name: str = meta.get("name", src_path.stem)
+    name: str = slugify_or_fallback(meta.get("name", "") or src_path.stem, fallback=src_path.stem)
 
     supported = {}
     unsupported_lines = []
@@ -52,7 +49,7 @@ def import_claude_code_agent(
         else:
             supported[key] = value
 
-    dest_path = dest_dir / f"{name}.md"
+    dest_path = safe_dest_path(dest_dir, name)
 
     if dest_path.exists():
         if _input_fn is None:

@@ -578,3 +578,65 @@ async def test_large_line_does_not_crash_reader():
     res = await asyncio.wait_for(c2.send_request("anything", {}), timeout=10)
     assert res["echo"] == big
     await c2.aclose()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Task W2-F — CLT-006: _dispatch malformed message handling
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+async def test_dispatch_malformed_response_does_not_kill_other_futures():
+    """A malformed JSON-RPC response with id, no method, no error, no result
+    must not crash _dispatch and kill other pending futures."""
+    c = AcpClient(AgentConfig(name="x", transport=AgentTransport.LOCAL, command="x"))
+    r, w = _wire(c)
+    t = asyncio.create_task(c.send_request("m", {}))
+    await asyncio.sleep(0.01)
+    r.feed({"jsonrpc": "2.0", "id": 0, "extra": "data"})
+    await asyncio.sleep(0.01)
+    with pytest.raises(AcpError):
+        await t
+    await c.aclose()
+
+
+async def test_dispatch_malformed_msg_no_id_skipped():
+    """A message without 'id' or 'method' must be skipped, not crash."""
+    c = AcpClient(AgentConfig(name="x", transport=AgentTransport.LOCAL, command="x"))
+    r, w = _wire(c)
+    t = asyncio.create_task(c.send_request("m", {}))
+    await asyncio.sleep(0.01)
+    r.feed({"jsonrpc": "2.0", "extra": "no_id_or_method"})
+    await asyncio.sleep(0.01)
+    assert not t.done()
+    r.feed({"jsonrpc": "2.0", "id": 0, "result": {"ok": True}})
+    assert (await t)["ok"] is True
+    await c.aclose()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Task W2-F — CLT-004: _inject_env missing credential warning
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_inject_env_missing_credential_logs_warning_and_agent_name(caplog):
+    from aede.acp.client import AcpClient
+    from aede.acp.registry import AgentConfig, AgentTransport
+    import logging
+
+    caplog.set_level(logging.WARNING)
+    config = AgentConfig(
+        name="test-agent",
+        transport=AgentTransport.LOCAL,
+        command="python",
+        args=[],
+        credentials_ref="MISSING_KEY",
+    )
+    client = AcpClient(config)
+
+    class FakeProvider:
+        def get(self, key):
+            raise KeyError(key)
+
+    client._inject_env(FakeProvider())
+    assert "MISSING_KEY" in caplog.text
+    assert "test-agent" in caplog.text

@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from aede.import_ import slugify_or_fallback, safe_dest_path
 from aede.import_.claude_code import ImportReport
 
 _UNSUPPORTED_FIELDS = {
@@ -45,7 +46,7 @@ def import_claude_code_skill(
     body = parts[2].strip() if len(parts) >= 3 else ""
 
     meta: dict[str, Any] = yaml.safe_load(raw_yaml) or {}
-    name: str = meta.get("name", src_path.stem)
+    name: str = slugify_or_fallback(meta.get("name", "") or src_path.stem, fallback=src_path.stem)
 
     supported = {}
     unsupported_lines = []
@@ -58,7 +59,7 @@ def import_claude_code_skill(
             mapped_key = _FIELD_MAP.get(key, key)
             supported[mapped_key] = value
 
-    dest_path = dest_dir / f"{name}.md"
+    dest_path = safe_dest_path(dest_dir, name)
 
     if dest_path.exists():
         if _input_fn is None:

@@ -7,10 +7,14 @@ supports future full-text search.  All query methods return plain dicts via
 a custom row factory.
 """
 from __future__ import annotations
+import logging
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 DDL = """
@@ -191,19 +195,19 @@ class DB:
             )
             self.con.commit()
         except Exception:
-            pass  # Column already exists — idempotent
+            _log.debug("Schema migration ALTER token_usage.role skipped")
         # WS-01 migration: add project_dir column to sessions if missing.
         try:
             self.con.execute("ALTER TABLE sessions ADD COLUMN project_dir TEXT")
             self.con.commit()
         except Exception:
-            pass
+            _log.debug("Schema migration ALTER sessions.project_dir skipped")
         # PM-01 migration: add gate_mode column to sessions if missing.
         try:
             self.con.execute("ALTER TABLE sessions ADD COLUMN gate_mode TEXT")
             self.con.commit()
         except Exception:
-            pass
+            _log.debug("Schema migration ALTER sessions.gate_mode skipped")
         # PJ-01 migration: create projects table if missing (DB created before DDL had it).
         try:
             self.con.execute("""
@@ -223,19 +227,19 @@ class DB:
             self.con.execute("ALTER TABLE messages ADD COLUMN thinking TEXT")
             self.con.commit()
         except Exception:
-            pass
+            _log.debug("Schema migration ALTER messages.thinking skipped")
         # TD-01 migration: add turn_duration_ms column to messages if missing.
         try:
             self.con.execute("ALTER TABLE messages ADD COLUMN turn_duration_ms INTEGER")
             self.con.commit()
         except Exception:
-            pass
+            _log.debug("Schema migration ALTER messages.turn_duration_ms skipped")
         # RW-01 migration: add branch_message_id column to sessions if missing.
         try:
             self.con.execute("ALTER TABLE sessions ADD COLUMN branch_message_id TEXT")
             self.con.commit()
         except Exception:
-            pass
+            _log.debug("Schema migration ALTER sessions.branch_message_id skipped")
         # FR-01 migration: add provider column to tool_calls if missing.
         try:
             self.con.execute(
@@ -243,9 +247,15 @@ class DB:
             )
             self.con.commit()
         except Exception:
-            pass  # Column already exists — idempotent
+            _log.debug("Schema migration ALTER tool_calls.provider skipped")
         # Set row_factory after schema is created
         self.con.row_factory = _row_factory
+        # D1 — write-lock: one RLock guards every mutating commit so concurrent
+        # FastAPI threadpool handlers sharing this single connection cannot race.
+        # RLock (re-entrant) allows methods that delegate to other writer methods
+        # (e.g. delete_messages_after → delete_message) to re-acquire safely.
+        # Reads stay unlocked; WAL allows concurrent readers alongside a writer.
+        self._write_lock: threading.RLock = threading.RLock()
 
     def insert_session(
         self,
@@ -259,11 +269,12 @@ class DB:
     ) -> None:
         """Insert a new session row with ``status='active'`` and timestamps set to now."""
         now = _now_ms()
-        self.con.execute(
-            "INSERT INTO sessions (id, parent_id, title, created_at, updated_at, model, project_dir, gate_mode, branch_message_id) VALUES (?,?,?,?,?,?,?,?,?)",
-            (id, parent_id, title, now, now, model, _normalize_path(project_dir), gate_mode, branch_message_id),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "INSERT INTO sessions (id, parent_id, title, created_at, updated_at, model, project_dir, gate_mode, branch_message_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                (id, parent_id, title, now, now, model, _normalize_path(project_dir), gate_mode, branch_message_id),
+            )
+            self.con.commit()
 
     def get_session(self, id: str) -> dict[str, Any] | None:
         """Return the session row for ``id``, or ``None`` if not found."""
@@ -273,19 +284,21 @@ class DB:
 
     def update_session_status(self, id: str, status: str) -> None:
         """Update the ``status`` field and refresh ``updated_at`` for the session."""
-        self.con.execute(
-            "UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?",
-            (status, _now_ms(), id),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?",
+                (status, _now_ms(), id),
+            )
+            self.con.commit()
 
     def update_session_gate_mode(self, id: str, gate_mode: str | None) -> None:
         """Update the ``gate_mode`` field and refresh ``updated_at`` for the session."""
-        self.con.execute(
-            "UPDATE sessions SET gate_mode = ?, updated_at = ? WHERE id = ?",
-            (gate_mode, _now_ms(), id),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "UPDATE sessions SET gate_mode = ?, updated_at = ? WHERE id = ?",
+                (gate_mode, _now_ms(), id),
+            )
+            self.con.commit()
 
     def delete_session(self, id: str) -> None:
         """Delete a session and all its associated rows.
@@ -297,21 +310,22 @@ class DB:
           - token_usage.session_id
         """
         msg_ids_sql = "SELECT id FROM messages WHERE session_id = ?"
-        # Detach child sessions so their parent_id FK no longer points here.
-        self.con.execute(
-            "UPDATE sessions SET parent_id = NULL WHERE parent_id = ?", (id,)
-        )
-        self.con.execute("DELETE FROM token_usage WHERE session_id = ?", (id,))
-        # tool_calls and thinking_segments reference messages(id).
-        self.con.execute(
-            f"DELETE FROM tool_calls WHERE message_id IN ({msg_ids_sql})", (id,)
-        )
-        self.con.execute(
-            f"DELETE FROM thinking_segments WHERE message_id IN ({msg_ids_sql})", (id,)
-        )
-        self.con.execute("DELETE FROM messages WHERE session_id = ?", (id,))
-        self.con.execute("DELETE FROM sessions WHERE id = ?", (id,))
-        self.con.commit()
+        with self._write_lock:
+            # Detach child sessions so their parent_id FK no longer points here.
+            self.con.execute(
+                "UPDATE sessions SET parent_id = NULL WHERE parent_id = ?", (id,)
+            )
+            self.con.execute("DELETE FROM token_usage WHERE session_id = ?", (id,))
+            # tool_calls and thinking_segments reference messages(id).
+            self.con.execute(
+                f"DELETE FROM tool_calls WHERE message_id IN ({msg_ids_sql})", (id,)
+            )
+            self.con.execute(
+                f"DELETE FROM thinking_segments WHERE message_id IN ({msg_ids_sql})", (id,)
+            )
+            self.con.execute("DELETE FROM messages WHERE session_id = ?", (id,))
+            self.con.execute("DELETE FROM sessions WHERE id = ?", (id,))
+            self.con.commit()
 
     def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
         """Return the most recent sessions ordered by ``updated_at`` descending."""
@@ -351,11 +365,12 @@ class DB:
 
     def set_session_project_dir(self, id: str, project_dir: str) -> None:
         """Update the session's project directory."""
-        self.con.execute(
-            "UPDATE sessions SET project_dir = ?, updated_at = ? WHERE id = ?",
-            (_normalize_path(project_dir), _now_ms(), id),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "UPDATE sessions SET project_dir = ?, updated_at = ? WHERE id = ?",
+                (_normalize_path(project_dir), _now_ms(), id),
+            )
+            self.con.commit()
 
     def insert_project(
         self,
@@ -365,11 +380,12 @@ class DB:
     ) -> None:
         """Insert a new project row."""
         now = _now_ms()
-        self.con.execute(
-            "INSERT OR IGNORE INTO projects (id, project_dir, display_name, created_at, updated_at) VALUES (?,?,?,?,?)",
-            (id, _normalize_path(project_dir), display_name, now, now),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "INSERT OR IGNORE INTO projects (id, project_dir, display_name, created_at, updated_at) VALUES (?,?,?,?,?)",
+                (id, _normalize_path(project_dir), display_name, now, now),
+            )
+            self.con.commit()
 
     def list_projects(self) -> list[dict[str, Any]]:
         """Return all projects ordered by most recently updated."""
@@ -391,8 +407,9 @@ class DB:
 
     def delete_project(self, id: str) -> None:
         """Delete a project (does not touch files on disk)."""
-        self.con.execute("DELETE FROM projects WHERE id = ?", (id,))
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute("DELETE FROM projects WHERE id = ?", (id,))
+            self.con.commit()
 
     def insert_message(
         self,
@@ -404,11 +421,12 @@ class DB:
         thinking: str | None = None,
     ) -> None:
         """Persist one conversation message (user or assistant) to the DB."""
-        self.con.execute(
-            "INSERT INTO messages (id, session_id, role, content, created_at, token_count, thinking) VALUES (?,?,?,?,?,?,?)",
-            (id, session_id, role, content, _now_ms(), token_count, thinking),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "INSERT INTO messages (id, session_id, role, content, created_at, token_count, thinking) VALUES (?,?,?,?,?,?,?)",
+                (id, session_id, role, content, _now_ms(), token_count, thinking),
+            )
+            self.con.commit()
 
     def update_message(
         self,
@@ -425,11 +443,12 @@ class DB:
         ``message_id`` FK to persist against.  The finalized text is written
         here once the response completes.
         """
-        self.con.execute(
-            "UPDATE messages SET content=?, token_count=?, thinking=? WHERE id=?",
-            (content, token_count, thinking, id),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "UPDATE messages SET content=?, token_count=?, thinking=? WHERE id=?",
+                (content, token_count, thinking, id),
+            )
+            self.con.commit()
 
     def set_message_duration(
         self,
@@ -441,19 +460,21 @@ class DB:
         Called from the ``on_turn_done`` callback after ``run_turn`` completes,
         so it sets only ``turn_duration_ms`` without overwriting content/tokens.
         """
-        self.con.execute(
-            "UPDATE messages SET turn_duration_ms=? WHERE id=?",
-            (turn_duration_ms, id),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "UPDATE messages SET turn_duration_ms=? WHERE id=?",
+                (turn_duration_ms, id),
+            )
+            self.con.commit()
 
     def delete_message(self, id: str) -> None:
         """Delete a message and its child rows (used to clean up an empty
         assistant placeholder when the provider call fails)."""
-        self.con.execute("DELETE FROM tool_calls WHERE message_id = ?", (id,))
-        self.con.execute("DELETE FROM thinking_segments WHERE message_id = ?", (id,))
-        self.con.execute("DELETE FROM messages WHERE id = ?", (id,))
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute("DELETE FROM tool_calls WHERE message_id = ?", (id,))
+            self.con.execute("DELETE FROM thinking_segments WHERE message_id = ?", (id,))
+            self.con.execute("DELETE FROM messages WHERE id = ?", (id,))
+            self.con.commit()
 
     def delete_messages_after(
         self,
@@ -522,11 +543,12 @@ class DB:
     def mark_messages_compacted(self, message_ids: list[str]) -> None:
         """Set ``compacted_at`` to now for the given message IDs."""
         now = _now_ms()
-        self.con.executemany(
-            "UPDATE messages SET compacted_at = ? WHERE id = ?",
-            [(now, mid) for mid in message_ids],
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.executemany(
+                "UPDATE messages SET compacted_at = ? WHERE id = ?",
+                [(now, mid) for mid in message_ids],
+            )
+            self.con.commit()
 
     def insert_tool_call(
         self,
@@ -538,11 +560,12 @@ class DB:
         provider: str = 'aede',
     ) -> None:
         """Record a tool invocation (without result) immediately after dispatch."""
-        self.con.execute(
-            "INSERT INTO tool_calls (id, message_id, tool_name, args, status, provider, created_at) VALUES (?,?,?,?,?,?,?)",
-            (id, message_id, tool_name, args, status, provider, _now_ms()),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "INSERT INTO tool_calls (id, message_id, tool_name, args, status, provider, created_at) VALUES (?,?,?,?,?,?,?)",
+                (id, message_id, tool_name, args, status, provider, _now_ms()),
+            )
+            self.con.commit()
 
     def upsert_tool_call(
         self,
@@ -560,17 +583,18 @@ class DB:
         this avoids the PRIMARY KEY collision that a plain ``INSERT`` would
         trigger.
         """
-        self.con.execute(
-            "INSERT INTO tool_calls (id, message_id, tool_name, args, status, provider, created_at) "
-            "VALUES (?,?,?,?,?,?,?) "
-            "ON CONFLICT(id) DO UPDATE SET "
-            "  tool_name=excluded.tool_name,"
-            "  args=excluded.args,"
-            "  status=excluded.status,"
-            "  provider=excluded.provider",
-            (id, message_id, tool_name, args, status, provider, _now_ms()),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "INSERT INTO tool_calls (id, message_id, tool_name, args, status, provider, created_at) "
+                "VALUES (?,?,?,?,?,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "  tool_name=excluded.tool_name,"
+                "  args=excluded.args,"
+                "  status=excluded.status,"
+                "  provider=excluded.provider",
+                (id, message_id, tool_name, args, status, provider, _now_ms()),
+            )
+            self.con.commit()
 
     def update_tool_call(
         self,
@@ -580,27 +604,29 @@ class DB:
         duration_ms: int,
     ) -> None:
         """Fill in the result, final status, and wall-clock duration after a tool returns."""
-        self.con.execute(
-            "UPDATE tool_calls SET result=?, status=?, duration_ms=? WHERE id=?",
-            (result, status, duration_ms, id),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "UPDATE tool_calls SET result=?, status=?, duration_ms=? WHERE id=?",
+                (result, status, duration_ms, id),
+            )
+            self.con.commit()
 
     def abort_running_tool_calls(self, session_id: str) -> int:
         """Mark any tool_calls still ``status='running'`` in a session as aborted.
 
         Called at session initialization so interrupted turns don't leave the
         UI showing perpetual spinners."""
-        result = self.con.execute(
-            "UPDATE tool_calls SET status='aborted', result='Turn interrupted.' "
-            "WHERE id IN ("
-            "  SELECT tc.id FROM tool_calls tc "
-            "  JOIN messages m ON m.id = tc.message_id "
-            "  WHERE m.session_id = ? AND tc.status = 'running'"
-            ")",
-            (session_id,),
-        )
-        self.con.commit()
+        with self._write_lock:
+            result = self.con.execute(
+                "UPDATE tool_calls SET status='aborted', result='Turn interrupted.' "
+                "WHERE id IN ("
+                "  SELECT tc.id FROM tool_calls tc "
+                "  JOIN messages m ON m.id = tc.message_id "
+                "  WHERE m.session_id = ? AND tc.status = 'running'"
+                ")",
+                (session_id,),
+            )
+            self.con.commit()
         return result.rowcount
 
     def get_tool_calls_for_message_ids(self, message_ids: list[str]) -> dict[str, list[dict]]:
@@ -628,11 +654,12 @@ class DB:
     def insert_thinking_segment(self, message_id: str, text: str, seq: int) -> None:
         """Persist one thinking segment for an assistant message (ACP path)."""
         import uuid
-        self.con.execute(
-            "INSERT INTO thinking_segments (id, message_id, text, seq, created_at) VALUES (?,?,?,?,?)",
-            (str(uuid.uuid4()), message_id, text, seq, _now_ms()),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "INSERT INTO thinking_segments (id, message_id, text, seq, created_at) VALUES (?,?,?,?,?)",
+                (str(uuid.uuid4()), message_id, text, seq, _now_ms()),
+            )
+            self.con.commit()
 
     def get_thinking_segments_for_message_ids(self, message_ids: list[str]) -> dict[str, list[dict]]:
         """Return thinking segments keyed by message_id, ordered by seq ASC."""
@@ -662,11 +689,12 @@ class DB:
         role: str = "agent",
     ) -> None:
         """Append one token-usage row for a completed LLM turn."""
-        self.con.execute(
-            "INSERT INTO token_usage (id, session_id, turn_number, input_tokens, output_tokens, cached_tokens, created_at, role) VALUES (?,?,?,?,?,?,?,?)",
-            (id, session_id, turn_number, input_tokens, output_tokens, cached_tokens, _now_ms(), role),
-        ),
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "INSERT INTO token_usage (id, session_id, turn_number, input_tokens, output_tokens, cached_tokens, created_at, role) VALUES (?,?,?,?,?,?,?,?)",
+                (id, session_id, turn_number, input_tokens, output_tokens, cached_tokens, _now_ms(), role),
+            )
+            self.con.commit()
 
     def get_token_totals(self, session_id: str) -> dict[str, int]:
         """Return summed ``{input_tokens, output_tokens, cached_tokens}`` for the session."""
@@ -681,7 +709,7 @@ class DB:
         }
 
     def search_messages(
-        self, query: str, limit: int = 10
+        self, query: str, limit: int = 10, session_id: str | None = None
     ) -> list[dict[str, Any]]:
         """Full-text search over message history using FTS5.
 
@@ -693,6 +721,7 @@ class DB:
         Args:
             query: FTS5 MATCH expression (e.g. a keyword or phrase).
             limit: Maximum number of hit messages to process.
+            session_id: When set, restrict search to messages in this session.
 
         Returns:
             A list of result-group dicts, one per hit, each containing:
@@ -703,17 +732,31 @@ class DB:
             deduplicated with context).
         """
         # Find matching rows via FTS5, joined back to the messages table.
-        hits = self.con.execute(
-            """
-            SELECT m.*
-            FROM messages m
-            JOIN messages_fts f ON m.rowid = f.rowid
-            WHERE messages_fts MATCH ?
-            ORDER BY m.created_at DESC
-            LIMIT ?
-            """,
-            (query, limit),
-        ).fetchall()
+        if session_id is not None:
+            hits = self.con.execute(
+                """
+                SELECT m.*
+                FROM messages m
+                JOIN messages_fts f ON m.rowid = f.rowid
+                WHERE messages_fts MATCH ?
+                  AND m.session_id = ?
+                ORDER BY m.created_at DESC
+                LIMIT ?
+                """,
+                (query, session_id, limit),
+            ).fetchall()
+        else:
+            hits = self.con.execute(
+                """
+                SELECT m.*
+                FROM messages m
+                JOIN messages_fts f ON m.rowid = f.rowid
+                WHERE messages_fts MATCH ?
+                ORDER BY m.created_at DESC
+                LIMIT ?
+                """,
+                (query, limit),
+            ).fetchall()
 
         if not hits:
             return []
@@ -799,18 +842,19 @@ class DB:
             verifier_outcome: Verifier result string, or None.
             embedding: Packed BLOB from struct.pack, or None if not embedded yet.
         """
-        self.con.execute(
-            """
-            INSERT INTO learnings
-                (id, type, content, source, created_at, trusted, lower_trust, verifier_outcome, embedding)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                id, type, content, source, _now_ms(),
-                int(trusted), int(lower_trust), verifier_outcome, embedding,
-            ),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                """
+                INSERT INTO learnings
+                    (id, type, content, source, created_at, trusted, lower_trust, verifier_outcome, embedding)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    id, type, content, source, _now_ms(),
+                    int(trusted), int(lower_trust), verifier_outcome, embedding,
+                ),
+            )
+            self.con.commit()
 
     def get_all_learnings(self) -> list[dict[str, Any]]:
         """Return all rows from the learnings table, ordered by created_at ascending."""
@@ -820,11 +864,12 @@ class DB:
 
     def insert_doc(self, path: str, mtime: int, size: int, content: str) -> None:
         """Insert or replace a single docs row (path is the PK)."""
-        self.con.execute(
-            "INSERT OR REPLACE INTO docs (path, mtime, size, content) VALUES (?,?,?,?)",
-            (path, mtime, size, content),
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.execute(
+                "INSERT OR REPLACE INTO docs (path, mtime, size, content) VALUES (?,?,?,?)",
+                (path, mtime, size, content),
+            )
+            self.con.commit()
 
     def get_token_usage_detail(self, session_id: str) -> list[dict]:
         """Return per-turn token usage data for a session."""

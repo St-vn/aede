@@ -28,7 +28,7 @@ export function SubagentToolCard({ status }: Props) {
         <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
         <span className="text-xs font-medium truncate flex-1">{status.agentName}</span>
         {status.status === 'running' && (
-          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Loader2 className="w-3 h-3 animate-spin" />
             Working...
           </span>

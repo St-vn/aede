@@ -507,6 +507,7 @@ class AgentLoop:
         stream_thinking: Any = None,
         stream_tool_call: Any = None,
         stream_tool_result: Any = None,
+        model_override: str | None = None,
     ) -> None:
         self._cfg = cfg
         self._session = session
@@ -522,6 +523,9 @@ class AgentLoop:
         self._stream_thinking = stream_thinking
         self._stream_tool_call = stream_tool_call
         self._stream_tool_result = stream_tool_result
+        # Per-turn model override.  Stored on the instance so concurrent turns
+        # each use their own value and the shared cfg.model is never mutated.
+        self._model_override: str | None = model_override
         self._accumulated_thinking = ""
         self._current_assist_id: str | None = None
 
@@ -733,6 +737,107 @@ class AgentLoop:
             self._trace_logger = TraceLogger(self._cfg.data_dir / "traces")
         return self._trace_logger
 
+    def _precheck_tool_call(
+        self, tool_name: str, tool_input: dict, tool_use_id: str
+    ) -> dict | None:
+        """Run the pre-gate guards for one tool call: unknown-tool, hard-deny,
+        and permission-mode deny.
+
+        Returns an ``is_error`` tool_result dict if the call is rejected (the
+        caller appends it and skips the call), or ``None`` if the call should
+        proceed to the approval gate / execution. Extracted from run_turn to
+        bound its complexity; emits the same console/rollout/stream side effects
+        as before.
+        """
+        from aede.tools.router import UnknownToolError
+        try:
+            self._router.validate_name(tool_name)
+        except UnknownToolError:
+            self._console.print(f"[red]Unknown tool: {tool_name!r}. Valid: {self._router.tool_names()}[/red]")
+            return {
+                "type": "tool_result",
+                "tool_use_id": tool_use_id,
+                "content": f"Error: Unknown tool {tool_name!r}. Valid tools: {self._router.tool_names()}",
+                "is_error": True,
+            }
+
+        from aede.hooks import pre_tool_use, HardDeniedError
+        try:
+            pre_tool_use(tool_name, tool_input)
+        except HardDeniedError as e:
+            self._console.print(f"[red]⛔ Hard denied: {e.matched}[/red]")
+            self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "hard_denied"})
+            self._emit_tool_call(tool_use_id, tool_name, tool_input)
+            self._emit_tool_result(tool_use_id, "denied", f"Hard denied: {e.matched!r}", 0)
+            return {
+                "type": "tool_result",
+                "tool_use_id": tool_use_id,
+                "content": f"Hard denied: command matches dangerous pattern: {e.matched!r}",
+                "is_error": True,
+            }
+
+        if self._gate_store.tool_action(tool_name, tool_input) == "deny":
+            self._console.print(f"[red]⛔ Denied by permission mode ({self._mode.value}): {tool_name}[/red]")
+            self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "mode_denied"})
+            self._emit_tool_call(tool_use_id, tool_name, tool_input)
+            self._emit_tool_result(tool_use_id, "denied", f"Denied by permission mode ({self._mode.value})", 0)
+            return {
+                "type": "tool_result",
+                "tool_use_id": tool_use_id,
+                "content": f"Denied by permission mode ({self._mode.value})",
+                "is_error": True,
+            }
+
+        return None
+
+    async def _handle_ask_user_tool(
+        self, tool_name: str, tool_input: dict, tool_use_id: str, tool_results: list
+    ) -> dict:
+        """Route an ask_user-family tool call to the ask_user backend and return
+        its tool_result dict.
+
+        On CancelledError (user cancelled the turn), appends a cancelled result to
+        *tool_results* and re-raises — preserving the original append-then-raise
+        behaviour so the cancellation propagates out of run_turn's loop.
+        Extracted from run_turn to bound its complexity.
+        """
+        import uuid
+        from aede.gate import PermissionMode
+
+        qid = uuid.uuid4().hex[:8]
+        self._persist_tool_call(tool_use_id, tool_name, tool_input)
+        questions = _normalize_question_payload(tool_name, tool_input)
+
+        if self._mode is PermissionMode.AUTO:
+            answers = _build_auto_answers(questions)
+        else:
+            try:
+                answers = await self._ask_user_backend.ask(question_id=qid, questions=questions)
+            except asyncio.CancelledError:
+                status_text = "User cancelled the turn."
+                self._emit_tool_result(tool_use_id, "cancelled", status_text, 0)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": status_text,
+                    "is_error": True,
+                })
+                raise
+            except Exception as exc:
+                answers = {"error": str(exc)}
+
+        # Map the backend result to a tool_result: chat-sentinel (user clicked
+        # "Chat about this") → conversational nudge; error → is_error result
+        # (never hidden); else normal answers.
+        status, result_content, is_error = _build_ask_user_result(answers)
+        self._emit_tool_result(tool_use_id, status, result_content, 0)
+        return {
+            "type": "tool_result",
+            "tool_use_id": tool_use_id,
+            "content": result_content,
+            "is_error": is_error,
+        }
+
     async def run_turn(self, user_input: str) -> None:
         """Process one user turn end-to-end.
 
@@ -877,92 +982,20 @@ class AgentLoop:
                 tool_input = tc["input"]
                 tool_use_id = tc["id"]
 
-                from aede.tools.router import UnknownToolError
-                try:
-                    self._router.validate_name(tool_name)
-                except UnknownToolError:
-                    self._console.print(f"[red]Unknown tool: {tool_name!r}. Valid: {self._router.tool_names()}[/red]")
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": f"Error: Unknown tool {tool_name!r}. Valid tools: {self._router.tool_names()}",
-                        "is_error": True,
-                    })
+                # Pre-gate guards: unknown-tool, hard-deny, permission-mode deny.
+                _precheck = self._precheck_tool_call(tool_name, tool_input, tool_use_id)
+                if _precheck is not None:
+                    tool_results.append(_precheck)
                     continue
-
-                from aede.hooks import pre_tool_use, HardDeniedError
-                try:
-                    pre_tool_use(tool_name, tool_input)
-                except HardDeniedError as e:
-                    self._console.print(f"[red]⛔ Hard denied: {e.matched}[/red]")
-                    self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "hard_denied"})
-                    self._emit_tool_call(tool_use_id, tool_name, tool_input)
-                    self._emit_tool_result(tool_use_id, "denied", f"Hard denied: {e.matched!r}", 0)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": f"Hard denied: command matches dangerous pattern: {e.matched!r}",
-                        "is_error": True,
-                    })
-                    continue
-
-                # Permission mode pre-check: allow or deny before gate
+                # Permission mode action (re-read for the needs_approval check below;
+                # the deny case was already handled inside _precheck_tool_call).
                 tool_action = self._gate_store.tool_action(tool_name, tool_input)
-                if tool_action == "deny":
-                    self._console.print(f"[red]⛔ Denied by permission mode ({self._mode.value}): {tool_name}[/red]")
-                    self._rollout.write({"type": "tool_call", "name": tool_name, "args": tool_input, "call_id": tool_use_id, "status": "mode_denied"})
-                    self._emit_tool_call(tool_use_id, tool_name, tool_input)
-                    self._emit_tool_result(tool_use_id, "denied", f"Denied by permission mode ({self._mode.value})", 0)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": f"Denied by permission mode ({self._mode.value})",
-                        "is_error": True,
-                    })
-                    continue
 
                 # Ask-user tools: route to ask_user_backend instead of gate
                 if tool_name in {"ask_user", "ask_user_choices", "ask_user_confirm", "question"}:
-                    import uuid
-                    from aede.gate import PermissionMode
-
-                    qid = uuid.uuid4().hex[:8]
-                    self._persist_tool_call(tool_use_id, tool_name, tool_input)
-
-                    questions = _normalize_question_payload(tool_name, tool_input)
-
-                    if self._mode is PermissionMode.AUTO:
-                        answers = _build_auto_answers(questions)
-                    else:
-                        try:
-                            answers = await self._ask_user_backend.ask(
-                                question_id=qid,
-                                questions=questions,
-                            )
-                        except asyncio.CancelledError:
-                            status_text = "User cancelled the turn."
-                            self._emit_tool_result(tool_use_id, "cancelled", status_text, 0)
-                            tool_results.append({
-                                "type": "tool_result",
-                                "tool_use_id": tool_use_id,
-                                "content": status_text,
-                                "is_error": True,
-                            })
-                            raise
-                        except Exception as exc:
-                            answers = {"error": str(exc)}
-
-                    # Map the backend result to a tool_result: chat-sentinel
-                    # (user clicked "Chat about this") → conversational nudge;
-                    # error → is_error result (never hidden); else normal answers.
-                    status, result_content, is_error = _build_ask_user_result(answers)
-                    self._emit_tool_result(tool_use_id, status, result_content, 0)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": result_content,
-                        "is_error": is_error,
-                    })
+                    tool_results.append(
+                        await self._handle_ask_user_tool(tool_name, tool_input, tool_use_id, tool_results)
+                    )
                     continue
 
                 # BC-04/05: Run critic before the gate for write_file / create_file
@@ -1183,8 +1216,13 @@ class AgentLoop:
                     if self._stream_thinking:
                         await self._stream_thinking(text)
 
+                # Prefer the per-turn model_override (set at construction time
+                # by the websocket handler) over the shared cfg.model, so
+                # concurrent turns on different sessions never bleed into each
+                # other's model selection.
+                active_model = getattr(self, "_model_override", None) or self._cfg.model
                 return await provider.stream_turn(
-                    model=self._cfg.model,
+                    model=active_model,
                     system=self._system_prompt,
                     tools=self._router.anthropic_tool_schemas(),
                     messages=normalize_messages_for_provider(self._messages),

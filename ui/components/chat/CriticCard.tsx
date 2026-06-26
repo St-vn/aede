@@ -50,7 +50,7 @@ export function CriticCard({ findings }: Props) {
               <div className="flex-1 min-w-0">
                 <p>{f.message}</p>
                 {(f.file || f.line) && (
-                  <p className="text-[10px] font-mono text-muted-foreground/60 mt-0.5">
+                  <p className="text-xs font-mono text-muted-foreground/60 mt-0.5">
                     {f.file}{f.line ? `:${f.line}` : ''}
                   </p>
                 )}

@@ -23,6 +23,21 @@ def test_get_config(client):
     assert "model" in data
     assert "shell" in data
 
+
+def test_get_api_config(client):
+    """GET /api/config must serialize cleanly (regression: #63 removed the
+    SandboxConfig dataclass but the endpoint still called dataclasses.asdict
+    on the now-missing cfg.sandbox → 500)."""
+    response = client.get("/api/config")
+    assert response.status_code == 200
+    data = response.json()
+    assert "model" in data
+    # sandbox is rebuilt from the flat cfg.sandbox_* fields, not the deleted dataclass.
+    assert "sandbox" in data
+    assert "enabled" in data["sandbox"]
+    assert "image" in data["sandbox"]
+
+
 def test_get_token_usage_empty(client):
     response = client.get("/token_usage")
     assert response.status_code == 200

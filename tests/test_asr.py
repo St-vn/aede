@@ -146,3 +146,29 @@ def test_openrouter_model_id_is_namespaced(monkeypatch):
     _provider, name, provider_model_id = chain[0]
     assert name == "openrouter"
     assert provider_model_id == "mistralai/voxtral-mini-transcribe"
+
+@pytest.mark.asyncio
+async def test_google_api_key_in_header_not_url(monkeypatch):
+    from aede.asr import GoogleAsrProvider, Transcript
+
+    captured: dict = {}
+
+    async def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs.get("headers")
+        class R:
+            status_code = 200
+            def json(self):
+                return {"results": [{"alternatives": [{"transcript": "test"}]}]}
+            def raise_for_status(self):
+                pass
+        return R()
+
+    p = GoogleAsrProvider(api_key="my-secret-key")
+    monkeypatch.setattr(p, "_post", fake_post)
+    t = await p.transcribe(audio=b"abc", mime="audio/webm", model="chirp-3")
+
+    assert "?key=" not in captured["url"], f"URL leaked key: {captured['url']}"
+    assert captured["headers"] is not None, "no headers passed to _post"
+    assert captured["headers"].get("x-goog-api-key") == "my-secret-key"
+    assert t.text == "test"

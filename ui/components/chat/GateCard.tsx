@@ -31,7 +31,7 @@ export function GateCard({ gateId, toolName, args, mode, reason, options, onDeci
       <div className="flex items-center gap-2 mb-3">
         <TriangleAlert className="w-4 h-4 text-[--color-warning] shrink-0" />
         {mode && (
-          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted">
             {mode}
           </span>
         )}

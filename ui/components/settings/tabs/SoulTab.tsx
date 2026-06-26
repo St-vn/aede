@@ -160,7 +160,7 @@ export function SoulTab({ projectDir }: Props) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex items-center justify-center py-12" aria-live="polite" aria-busy="true">
         <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
       </div>
     )
@@ -176,7 +176,7 @@ export function SoulTab({ projectDir }: Props) {
         <div className="flex items-center gap-2">
           <button
             onClick={handleEditFile}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             title="Open SOUL.md in editor"
           >
             <ExternalLink className="w-3 h-3" />
@@ -265,7 +265,7 @@ export function SoulTab({ projectDir }: Props) {
           >
             {WAKE_CHOICES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             On-device, no network. Only these prebuilt phrases are supported; a custom phrase requires training a model. (The &quot;Wake word&quot; text field above is for the agent&apos;s spoken-name display.)
           </p>
         </div>
@@ -283,7 +283,7 @@ export function SoulTab({ projectDir }: Props) {
 
         <div className="space-y-2">
           <label className="text-xs font-medium">API keys (bring your own)</label>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Stored in aede&apos;s credential vault. Set a key for the provider of your chosen model. No key = free browser speech fallback.
           </p>
           {PROVIDER_KEYS.map(pk => {

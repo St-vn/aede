@@ -84,7 +84,7 @@ def test_plan_artifact_round_trip(tmp_path: Path):
     """Write a plan, read it back, verify content survived."""
     from aede.tools.plan_mode import write_plan_artifact, read_plan_artifact
 
-    sid = "e2e-test-session"
+    sid = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
     content = "# My Plan\n\n1. Research\n2. Implement\n3. Test"
 
     write_plan_artifact({"content": content}, project_dir=tmp_path, session_id=sid)

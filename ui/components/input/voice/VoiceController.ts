@@ -97,18 +97,20 @@ export class VoiceController {
     this.stream = stream
     const ctx = new AudioContext()  // default rate; recording, not 16k wake inference
 
-    const blob = await new Promise<Blob | null>((resolve) => {
-      this.recorder = new ClipRecorder(stream, ctx)
-      this.recorder.start({ onSilence: (clip) => resolve(clip) })
-    })
+    try {
+      const blob = await new Promise<Blob | null>((resolve) => {
+        this.recorder = new ClipRecorder(stream, ctx)
+        this.recorder.start({ onSilence: (clip) => resolve(clip) })
+      })
 
-    stream.getTracks().forEach(t => t.stop())
-    this.stream = null
-    void ctx.close()
-    this.recorder = null
-
-    if (!blob) return ''  // cost gate: no speech after wake → no ASR call
-    this.state = 'transcribing'
-    return await this.deps.transcribe(blob, model ?? this.deps.model)
+      if (!blob) return ''  // cost gate: no speech after wake → no ASR call
+      this.state = 'transcribing'
+      return await this.deps.transcribe(blob, model ?? this.deps.model)
+    } finally {
+      stream.getTracks().forEach(t => t.stop())
+      this.stream = null
+      void ctx.close()
+      this.recorder = null
+    }
   }
 }

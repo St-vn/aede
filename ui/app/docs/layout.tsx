@@ -11,7 +11,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       <div className="hidden md:block w-64 shrink-0 border-r border-border bg-card">
         <DocsSidebar nav={nav} />
       </div>
-      <div className="flex flex-1 flex-col min-w-0">
+      <main className="flex flex-1 flex-col min-w-0">
         <div className="flex items-center gap-2 border-b border-border px-4 py-2 md:hidden">
           <MobileNav nav={nav} />
           <span className="font-semibold text-sm">aede docs</span>
@@ -21,7 +21,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             {children}
           </div>
         </ScrollArea>
-      </div>
+      </main>
     </div>
   )
 }

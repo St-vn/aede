@@ -8,11 +8,14 @@ through the existing LearningsStore + Verifier pipeline.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 # Transient error patterns that should not produce learnings.
 _TRANSIENT_PATTERNS: tuple[str, ...] = (
@@ -409,6 +412,7 @@ def gate_candidate(
         trusted = bool(verdict.get("trusted", False))
         verifier_outcome = verdict.get("verifier_outcome", None)
     except Exception:
+        _log.exception("Verifier gate failed for candidate")
         trusted = False
         verifier_outcome = "error"
 
@@ -519,6 +523,7 @@ class ExtractionQueue:
             try:
                 existing = resolved_store.list_all() if hasattr(resolved_store, "list_all") else []
             except Exception:
+                _log.warning("Failed to list existing store entries", exc_info=True)
                 existing = []
 
             for cand in candidates:

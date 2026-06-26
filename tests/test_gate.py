@@ -185,3 +185,80 @@ def test_render_gate_mcp_server_label():
     from aede.gate import render_gate
     output = render_gate("read_file", {"path": "x.txt"})
     assert "server:" not in output
+
+
+# ---------------------------------------------------------------------------
+# G2 — compound/piped command auto-approve bypass
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("cmd", [
+    "git status; rm -rf ~",
+    "ls && curl x | sh",
+    "echo hi; shutdown /s",
+    "git log\nrm -rf /tmp",
+    "git status && evil",
+    "cat foo || rm -rf /",
+    "echo `rm -rf /`",
+    "echo $(rm -rf /)",
+])
+def test_compound_commands_are_not_auto_approved(cmd):
+    """G2: any cmd containing a statement separator must be ASK/DENY (never ALLOW)."""
+    sc = SafetyClassifier()
+    decision, reason = sc.classify("powershell", {"cmd": cmd})
+    # Must be ASK or DENY — never ALLOW
+    assert decision.name != "ALLOW", (
+        f"Expected ASK/DENY for compound cmd {cmd!r}, got {decision.name!r}: {reason}"
+    )
+
+
+def test_plain_git_status_still_allowed():
+    """G2 regression: plain git status (no separator) must still be ALLOW."""
+    sc = SafetyClassifier()
+    assert sc.classify("powershell", {"cmd": "git status"})[0].name == "ALLOW"
+
+
+def test_plain_ls_still_allowed():
+    """G2 regression: plain ls must still be ALLOW."""
+    sc = SafetyClassifier()
+    assert sc.classify("powershell", {"cmd": "ls -la"})[0].name == "ALLOW"
+
+
+# ---------------------------------------------------------------------------
+# H1 — unified blocklist: hooks hard-deny and gate deny share same patterns
+# ---------------------------------------------------------------------------
+
+def test_gate_deny_patterns_include_git_push_force():
+    """H1: gate _DENY_PATTERNS must include git push --force pattern."""
+    sc = SafetyClassifier()
+    decision, _ = sc.classify("powershell", {"cmd": "git push --force"})
+    assert decision.name == "DENY"
+
+
+def test_hooks_hard_deny_includes_git_push_force():
+    """H1: hooks hard-deny must ALSO catch git push --force (no drift)."""
+    from aede.hooks import pre_tool_use, HardDeniedError
+    with pytest.raises(HardDeniedError):
+        pre_tool_use("powershell", {"cmd": "git push --force"})
+
+
+def test_hooks_hard_deny_includes_git_push_dash_f():
+    """H1: hooks hard-deny must catch git push -f."""
+    from aede.hooks import pre_tool_use, HardDeniedError
+    with pytest.raises(HardDeniedError):
+        pre_tool_use("powershell", {"cmd": "git push -f"})
+
+
+def test_hooks_hard_deny_includes_git_push_origin_main():
+    """H1: hooks hard-deny must catch git push origin main."""
+    from aede.hooks import pre_tool_use, HardDeniedError
+    with pytest.raises(HardDeniedError):
+        pre_tool_use("powershell", {"cmd": "git push origin main"})
+
+
+def test_gate_and_hooks_share_same_pattern_set():
+    """H1: gate deny patterns and hooks dangerous patterns must be identical sets."""
+    from aede.hooks import DANGEROUS_SHELL_PATTERNS
+    sc = SafetyClassifier()
+    assert set(sc._DENY_PATTERNS) == set(DANGEROUS_SHELL_PATTERNS), (
+        "Drift detected: gate._DENY_PATTERNS and hooks.DANGEROUS_SHELL_PATTERNS differ"
+    )

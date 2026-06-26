@@ -194,7 +194,7 @@ function ModelDropdown({ model, onModelChange }: { model: string; onModelChange:
             </DropdownMenuItem>
             {providers.map(provider => (
               <DropdownMenuGroup key={provider}>
-                <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {PROVIDER_LABELS[provider] || provider}
                 </DropdownMenuLabel>
                 {groupedModels[provider].map(m => (

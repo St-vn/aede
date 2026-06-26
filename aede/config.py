@@ -68,7 +68,20 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "sandbox_pids_limit": 256,
     "sandbox_pull_on_start": True,
     "sandbox_filter_session_search": False,
+    "max_spawn_depth": 1,
 }
+SECURITY_CRITICAL_KEYS: frozenset[str] = frozenset({
+    "gate_mode",
+    "sandbox_enabled",
+    "sandbox_image",
+    "sandbox_network",
+    "sandbox_memory",
+    "sandbox_cpus",
+    "critic_enabled",
+    "critic_api_base_url",
+    "api_base_url",
+    "auto_approve",
+})
 
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     # Anthropic
@@ -250,18 +263,17 @@ class AedeConfig:
         self.project_dir = project_dir
         from aede.instructions import load_soul_def, SoulDef
         self.soul: SoulDef = load_soul_def(home=self.home, project_dir=self.project_dir)
-        raw_sandbox = data.get("sandbox") or {}
-        from aede.sandboxing.docker import SandboxConfig
-        self.sandbox: SandboxConfig = SandboxConfig.from_dict(raw_sandbox)
         # Sandboxing (P0.2) — flat top-level keys
         self.sandbox_enabled: bool = data.get("sandbox_enabled", False)
         self.sandbox_image: str = data.get("sandbox_image", "aede-sandbox:latest")
+        self.sandbox_workspace_mount: str = data.get("sandbox_workspace_mount", "/workspace")
         self.sandbox_memory: str = data.get("sandbox_memory", "512m")
         self.sandbox_cpus: float = float(data.get("sandbox_cpus", 1.0))
         self.sandbox_network: str = data.get("sandbox_network", "off")
         self.sandbox_pids_limit: int = int(data.get("sandbox_pids_limit", 256))
         self.sandbox_pull_on_start: bool = data.get("sandbox_pull_on_start", True)
         self.sandbox_filter_session_search: bool = data.get("sandbox_filter_session_search", False)
+        self.max_spawn_depth: int = data.get("max_spawn_depth", DEFAULT_CONFIG["max_spawn_depth"])
         # Plugin/skill toggle configuration
         self.plugins: dict = data.get("plugins") or {}
         # OTel observability
@@ -302,12 +314,18 @@ def load_config(
         project_data = yaml.safe_load(project_path.read_text()) or {}
 
     merged = {**DEFAULT_CONFIG, **global_data}
+    skipped_security_keys: set[str] = set()
     for key, val in project_data.items():
+        if key in SECURITY_CRITICAL_KEYS:
+            skipped_security_keys.add(key)
+            continue
         merged[key] = val
 
     sources = {}
     for key in DEFAULT_CONFIG:
-        if project_data and key in project_data:
+        if key in skipped_security_keys:
+            sources[key] = "ignored (security-critical, user-level only)"
+        elif project_data and key in project_data:
             sources[key] = "project"
         elif global_data and key in global_data:
             sources[key] = "global"
@@ -353,6 +371,24 @@ def write_config_value(
             data = {}
 
     default_val = DEFAULT_CONFIG.get(key)
+
+    # The sandbox config was flattened onto AedeConfig (#63 removed the SandboxConfig
+    # dataclass). The UI still PUTs a single `sandbox` object — explode it into the
+    # flat `sandbox_*` keys the config actually reads, instead of str()-ing a dict.
+    if key == "sandbox" and isinstance(value, dict):
+        _SANDBOX_FIELD_MAP = {
+            "enabled": "sandbox_enabled",
+            "image": "sandbox_image",
+            "workspace_mount": "sandbox_workspace_mount",
+            "memory_limit": "sandbox_memory",
+            "cpu_limit": "sandbox_cpus",
+            "network": "sandbox_network",
+        }
+        for ui_key, flat_key in _SANDBOX_FIELD_MAP.items():
+            if ui_key in value:
+                data[flat_key] = value[ui_key]
+        file_path.write_text(yaml.safe_dump(data, default_flow_style=False), encoding="utf-8")
+        return
 
     if action in ("add", "remove"):
         if key != "auto_approve":
@@ -415,3 +451,5 @@ def edit_config_file(scope: str, home: Path | None = None, project_dir: Path | N
 
     subprocess.run([editor, str(file_path)])
     return file_path
+
+

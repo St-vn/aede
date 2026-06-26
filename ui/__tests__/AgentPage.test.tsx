@@ -72,3 +72,13 @@ test('new session button shows empty state', async () => {
   fireEvent.click(screen.getByRole('button', { name: /new session/i }))
   await waitFor(() => screen.getByText(/your building room/i))
 })
+
+test('shows skeleton fallback while ChatView lazy-loads', async () => {
+  mockApi({ '/api/sessions/s1/messages': [] })
+  render(<AgentPage />, { wrapper: Wrapper })
+  await waitFor(() => screen.getByText('debug session'))
+  fireEvent.click(screen.getByText('debug session'))
+  await waitFor(() => {
+    expect(screen.getByTestId('chat-skeleton')).toBeInTheDocument()
+  })
+})

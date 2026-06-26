@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 import datetime
+import os
 
 
 def read_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
@@ -31,10 +32,23 @@ def read_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
         container_path = sandbox.translate_path(path)
     else:
         container_path = path
-    if not path.exists():
+
+    if fileset is not None:
+        if not fileset.is_within(str(path)):
+            return f"Read of {path} is outside declared fileset. Use declare_fileset to widen."
+        if not fileset.is_writable(str(path)):
+            return f"Read of {path} is outside declared fileset. Use declare_fileset to widen."
+
+    resolved = path.resolve()
+    if not resolved.exists():
         raise FileNotFoundError(f"File not found: {path}")
 
-    content = path.read_text(encoding="utf-8", errors="replace")
+    content = resolved.read_text(encoding="utf-8", errors="replace")
+
+    if fileset is not None:
+        if not fileset.is_writable(str(resolved)):
+            return f"Read of {path} is outside declared fileset. Use declare_fileset to widen."
+
     lines = content.splitlines(keepends=True)
 
     offset = args.get("offset")
@@ -51,11 +65,11 @@ def read_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
         selected = lines[start:end]
         result = "".join(selected)
         total_lines = len(lines)
-        return f"<file {path} lines {start + 1}–{end} of {total_lines}>\n{result}"
+        return f"<file {path} lines {start + 1}\u2013{end} of {total_lines}>\n{result}"
     else:
         if len(lines) > 2000:
             truncated = "".join(lines[:2000])
-            return f"<file {path} lines 1–2000 of {len(lines)}>\n{truncated}\n[... file truncated at 2000 lines — use offset/limit to read more]"
+            return f"<file {path} lines 1\u20132000 of {len(lines)}>\n{truncated}\n[... file truncated at 2000 lines \u2014 use offset/limit to read more]"
         return content
 
 
@@ -64,7 +78,7 @@ def write_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
 
     Args:
         sandbox: Optional ``DockerSandbox`` instance.  When set, the path is
-            translated to its container equivalent and a fileset is required —
+            translated to its container equivalent and a fileset is required \u2014
             sandbox mode without a fileset is an unsafe configuration that is
             rejected to prevent unbounded host writes.
         fileset: Optional ``FileSet`` instance.  When set, write paths are
@@ -82,7 +96,7 @@ def write_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
                 f"Write to {path} rejected: sandbox is active but no fileset has been "
                 f"declared.  Call declare_fileset first to specify which paths may be written."
             )
-        container_path = sandbox.translate_path(path)  # noqa: F841 — recorded for audit
+        container_path = sandbox.translate_path(path)  # noqa: F841 \u2014 recorded for audit
     if fileset is not None:
         if not fileset.is_writable(str(path)):
             return f"Write to {path} is outside declared fileset. Use declare_fileset to widen."
@@ -99,7 +113,7 @@ def create_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
 
     Args:
         sandbox: Optional ``DockerSandbox`` instance.  When set, the path is
-            translated to its container equivalent and a fileset is required —
+            translated to its container equivalent and a fileset is required \u2014
             sandbox mode without a fileset is an unsafe configuration that is
             rejected to prevent unbounded host writes.
         fileset: Optional ``FileSet`` instance.  When set, write paths are
@@ -116,7 +130,7 @@ def create_file(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
                 f"Create {path} rejected: sandbox is active but no fileset has been "
                 f"declared.  Call declare_fileset first to specify which paths may be written."
             )
-        container_path = sandbox.translate_path(path)  # noqa: F841 — recorded for audit
+        container_path = sandbox.translate_path(path)  # noqa: F841 \u2014 recorded for audit
     if fileset is not None:
         if not fileset.is_writable(str(path)):
             return f"Write to {path} is outside declared fileset. Use declare_fileset to widen."
@@ -137,12 +151,20 @@ def edit(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
         replace_all: If True, replace ALL occurrences of old_string (default False).
     """
     path = Path(args["path"])
-    if not path.exists():
+
+    if fileset is not None:
+        if not fileset.is_within(str(path)):
+            return f"Write to {path} is outside declared fileset. Use declare_fileset to widen."
+        if not fileset.is_writable(str(path)):
+            return f"Write to {path} is outside declared fileset. Use declare_fileset to widen."
+
+    resolved = path.resolve()
+    if not resolved.exists():
         raise FileNotFoundError(f"File not found: {path}")
     old = args["old_string"]
     new = args["new_string"]
     replace_all = args.get("replace_all", False)
-    content = path.read_text(encoding="utf-8", errors="replace")
+    content = resolved.read_text(encoding="utf-8", errors="replace")
     if replace_all:
         if old not in content:
             raise ValueError(f"old_string not found in {path}")
@@ -154,7 +176,12 @@ def edit(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
         if count > 1:
             raise ValueError(f"old_string appears {count} times in {path}. Use replace_all=True or include more surrounding context for a unique match.")
         new_content = content.replace(old, new, 1)
-    path.write_text(new_content, encoding="utf-8")
+    resolved.write_text(new_content, encoding="utf-8")
+
+    if fileset is not None:
+        if not fileset.is_writable(str(resolved)):
+            return f"Write to {path} is outside declared fileset. Use declare_fileset to widen."
+
     return f"Edited: {path}"
 
 
@@ -210,11 +237,28 @@ def glob_files(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
     if not root.exists():
         raise FileNotFoundError(f"Directory not found: {root}")
 
-    matches = []
-    for p in root.rglob(pattern):
-        if p.is_file():
-            mtime = p.stat().st_mtime
-            matches.append((p, mtime))
+    MAX_DEPTH = 10
+    MAX_RESULTS = 5000
+
+    matches: list[tuple[Path, float]] = []
+    root_resolved = root.resolve()
+
+    for dirpath, dirnames, filenames in os.walk(root_resolved):
+        rel_depth = len(Path(dirpath).relative_to(root_resolved).parts)
+        if rel_depth >= MAX_DEPTH:
+            dirnames.clear()
+            continue
+
+        for fname in filenames:
+            if len(matches) >= MAX_RESULTS:
+                break
+            fp = Path(dirpath) / fname
+            if fp.match(pattern):
+                mtime = fp.stat().st_mtime
+                matches.append((fp, mtime))
+
+        if len(matches) >= MAX_RESULTS:
+            break
 
     matches.sort(key=lambda x: x[1], reverse=True)
 
@@ -225,8 +269,12 @@ def glob_files(args: dict, sandbox: Any = None, fileset: Any = None) -> str:
     for p, mtime in matches:
         dt = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
         try:
-            rel = p.relative_to(root)
+            rel = p.relative_to(root_resolved)
         except ValueError:
             rel = p
         lines.append(f"{rel}  {dt}")
-    return "\n".join(lines)
+
+    result = "\n".join(lines)
+    if len(matches) >= MAX_RESULTS:
+        result += f"\n[truncated at {MAX_RESULTS} results]"
+    return result

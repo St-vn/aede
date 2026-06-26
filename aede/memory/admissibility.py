@@ -100,6 +100,15 @@ def check_admissibility(
             reason=f"Could not parse LLM response: {reply_text[:200]}",
         )
 
+    # The LLM may return a non-object (array/scalar) even though it parsed as
+    # valid JSON.  Guard against it so the whole extraction pipeline does not
+    # crash on a malformed admissibility reply — degrade to admissible instead.
+    if not isinstance(result, dict):
+        return AdmissibilityResult(
+            admissible=True,
+            reason=f"Admissibility reply was not a JSON object: {reply_text[:200]}",
+        )
+
     return AdmissibilityResult(
         admissible=bool(result.get("admissible", True)),
         conflicting_rule_ids=result.get("conflicting_ids", []),

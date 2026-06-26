@@ -408,7 +408,7 @@ export function ModelFormDialog({
                             )}
                           />
                           <span>{s.label}</span>
-                          <span className="ml-auto text-[10px] text-muted-foreground">
+                          <span className="ml-auto text-xs text-muted-foreground">
                             {s.id}
                           </span>
                         </CommandItem>

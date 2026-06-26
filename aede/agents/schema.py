@@ -3,6 +3,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+_SUPPORTED_FIELDS = frozenset({
+    "name",
+    "description",
+    "model",
+    "skills",
+    "tools",
+    "disallowedTools",
+    "maxTurns",
+    "systemPrompt",
+})
+
 
 class AgentLoadError(Exception):
     """Raised when an agent definition cannot be parsed or validated."""
@@ -26,9 +43,20 @@ class AgentDef:
             raise AgentLoadError("AgentDef requires a non-empty 'name'")
         if not self.description:
             raise AgentLoadError("AgentDef requires a non-empty 'description'")
+        if self.max_turns < 1 or self.max_turns > 200:
+            raise AgentLoadError(
+                f"AgentDef 'max_turns' must be between 1 and 200, got {self.max_turns}"
+            )
 
     @classmethod
     def from_file(cls, path: Path) -> AgentDef:
+        file_size = path.stat().st_size
+        if file_size > _MAX_FILE_SIZE:
+            raise AgentLoadError(
+                f"File {path} size ({file_size} bytes) exceeds maximum size "
+                f"of {_MAX_FILE_SIZE} bytes"
+            )
+
         text = path.read_text(encoding="utf-8")
         import yaml
 
@@ -51,6 +79,15 @@ class AgentDef:
         except Exception as e:
             raise AgentLoadError(f"Invalid YAML frontmatter in {path}: {e}") from e
 
+        unknown = set(meta) - _SUPPORTED_FIELDS
+        if unknown:
+            logger.warning(
+                "Ignoring unknown frontmatter field(s) in %s: %s",
+                path,
+                ", ".join(sorted(unknown)),
+            )
+        meta = {k: v for k, v in meta.items() if k in _SUPPORTED_FIELDS}
+
         name = meta.get("name", "")
         description = meta.get("description", "")
         model = meta.get("model", "inherit")
@@ -58,6 +95,7 @@ class AgentDef:
         tools: list[str] | None = meta.get("tools")
         disallowed_tools: list[str] = meta.get("disallowedTools") or []
         max_turns: int = meta.get("maxTurns", 20)
+        max_turns = max(1, min(200, max_turns))
         system_prompt: str = meta.get("systemPrompt", "")
 
         return cls(

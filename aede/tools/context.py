@@ -2,9 +2,12 @@
 from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
+import logging
 
 if TYPE_CHECKING:
     from aede.db import DB
+
+_log = logging.getLogger(__name__)
 
 _DOC_EXTS = ("*.md", "*.mdx", "*.txt")
 _DOC_ROOTS = ("docs", "docs-internal")
@@ -61,6 +64,7 @@ def _docs_indexer(query: str, k: int, project_dir: Path, db: "DB") -> list[str]:
             (safe_terms, int(k)),
         ).fetchall()
     except Exception:
+        _log.warning("docs FTS5 query failed", exc_info=True)
         return []
     return [f"[{r['path']}] {r['content'][:_PREVIEW]}" for r in rows]
 
@@ -80,9 +84,9 @@ def _learnings_source(query: str, k: int, db: "DB") -> list[str]:
 
 
 
-def _sessions_source(query: str, k: int, db: "DB") -> list[str]:
+def _sessions_source(query: str, k: int, db: "DB", session_id: str | None = None) -> list[str]:
     """Return top-k session-message groups as formatted multi-line blocks."""
-    groups = db.search_messages(query=query, limit=k)
+    groups = db.search_messages(query=query, limit=k, session_id=session_id)
     if not groups:
         return []
     blocks: list[str] = []
@@ -123,7 +127,7 @@ _VALID_SOURCES: frozenset[str] = frozenset(ALL_SOURCES)
 
 
 def select_context(
-    args: dict, *, db: "DB", data_dir: Path, project_dir: Path,
+    args: dict, *, db: "DB", data_dir: Path, project_dir: Path, session_id: str | None = None,
 ) -> str:
     """Fan out to selected sources in parallel; return sectioned markdown.
 
@@ -154,7 +158,7 @@ def select_context(
     def _runner(src: str, n: int) -> tuple[str, list[str]]:
         try:
             if src == "learnings":   return src, _learnings_source(query, n, db)
-            if src == "sessions":    return src, _sessions_source(query, n, db)
+            if src == "sessions":    return src, _sessions_source(query, n, db, session_id=session_id)
             if src == "docs":        return src, _docs_source(query, n, project_dir, db)
             if src == "files":       return src, _files_source(query, n, project_dir)
         except Exception as exc:

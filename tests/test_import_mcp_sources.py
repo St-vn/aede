@@ -35,7 +35,7 @@ class TestImportMcpFromJson:
             "mcpServers": {
                 "ag-search": {
                     "serverUrl": "https://mcp.antigravity.dev/search",
-                    "env": {"AG_KEY": "secret"},
+                    "env": {"AG_ENDPOINT": "mcp.antigravity.dev"},
                 }
             }
         })
@@ -51,7 +51,7 @@ class TestImportMcpFromJson:
 
         srv = _load_dest(dest)["mcp_servers"]["ag-search"]
         assert srv["url"] == "https://mcp.antigravity.dev/search"
-        assert srv["env"]["AG_KEY"] == "secret"
+        assert srv["env"]["AG_ENDPOINT"] == "mcp.antigravity.dev"
         assert srv["enabled"] is True
         # command should not be present for a remote-only entry (no command key)
         assert srv.get("command", "") == ""
@@ -223,6 +223,93 @@ class TestImportMcpFromJson:
 # ---------------------------------------------------------------------------
 # import_mcp_from_toml
 # ---------------------------------------------------------------------------
+
+
+    # ------------------------------------------------------------------
+    # B22: MCP exec warning
+    # ------------------------------------------------------------------
+
+    def test_b22_command_execution_warning_json(self, tmp_path):
+        from aede.import_.mcp import import_mcp_from_json
+
+        src = tmp_path / "src.json"
+        src.write_text(
+            "{\"mcpServers\": {\"srv\": {\"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-everything\"]}}}",
+            encoding="utf-8",
+        )
+        dest = tmp_path / "config.yml"
+        dest.write_text("mcp_servers:\n")
+
+        reports = import_mcp_from_json(src, dest)
+
+        assert len(reports) == 1
+        assert any("execute" in w.lower() for w in reports[0].warnings)
+        assert any("command" in w.lower() for w in reports[0].warnings)
+
+    # ------------------------------------------------------------------
+    # B23: empty command raises ValueError
+    # ------------------------------------------------------------------
+
+    def test_b23_empty_command_raises_json(self, tmp_path):
+        from aede.import_.mcp import import_mcp_from_json
+
+        src = tmp_path / "src.json"
+        src.write_text(
+            "{\"mcpServers\": {\"bad\": {\"command\": \"\"}}}",
+            encoding="utf-8",
+        )
+        dest = tmp_path / "config.yml"
+        dest.write_text("mcp_servers:\n  other:\n    command: ok\n    enabled: true\n")
+
+        with pytest.raises(ValueError, match="empty or missing"):
+            import_mcp_from_json(src, dest)
+
+        import yaml
+        data = yaml.safe_load(dest.read_text(encoding="utf-8"))
+        assert "bad" not in data.get("mcp_servers", {})
+
+    # ------------------------------------------------------------------
+    # B24: non-str in command list
+    # ------------------------------------------------------------------
+
+    def test_b24_non_str_in_command_list_json(self, tmp_path):
+        from aede.import_.mcp import import_mcp_from_json
+
+        src = tmp_path / "src.json"
+        src.write_text(
+            "{\"mcpServers\": {\"bad\": {\"command\": [\"npx\", 123]}}}",
+            encoding="utf-8",
+        )
+        dest = tmp_path / "config.yml"
+        dest.write_text("mcp_servers:\n")
+
+        with pytest.raises(ValueError, match="command list elements"):
+            import_mcp_from_json(src, dest)
+
+    # ------------------------------------------------------------------
+    # B25: secret env vars filtered
+    # ------------------------------------------------------------------
+
+    def test_b25_secret_env_filtered_json(self, tmp_path):
+        from aede.import_.mcp import import_mcp_from_json
+
+        src = tmp_path / "src.json"
+        src.write_text(
+            "{\"mcpServers\": {\"srv\": {\"command\": \"my-srv\", \"args\": [], \"env\": {\"MY_API_KEY\": \"sk-xxx\", \"PATH\": \"/usr/bin\"}}}}",
+            encoding="utf-8",
+        )
+        dest = tmp_path / "config.yml"
+        dest.write_text("mcp_servers:\n")
+
+        reports = import_mcp_from_json(src, dest)
+
+        import yaml
+        data = yaml.safe_load(dest.read_text(encoding="utf-8"))
+        srv = data["mcp_servers"]["srv"]
+        assert "MY_API_KEY" not in srv.get("env", {})
+        assert srv["env"]["PATH"] == "/usr/bin"
+
+        assert any("MY_API_KEY" in w for w in reports[0].warnings)
 
 class TestImportMcpFromToml:
     def _write_toml(self, path: Path, text: str) -> Path:
@@ -490,3 +577,96 @@ class TestImportMcpFromToml:
 
         srv = _load_dest(dest)["mcp_servers"]["svc"]
         assert "env" not in srv
+
+
+
+
+    # ------------------------------------------------------------------
+    # B22-B25: TOML validation tests
+    # ------------------------------------------------------------------
+
+    def test_b22_command_execution_warning_toml(self, tmp_path):
+        from aede.import_.mcp import import_mcp_from_toml
+
+        toml_path = tmp_path / "config.toml"
+        toml_path.write_text(
+            '\n'.join([
+                '[mcp_servers.srv]',
+                'command = "npx"',
+                'args = ["-y", "@modelcontextprotocol/server-everything"]',
+            ]),
+            encoding="utf-8",
+        )
+        dest = tmp_path / "config.yml"
+        dest.write_text("mcp_servers:\n")
+
+        reports = import_mcp_from_toml(toml_path, dest)
+
+        assert len(reports) == 1
+        assert any("execute" in w.lower() for w in reports[0].warnings)
+        assert any("command" in w.lower() for w in reports[0].warnings)
+
+    def test_b23_empty_command_raises_toml(self, tmp_path):
+        from aede.import_.mcp import import_mcp_from_toml
+
+        toml_path = tmp_path / "config.toml"
+        toml_path.write_text(
+            '\n'.join([
+                '[mcp_servers.bad]',
+                'command = ""',
+                'args = []',
+            ]),
+            encoding="utf-8",
+        )
+        dest = tmp_path / "config.yml"
+        dest.write_text("mcp_servers:\n")
+
+        with pytest.raises(ValueError, match="empty or missing"):
+            import_mcp_from_toml(toml_path, dest)
+
+    def test_b24_non_str_in_command_list_toml(self, tmp_path):
+        from aede.import_.mcp import import_mcp_from_toml
+
+        toml_path = tmp_path / "config.toml"
+        toml_path.write_text(
+            '\n'.join([
+                '[mcp_servers.bad]',
+                'command = ["npx", 123]',
+                'args = []',
+            ]),
+            encoding="utf-8",
+        )
+        dest = tmp_path / "config.yml"
+        dest.write_text("mcp_servers:\n")
+
+        with pytest.raises(ValueError, match="command list elements"):
+            import_mcp_from_toml(toml_path, dest)
+
+    def test_b25_secret_env_filtered_toml(self, tmp_path):
+        from aede.import_.mcp import import_mcp_from_toml
+
+        toml_path = tmp_path / "config.toml"
+        toml_path.write_text(
+            '\n'.join([
+                '[mcp_servers.srv]',
+                'command = "my-srv"',
+                'args = []',
+                '',
+                '[mcp_servers.srv.env]',
+                'MY_TOKEN = "tok-xxx"',
+                'PATH = "/usr/bin"',
+            ]),
+            encoding="utf-8",
+        )
+        dest = tmp_path / "config.yml"
+        dest.write_text("mcp_servers:\n")
+
+        reports = import_mcp_from_toml(toml_path, dest)
+
+        import yaml
+        data = yaml.safe_load(dest.read_text(encoding="utf-8"))
+        srv = data["mcp_servers"]["srv"]
+        assert "MY_TOKEN" not in srv.get("env", {})
+        assert srv["env"]["PATH"] == "/usr/bin"
+
+        assert any("MY_TOKEN" in w for w in reports[0].warnings)

@@ -1,7 +1,10 @@
 from __future__ import annotations
 from pathlib import Path
+import logging
 
 from aede.agents.schema import AgentDef
+
+_log = logging.getLogger(__name__)
 
 
 _AGENT_EXTS = {".md", ".agent"}
@@ -18,7 +21,8 @@ def _scan_dir(agents_dir: Path) -> dict[str, AgentDef]:
                 ad = AgentDef.from_file(child)
                 registry[ad.name] = ad
             except Exception:
-                pass
+                _log.warning("Skipping agent file %s", child, exc_info=True)
+                continue
     return registry
 
 

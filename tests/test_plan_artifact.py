@@ -3,21 +3,25 @@
 import pathlib
 from pathlib import Path
 
+SID_A = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+SID_B = "01ARZ3NDEKTSV4RRFFQ69G5FAW"
+SID_C = "01ARZ3NDEKTSV4RRFFQ69G5FAX"
+SID_Z = "01ARZ3NDEKTSV4RRFFQ69G5FAZ"
+
 
 def test_write_plan_artifact_creates_file(tmp_path: Path):
     """write_plan_artifact must create the plan file at the expected path."""
     from aede.tools.plan_mode import write_plan_artifact
 
-    sid = "test-session-001"
     content = "# Test Plan\n\n- Step 1\n- Step 2"
 
     result = write_plan_artifact(
         {"content": content},
         project_dir=tmp_path,
-        session_id=sid,
+        session_id=SID_A,
     )
 
-    expected_path = tmp_path / "docs-internal" / "plans" / f"{sid}.md"
+    expected_path = tmp_path / "docs-internal" / "plans" / f"{SID_A}.md"
     assert expected_path.exists(), f"Plan file not created at {expected_path}"
     assert "Plan artifact written" in result
     assert expected_path.read_text() == content
@@ -30,7 +34,7 @@ def test_write_plan_artifact_empty_content(tmp_path: Path):
     result = write_plan_artifact(
         {"content": ""},
         project_dir=tmp_path,
-        session_id="test-session-002",
+        session_id=SID_B,
     )
 
     assert "nothing written" in result.lower()
@@ -40,12 +44,11 @@ def test_read_plan_artifact_returns_content(tmp_path: Path):
     """read_plan_artifact must return the plan file content."""
     from aede.tools.plan_mode import write_plan_artifact, read_plan_artifact
 
-    sid = "test-session-003"
     content = "# Plan\nDo X then Y"
 
-    write_plan_artifact({"content": content}, project_dir=tmp_path, session_id=sid)
+    write_plan_artifact({"content": content}, project_dir=tmp_path, session_id=SID_C)
 
-    result = read_plan_artifact({}, project_dir=tmp_path, session_id=sid)
+    result = read_plan_artifact({}, project_dir=tmp_path, session_id=SID_C)
     assert result == content
 
 
@@ -53,7 +56,7 @@ def test_read_plan_artifact_missing_file(tmp_path: Path):
     """read_plan_artifact must return a message for missing plan files."""
     from aede.tools.plan_mode import read_plan_artifact
 
-    result = read_plan_artifact({}, project_dir=tmp_path, session_id="nonexistent")
+    result = read_plan_artifact({}, project_dir=tmp_path, session_id=SID_Z)
     assert "no plan found" in result.lower()
 
 

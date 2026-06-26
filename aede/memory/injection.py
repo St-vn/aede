@@ -55,7 +55,8 @@ def build_learnings_suffix(
         else:
             provenance = "verified by test"
 
-        entry = f"- {content} *({provenance})*\n"
+        indented = "\n    ".join(content.splitlines())
+        entry = f"  - {indented} *({provenance})*\n"
 
         if used_chars + len(entry) > char_budget:
             # Truncate this entry to fit remaining budget

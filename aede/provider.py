@@ -170,9 +170,10 @@ class AnthropicProvider:
                 elif event.type == "content_block_delta":
                     delta = event.delta
                     if getattr(delta, "type", None) == "thinking_delta":
-                        thinking_content = getattr(delta, "thinking", "") or ""
+                        chunk = getattr(delta, "thinking", "") or ""
+                        thinking_content += chunk
                         if stream_thinking:
-                            await stream_thinking(thinking_content)
+                            await stream_thinking(chunk)
                     elif getattr(delta, "type", None) == "text_delta":
                         text = getattr(delta, "text", "") or ""
                         if stream_text:

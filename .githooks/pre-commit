@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# aede pre-commit gate. Fast, hard checks before a commit is created.
+# Full test suite is the ratify-step check, not this hook.
+# Activate: git config core.hooksPath .githooks
+set -euo pipefail
+
+# 1. Never commit directly to main/master.
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
+  echo "✗ pre-commit: refusing to commit on '$branch'. Use a fix/<issue>-<slug> branch." >&2
+  exit 1
+fi
+
+# 2. Block obvious secrets in the staged diff.
+staged="$(git diff --cached --name-only --diff-filter=ACM)"
+if [ -n "$staged" ]; then
+  if git diff --cached -U0 | grep -Eiq '(sk-[a-zA-Z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|xox[bp]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})'; then
+    echo "✗ pre-commit: a secret-like token is staged. Remove it." >&2
+    exit 1
+  fi
+  # 3. Block leftover debug prints in staged Python (allow logging).
+  if git diff --cached -U0 -- '*.py' | grep -Eq '^\+\s*(print\(|breakpoint\(\)|import pdb)'; then
+    echo "✗ pre-commit: leftover print()/breakpoint()/pdb in staged Python. Use logging or remove." >&2
+    exit 1
+  fi
+fi
+
+# 4. Never commit _scratch (gitignored, but guard against -f).
+if printf '%s\n' "$staged" | grep -q '^_scratch/'; then
+  echo "✗ pre-commit: _scratch/ is staged — do not commit audit workspace files." >&2
+  exit 1
+fi
+
+echo "✓ pre-commit gate passed (branch=$branch). NOTE: full suite is verified at ratify."
+exit 0

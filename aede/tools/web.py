@@ -11,6 +11,61 @@ from __future__ import annotations
 
 from aede.sandboxing.prompt_filter import filter_tool_output
 
+_MAX_BYTES = 10 * 1024 * 1024  # 10 MiB
+
+
+def _validate_url(url: str) -> str:
+    """Reject SSRF-vulnerable URLs before any request is made.
+
+    Checks:
+      - Only http / https schemes allowed.
+      - Hostname resolves to a public IP (not private, loopback, link-local,
+        reserved, multicast, or unspecified).
+
+    Raises:
+        RuntimeError: if the URL scheme or resolved IP is blocked.
+    """
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    scheme = parsed.scheme
+    if scheme not in ("http", "https"):
+        raise RuntimeError(f"Blocked scheme: {scheme!r}. Only http and https are allowed.")
+
+    host = parsed.hostname
+    if not host:
+        raise RuntimeError("URL has no hostname.")
+
+    try:
+        addrinfo = socket.getaddrinfo(host, None)
+    except OSError as e:
+        raise RuntimeError(f"Cannot resolve hostname {host!r}: {e}")
+
+    for family, _type, _proto, _canonname, sockaddr in addrinfo:
+        ip = sockaddr[0]
+        if _is_private_ip(ip):
+            raise RuntimeError(
+                f"Blocked request to internal/private address {ip}. "
+                "SSRF protection prevents fetching from non-public networks."
+            )
+
+    return host
+
+
+def _is_private_ip(ip: str) -> bool:
+    """Return True if *ip* is not a globally routable public address."""
+    import ipaddress
+
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+
+    if addr.version == 4:
+        return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast
+    return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_site_local
+
 
 def fetch_url(args: dict, sandbox_filter: bool = False) -> str:
     """HTTP GET a URL and return its body as plain text.
@@ -19,7 +74,7 @@ def fetch_url(args: dict, sandbox_filter: bool = False) -> str:
     cannot read a rendered web page and quote it back at the user.
 
     Args:
-        args: Must contain ``"url"``.
+        args: Must contain "url".
 
     Returns:
         Raw response body text.
@@ -29,13 +84,21 @@ def fetch_url(args: dict, sandbox_filter: bool = False) -> str:
     """
     import httpx
     url = args["url"]
+    _validate_url(url)
     try:
-        response = httpx.get(url, timeout=30, follow_redirects=True, headers={
+        with httpx.stream("GET", url, timeout=30, follow_redirects=False, headers={
             "User-Agent": "Mozilla/5.0 (compatible; aede/0.1)"
-        })
-        response.raise_for_status()
-        content_type = response.headers.get("content-type", "")
-        text = response.text
+        }) as response:
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "")
+            chunks = []
+            total = 0
+            for chunk in response.iter_bytes():
+                total += len(chunk)
+                if total > _MAX_BYTES:
+                    raise RuntimeError(f"Response exceeded 10 MiB size limit for URL: {url}")
+                chunks.append(chunk)
+        text = b"".join(chunks).decode("utf-8", errors="replace")
         stripped_start = text.strip()[:50]
         is_html = "text/html" in content_type or stripped_start.startswith("<!")
         is_rsc = stripped_start.startswith("0:") or 'self.__next_f' in text[:500]
@@ -55,10 +118,10 @@ def web_search(args: dict, sandbox_filter: bool = False) -> str:
     """Search the web via DuckDuckGo and return titled results with snippets.
 
     Args:
-        args: Must contain ``"query"``; optionally ``"count"`` (default 5).
+        args: Must contain "query"; optionally "count" (default 5).
 
     Returns:
-        Formatted Markdown-style list of ``[title](url)`` + snippet, or a
+        Formatted Markdown-style list of [title](url) + snippet, or a
         no-results message if the query returns nothing.
 
     Raises:
@@ -71,9 +134,6 @@ def web_search(args: dict, sandbox_filter: bool = False) -> str:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=count))
     except Exception as e:
-        # Surface backend failure as an error result — never silently return
-        # "(no results)", which the model cannot distinguish from a genuine
-        # empty result set.
         raise RuntimeError(f"web_search backend failed: {e}") from e
     if not results:
         return f"(no results for query: {query!r})"

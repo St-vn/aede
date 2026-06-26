@@ -387,7 +387,12 @@ async def test_spawn_all_runs_on_bridge_loop(server_configs):
 
 @pytest.mark.asyncio
 async def test_spawn_one_env_inherits_parent(server_configs):
-    """_spawn_one merges cfg.env over os.environ, not replacing it entirely."""
+    """_spawn_one scopes subprocess env to a safe allowlist + cfg.env (#54).
+
+    Security: arbitrary parent env (e.g. API keys) must NOT leak into a spawned
+    MCP subprocess. Only the SDK's curated allowlist (get_default_environment —
+    PATH etc.) plus the server's own cfg.env are passed.
+    """
     import os
     from aede.mcp.client import MCPBridge
     from unittest.mock import AsyncMock, MagicMock, patch
@@ -425,17 +430,20 @@ async def test_spawn_one_env_inherits_parent(server_configs):
             return real_params(*args, **kwargs) if args else MagicMock()
 
         with patch("mcp.StdioServerParameters", side_effect=capturing_params):
-            # Set a test env var so we can verify inheritance
-            os.environ["TEST_AEDE_MAGIC"] = "present"
+            # A secret-ish parent var that must NOT leak into the subprocess.
+            os.environ["TEST_AEDE_SECRET_KEY"] = "leak-me"
             try:
                 await bridge._spawn_one("test_server", server_configs["playwright"])
             finally:
-                os.environ.pop("TEST_AEDE_MAGIC", None)
+                os.environ.pop("TEST_AEDE_SECRET_KEY", None)
 
     assert captured_env is not None, "StdioServerParameters never created"
-    assert captured_env.get("TEST_AEDE_MAGIC") == "present", (
-        f"cfg.env should override but not replace parent env. Got env keys: {list(captured_env.keys())[:10]}..."
+    # The arbitrary parent secret must NOT have leaked through.
+    assert "TEST_AEDE_SECRET_KEY" not in captured_env, (
+        f"parent secret leaked into MCP subprocess env: {list(captured_env.keys())[:10]}..."
     )
+    # The safe allowlist is still present (PATH always inherited via get_default_environment).
+    assert "PATH" in captured_env, "expected the safe env allowlist (PATH) to be present"
 
 
 @pytest.mark.asyncio

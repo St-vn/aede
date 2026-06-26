@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from dataclasses import dataclass, field
 
 
@@ -73,16 +74,26 @@ def _first_method_of_type(methods, type_):
 async def drive_auth(agent_name, client, vault, registry, _meta=None):
     try:
         client._init_result = await client.initialize(credential_provider=vault)
-    except AcpError as err:
-        yield Failed(reason=err.message)
+    except FileNotFoundError:
+        raise
+    except (AcpError, OSError, TimeoutError, asyncio.TimeoutError) as exc:
+        if isinstance(exc, AcpError):
+            yield Failed(reason=exc.message)
+        else:
+            yield Failed(reason=str(exc))
         return
     try:
         session_id = await client.new_session(cwd="", _meta=_meta)
         yield Connected(session_id=session_id)
         return
-    except AcpError as err:
-        if not is_auth_required(err):
-            yield Failed(reason=err.message)
+    except (AcpError, OSError, TimeoutError, asyncio.TimeoutError) as exc:
+        if isinstance(exc, AcpError):
+            if not is_auth_required(exc):
+                yield Failed(reason=exc.message)
+                return
+            err = exc
+        else:
+            yield Failed(reason=str(exc))
             return
 
         config = registry.get(agent_name) if registry else None
@@ -97,24 +108,39 @@ async def drive_auth(agent_name, client, vault, registry, _meta=None):
             try:
                 yield Connected(session_id=await client.new_session(cwd="", _meta=_meta))
                 return
-            except AcpError as e2:
-                err = e2
+            except (AcpError, OSError, TimeoutError, asyncio.TimeoutError) as e2:
+                if isinstance(e2, AcpError):
+                    err = e2
+                else:
+                    yield Failed(reason=str(e2))
+                    return
 
         agent_method = _first_method_of_type(_client_auth_methods(client), "agent")
         if agent_method:
             yield NeedsBrowser(method_id=agent_method)
             yield Progress(message="Opening browser to log in...")
-            await client.authenticate(agent_method)
+            try:
+                await asyncio.wait_for(client.authenticate(agent_method), timeout=30)
+            except (TimeoutError, asyncio.TimeoutError, OSError) as e:
+                yield Failed(reason=f"Authentication timeout or error: {e}")
+                return
             try:
                 yield Connected(session_id=await client.new_session(cwd="", _meta=_meta))
                 return
-            except AcpError as e3:
-                yield Failed(reason=e3.message)
+            except (AcpError, OSError, TimeoutError, asyncio.TimeoutError) as e3:
+                reason = e3.message if isinstance(e3, AcpError) else str(e3)
+                yield Failed(reason=reason)
                 return
 
         term = terminal_auth_for(agent_name)
         if term:
             yield NeedsTerminal(command=term[0], args=term[1])
+            yield Failed(
+                reason=(
+                    f"Terminal auth required — "
+                    f"run '{term[0]} {' '.join(term[1])}' then re-drive"
+                )
+            )
             return
 
-        yield Failed(reason=err.message)
+        yield Failed(reason=err.message if isinstance(err, AcpError) else str(err))

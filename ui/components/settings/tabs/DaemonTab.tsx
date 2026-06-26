@@ -222,19 +222,19 @@ function DaemonTab() {
           </div>
         </div>
         {isRunning && (
-          <div className="mt-2 flex items-center gap-4 text-[10px] text-muted-foreground">
+          <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
             {status?.pid && <span>PID: {status.pid}</span>}
             {status?.port && <span>Port: {status.port}</span>}
           </div>
         )}
         {statusError && (
-          <p className="mt-2 text-[10px] text-destructive bg-destructive/10 px-2 py-1 rounded flex items-center gap-1">
+          <p className="mt-2 text-xs text-destructive bg-destructive/10 px-2 py-1 rounded flex items-center gap-1">
             <AlertCircle className="w-3 h-3 shrink-0" />
             {statusError.message}
           </p>
         )}
         {actionError && (
-          <p className="mt-2 text-[10px] text-destructive bg-destructive/10 px-2 py-1 rounded flex items-center gap-1">
+          <p className="mt-2 text-xs text-destructive bg-destructive/10 px-2 py-1 rounded flex items-center gap-1">
             <AlertCircle className="w-3 h-3 shrink-0" />
             {actionError}
           </p>
@@ -259,7 +259,7 @@ function DaemonTab() {
               <div className="border border-border/60 rounded-lg bg-muted/30 p-3 space-y-3 mb-3">
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground">Delay (seconds)</label>
+                    <label className="text-xs font-medium text-muted-foreground">Delay (seconds)</label>
                     <Input
                       type="number"
                       min="1"
@@ -270,7 +270,7 @@ function DaemonTab() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground">Action</label>
+                    <label className="text-xs font-medium text-muted-foreground">Action</label>
                     <Input
                       value={timerAction}
                       onChange={e => setTimerAction(e.target.value)}
@@ -279,7 +279,7 @@ function DaemonTab() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground">Label</label>
+                    <label className="text-xs font-medium text-muted-foreground">Label</label>
                     <Input
                       value={timerLabel}
                       onChange={e => setTimerLabel(e.target.value)}
@@ -303,7 +303,7 @@ function DaemonTab() {
                   <div key={timer.id} className="flex items-center gap-2 px-3 py-2 rounded-md border border-border/60">
                     <div className="flex-1 min-w-0">
                       <span className="text-xs font-medium">{timer.label || timer.action}</span>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span>Every {timer.delay_s}s</span>
                         <span className="font-mono">{timer.action}</span>
                       </div>
@@ -337,7 +337,7 @@ function DaemonTab() {
               <div className="border border-border/60 rounded-lg bg-muted/30 p-3 space-y-3 mb-3">
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground">Schedule (cron expression)</label>
+                    <label className="text-xs font-medium text-muted-foreground">Schedule (cron expression)</label>
                     <Input
                       value={cronSchedule}
                       onChange={e => {
@@ -352,7 +352,7 @@ function DaemonTab() {
                     )}
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground">Action</label>
+                    <label className="text-xs font-medium text-muted-foreground">Action</label>
                     <Input
                       value={cronAction}
                       onChange={e => setCronAction(e.target.value)}
@@ -361,7 +361,7 @@ function DaemonTab() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground">Label</label>
+                    <label className="text-xs font-medium text-muted-foreground">Label</label>
                     <Input
                       value={cronLabel}
                       onChange={e => setCronLabel(e.target.value)}
@@ -385,7 +385,7 @@ function DaemonTab() {
                   <div key={job.id} className="flex items-center gap-2 px-3 py-2 rounded-md border border-border/60">
                     <div className="flex-1 min-w-0">
                       <span className="text-xs font-medium">{job.label || job.action}</span>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span className="font-mono">{job.schedule}</span>
                         <span>{job.action}</span>
                       </div>

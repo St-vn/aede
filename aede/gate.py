@@ -29,6 +29,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from aede.hooks import DANGEROUS_SHELL_PATTERNS as _DANGEROUS_SHELL_PATTERNS
+
 
 # ---------------------------------------------------------------------------
 # Tool category constants
@@ -182,22 +184,13 @@ class SafetyClassifier:
     """
 
     # Patterns that are always denied, even in execution mode.
-    _DENY_PATTERNS = [
-        r"rm\s+-rf\s+/(?!\S)",          # rm -rf / but not rm -rf /some/subdir
-        r"del\s+/f\s+/s\s+/q\s+[A-Za-z]:\\$",
-        r"format\s+[A-Za-z]:",
-        r"rd\s+/s\s+/q\s+[A-Za-z]:\\$",
-        r"mkfs\.",
-        r"dd\s+if=.*of=/dev/",
-        r"shutdown",
-        r":\(\)\s*\{\s*:\|:&\s*\}",     # fork bomb
-        r"curl\s+.*\|\s*(ba)?sh",
-        r"wget\s+.*\|\s*(ba)?sh",
-        r"git\s+push\s+.*--force",
-        r"git\s+push\s+-f\b",
-        r"git\s+push\s+origin\s+(HEAD:)?main\b",
-        r"git\s+push\s+origin\s+(HEAD:)?master\b",
-    ]
+    # Single source of truth lives in aede.hooks.DANGEROUS_SHELL_PATTERNS;
+    # this class attribute references that list so the two layers never drift.
+    _DENY_PATTERNS = _DANGEROUS_SHELL_PATTERNS
+
+    # Regex that detects statement separators that could be used to smuggle a
+    # dangerous tail after an allow-listed prefix (G2 fix).
+    _COMPOUND_RE = re.compile(r";|&&|\|\||\||\n|`|\$\(", re.IGNORECASE)
 
     # Patterns that are considered read-only / safe and may run without prompt.
     _ALLOW_PATTERNS = [
@@ -253,9 +246,15 @@ class SafetyClassifier:
     def _classify_shell(self, cmd: str) -> tuple[SafetyDecision, str]:
         if not cmd:
             return SafetyDecision.ALLOW, "empty command"
+        # DENY check always runs first (unchanged).
         for pat in self._deny:
             if pat.search(cmd):
                 return SafetyDecision.DENY, f"matches dangerous pattern: {pat.pattern}"
+        # G2: compound/piped commands must never be auto-approved via a
+        # prefix match.  If the command contains any statement separator
+        # (;  &&  ||  |  newline  backtick  $() ) treat it as requires-approval.
+        if self._COMPOUND_RE.search(cmd):
+            return SafetyDecision.ASK, "compound/piped command requires approval"
         for pat in self._allow:
             if pat.search(cmd):
                 return SafetyDecision.ALLOW, "read-only/safe shell command"

@@ -88,7 +88,16 @@ def _try_reverse_replay(project_dir: Path, tool_calls: list[dict]) -> None:
         path_str = args.get("path", "")
         if not path_str:
             continue
-        path = project_dir / path_str
+        base = project_dir.resolve()
+        resolved = (base / path_str).resolve()
+        if not resolved.is_relative_to(base):
+            warnings.warn(
+                f"rewind: refusing path outside project: {path_str}",
+                UserWarning,
+                stacklevel=2,
+            )
+            continue
+        path = resolved
 
         if not path.exists() or not path.is_file():
             continue

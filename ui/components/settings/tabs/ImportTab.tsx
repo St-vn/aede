@@ -52,12 +52,12 @@ export function ImportTab() {
           {IMPORT_COMMANDS.map((cmd, i) => (
             <div key={i} className="rounded-md border border-border p-3 space-y-1">
               <div className="flex items-center gap-2">
-                <kbd className="px-1.5 py-0.5 text-[10px] font-mono rounded border border-border bg-muted shadow-sm">
+                <kbd className="px-1.5 py-0.5 text-xs font-mono rounded border border-border bg-muted shadow-sm">
                   {cmd.command}
                 </kbd>
               </div>
               <p className="text-xs text-muted-foreground">{cmd.description}</p>
-              <p className="text-[10px] text-muted-foreground font-mono">{cmd.example}</p>
+              <p className="text-xs text-muted-foreground font-mono">{cmd.example}</p>
             </div>
           ))}
         </div>
