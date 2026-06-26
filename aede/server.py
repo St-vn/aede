@@ -1261,7 +1261,7 @@ async def get_config(request: Request):
     d["sandbox"] = {
         "enabled": cfg.sandbox_enabled,
         "image": cfg.sandbox_image,
-        "workspace_mount": getattr(cfg, "sandbox_workspace_mount", "/workspace"),
+        "workspace_mount": cfg.sandbox_workspace_mount,
         "memory_limit": cfg.sandbox_memory,
         "cpu_limit": cfg.sandbox_cpus,
         "network": cfg.sandbox_network,

@@ -1,7 +1,25 @@
+import json
 import pytest
 from unittest.mock import MagicMock
 from aede.commands import parse_command, CommandResult, COMMANDS
 from aede.db import DB
+
+
+def test_import_mcp_bad_command_does_not_crash(tmp_path):
+    """Regression (#53/W2-C): a malformed MCP config (empty command) makes the
+    importer raise ValueError. _handle_import_mcp must catch it and print an
+    error, NOT crash the CLI with an unhandled traceback."""
+    from aede.commands import _handle_import_mcp
+    src = tmp_path / "mcp.json"
+    src.write_text(json.dumps({"mcpServers": {"bad": {"command": ""}}}))
+    home = tmp_path / "home"
+    home.mkdir()
+    console = MagicMock()
+    # Must NOT raise — the ValueError is caught and surfaced.
+    _handle_import_mcp([str(src), "--source", "claude-code"], console, home)
+    # An error message was printed (not a crash).
+    printed = " ".join(str(c) for c in console.print.call_args_list).lower()
+    assert "import failed" in printed or "failed" in printed
 
 
 def test_parse_help():

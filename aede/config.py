@@ -266,6 +266,7 @@ class AedeConfig:
         # Sandboxing (P0.2) — flat top-level keys
         self.sandbox_enabled: bool = data.get("sandbox_enabled", False)
         self.sandbox_image: str = data.get("sandbox_image", "aede-sandbox:latest")
+        self.sandbox_workspace_mount: str = data.get("sandbox_workspace_mount", "/workspace")
         self.sandbox_memory: str = data.get("sandbox_memory", "512m")
         self.sandbox_cpus: float = float(data.get("sandbox_cpus", 1.0))
         self.sandbox_network: str = data.get("sandbox_network", "off")
@@ -370,6 +371,24 @@ def write_config_value(
             data = {}
 
     default_val = DEFAULT_CONFIG.get(key)
+
+    # The sandbox config was flattened onto AedeConfig (#63 removed the SandboxConfig
+    # dataclass). The UI still PUTs a single `sandbox` object — explode it into the
+    # flat `sandbox_*` keys the config actually reads, instead of str()-ing a dict.
+    if key == "sandbox" and isinstance(value, dict):
+        _SANDBOX_FIELD_MAP = {
+            "enabled": "sandbox_enabled",
+            "image": "sandbox_image",
+            "workspace_mount": "sandbox_workspace_mount",
+            "memory_limit": "sandbox_memory",
+            "cpu_limit": "sandbox_cpus",
+            "network": "sandbox_network",
+        }
+        for ui_key, flat_key in _SANDBOX_FIELD_MAP.items():
+            if ui_key in value:
+                data[flat_key] = value[ui_key]
+        file_path.write_text(yaml.safe_dump(data, default_flow_style=False), encoding="utf-8")
+        return
 
     if action in ("add", "remove"):
         if key != "auto_approve":

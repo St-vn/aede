@@ -5,6 +5,29 @@ import yaml
 from aede.config import load_config, bootstrap, AedeConfig
 
 
+def test_write_sandbox_config_persists_flat_fields(tmp_home):
+    """Regression (#63): the UI PUTs a `sandbox` dict; write_config_value must
+    explode it into the flat sandbox_* keys the config reads — not str() the dict.
+    Before the fix, saving the Sandbox tab was a silent no-op."""
+    from aede.config import write_config_value
+    write_config_value(
+        "global", "sandbox",
+        {"enabled": True, "image": "custom:1", "workspace_mount": "/ws",
+         "memory_limit": "1g", "cpu_limit": 2.0},
+        home=tmp_home,
+    )
+    raw = yaml.safe_load((tmp_home / "config.yml").read_text())
+    assert raw["sandbox_enabled"] is True
+    assert raw["sandbox_image"] == "custom:1"
+    assert raw["sandbox_memory"] == "1g"
+    assert raw["sandbox_cpus"] == 2.0
+    assert raw["sandbox_workspace_mount"] == "/ws"
+    cfg = load_config(home=tmp_home)
+    assert cfg.sandbox_enabled is True
+    assert cfg.sandbox_image == "custom:1"
+    assert cfg.sandbox_workspace_mount == "/ws"
+
+
 def test_bootstrap_creates_aede_dir(tmp_home):
     bootstrap(tmp_home)
     assert tmp_home.exists()

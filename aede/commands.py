@@ -1131,10 +1131,16 @@ def _handle_import_mcp(args: list[str], console: Any, home: Path) -> None:
 
     from aede.import_.mcp import import_mcp_from_json, import_mcp_from_toml
     label = _SOURCE_LABELS[source]
-    if is_toml:
-        reports = import_mcp_from_toml(src_config_path=src_path, dest_config_path=dest_path, source=label)
-    else:
-        reports = import_mcp_from_json(src_config_path=src_path, dest_config_path=dest_path, source=label)
+    try:
+        if is_toml:
+            reports = import_mcp_from_toml(src_config_path=src_path, dest_config_path=dest_path, source=label)
+        else:
+            reports = import_mcp_from_json(src_config_path=src_path, dest_config_path=dest_path, source=label)
+    except ValueError as e:
+        # W2-C (#53) validates command/env and raises ValueError on a malformed
+        # MCP config — surface it instead of crashing the CLI with a traceback.
+        console.print(f"[red]Import failed: {e}[/red]")
+        return
 
     if not reports:
         console.print("[yellow]No MCP servers found to import[/yellow]")
