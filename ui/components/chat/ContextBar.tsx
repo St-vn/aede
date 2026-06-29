@@ -1,6 +1,7 @@
 'use client'
 import React, { useState } from 'react'
 import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import type { TokenBucket } from '@/hooks/useTokens'
 
@@ -56,7 +57,7 @@ export function ContextBar({ sessionId }: Props) {
     e.stopPropagation()
     setCompacting(true)
     try {
-      await fetch('/api/compact', {
+      await apiFetch('/api/compact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
