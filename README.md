@@ -1,18 +1,22 @@
 # aede
 
-A personal CLI agent harness wrapping Claude (pronounced "aid").
+A CLI agent harness, also with a web interface (pronounced "aid").
 
-**Phase 1** is implemented (168 tests passing) — an early, single-user personal tool. Supports agentic workflows across coding, planning, research, and general task execution on Windows.
+Supports agentic workflows across coding, planning, research, and general task execution on Windows.
 
 ## Features
 
 - **Agent loop** with streaming output
+- **Multiple model providers**: OpenAI, Anthropic, OpenRouter, DeepSeek, Gemini, OpenCode Go/Zen, NeuralWatt
 - **Eight tools**: powershell, read_file, write_file, create_file, list_dir, search_files, fetch_url, web_search
+- **Web Interface** for a familiar browser experience.
 - **Approval gate** for dangerous operations (shell, file writes)
 - **Session management** with persistence, branching, and resume
 - **Context compaction** (85% threshold) with hide-don't-delete audit trail
 - **Configuration** system (global `~/.aede/config.yml`, project `./aede.yml`, session-level)
-- **Slash commands**: `/help`, `/keybinds`, `/resume`, `/sessions`, `/tools`, `/config`, `/compact`, `/tokens`, `/setkey`, `/clear`, `/exit`
+- **Slash commands/Skills**: `/help`, `/keybinds`, `/resume`, `/sessions`, `/tools`, `/config`, `/compact`, `/tokens`, `/setkey`, `/clear`, `/exit`
+- **MCP Servers** support with any MCP-compatible server
+- **Agent Client Protocol** for subagent orchestration and model subscription usage within the harness ()
 - **Token tracking** with KV-cache hit rate and estimated cost
 - **Voice input** — push-to-talk and wake word detection with multi-provider ASR (Groq, OpenAI, OpenRouter, Google) and browser-native fallback
 - **Pydantic validation** with retry-once on parameter errors
